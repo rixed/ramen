@@ -1,5 +1,7 @@
 # vim: ft=dockerfile expandtab
-FROM debian:11.1-slim
+ARG distrib
+
+FROM ${distrib}
 
 # Do not install recommends and remove unused deps automatically:
 RUN echo 'APT::Install-Recommends "0";' > \
@@ -51,8 +53,6 @@ RUN apt-get --yes update && \
         patch \
         php-cli \
         procps \
-        qt5-image-formats-plugins \
-        qtbase5-dev \
         rsync \
         ruby-rspec \
         socat \
@@ -65,6 +65,14 @@ RUN apt-get --yes update && \
         vim-nox \
         wget \
         xauth
+
+RUN if grep -q '^11' /etc/debian_version; then \
+      DEBIAN_FRONTEND=noninteractive \
+        apt-get --yes install qt5-image-formats-plugins qtbase5-dev; \
+    else \
+      DEBIAN_FRONTEND=noninteractive \
+        apt-get --yes install qt5-default; \
+    fi
 
 COPY install-opam.sh /tmp
 RUN echo | /tmp/install-opam.sh

@@ -1824,14 +1824,28 @@ docker-push:
 	docker push rixed/ramen:latest
 	docker push rixed/ramen:v$(VERSION)
 
+DISTRIB_TAGS = \
+	debian:11.1-slim,bullseye \
+	debian:10.11-slim,buster
+
 docker-dev: docker/Dockerfile-dev
-	@echo Building ramen-dev docker image ;\
-	$(DOCKER_BUILD) -t rixed/ramen-dev:latest \
-                  -f docker/Dockerfile-dev docker/
+	@for distrib_tag in $(DISTRIB_TAGS) ; do \
+	  distrib=`echo $$distrib_tag | cut -d, -f1` ;\
+	  tag=`echo $$distrib_tag | cut -d, -f2` ;\
+	  echo 'Building ramen-dev docker image from '$$distrib ;\
+	  $(DOCKER_BUILD) -t rixed/ramen-dev:$$tag \
+	                  -f docker/Dockerfile-dev \
+	                  --build-arg distrib=$$distrib docker/ ;\
+	done
 
 # docker-dev-push target will tag and push that images:
 docker-dev-push:
 	@echo 'Uploading docker-dev image(s)'
+	 for distrib_tag in $(DISTRIB_TAGS) ; do \
+	   tag=`echo $$distrib_tag | cut -d, -f2` ;\
+	   docker push rixed/ramen-dev:$$tag ;\
+	 done
+	docker tag rixed/ramen-dev:bullseye rixed/ramen-dev:latest ;\
 	docker push rixed/ramen-dev:latest
 
 # The docker image is build from the debian package:
