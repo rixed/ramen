@@ -39,6 +39,8 @@ Feature: users are authenticated
       """
     And I run chmod with arguments go-rwx ramen_dir/confserver/private_key client_priv client_priv_bad
     And ramen confserver --secure 29341 --no-examples is started
+    # Wait to make sure confserver is accepting connections:
+    And I wait 1 second
 
   Scenario: user can connect with the proper public key
     When I run ramen with arguments ps --confserver localhost:29341 --confserver-key ramen_dir/confserver/public_key --pub-key client_pub --priv-key client_priv

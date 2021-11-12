@@ -24,6 +24,8 @@ Feature: It is possible to compile a program via the confserver
     And ramen confserver --debug --insecure 29341 --no-examples is started
     And ramen precompserver --debug --confserver localhost:29341 is started
     And the environment variable USER is set to TESTER
+    # Make sure confserver is accepting connections:
+    And I wait 1 second
 
   Scenario: Local files can be compiled via confserver
     When I run ramen with arguments compile --confserver localhost:29341 testme.ramen

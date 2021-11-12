@@ -190,6 +190,8 @@ Given /the whole gang is started$/ do
   step "the environment variable RAMEN_KEEP_TEMP_FILES is set to 1"
   step "ramen start --insecure 127.0.0.1:29340 --no-examples --allocs is started"
   step "the environment variable RAMEN_DEBUG is not defined"
+  # Wait to make sure confserver is accepting connections:
+  step "I wait 1 second"
 end
 
 Given /^user (\w+) is defined with (\w+) perms$/ do |username, perms|
