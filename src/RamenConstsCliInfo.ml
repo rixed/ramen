@@ -123,6 +123,8 @@ let confserver_url =
     docv = "" ;
     typ = Scalar }
 
+(* This option is for the clients, whereas public-key is for the server
+ * (same ENVVAR for convenience though) *)
 let confserver_key =
   { names = [ "confserver-key" ] ;
     env = "RAMEN_CONFSERVER_KEY" ;
@@ -138,14 +140,14 @@ let username =
     typ = Scalar }
 
 let client_pub_key =
-  { names = [ "pub-key" ] ;
+  { names = [ "pub-key" ; "client-public-key" ] ;
     env = "RAMEN_CLIENT_PUB_KEY" ;
     doc = "File name where the client public key is stored." ;
     docv = "" ;
     typ = Scalar }
 
 let client_priv_key =
-  { names = [ "priv-key" ] ;
+  { names = [ "priv-key" ; "client-private-key" ] ;
     env = "RAMEN_CLIENT_PRIV_KEY" ;
     doc = "File name where the client private key is stored. This file must \
            not be readable or writable by others." ;
@@ -406,15 +408,16 @@ let confserver_port_sec =
     typ = List }
 
 let server_priv_key =
-  { names = [ "private-key" ; "K" ] ;
+  { names = [ "private-key" ; "server-private-key" ; "K" ] ;
     env = "RAMEN_CONFSERVER_PRIV_KEY" ;
     doc = "File name where the server private key is stored. This file must \
            not be readable or writable by others." ;
     docv = "" ;
     typ = Scalar }
 
+(* Cf. also confserver_key *)
 let server_pub_key =
-  { names = [ "public-key" ; "k" ] ;
+  { names = [ "public-key" ; "server-public-key" ; "k" ] ;
     env = "RAMEN_CONFSERVER_KEY" ;
     doc = "File name where the server public key is stored." ;
     docv = "" ;

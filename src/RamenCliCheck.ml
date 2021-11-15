@@ -22,8 +22,20 @@ let choreographer conf =
   if conf.C.sync_url = "" then
     failwith "Cannot start the choreographer without --confserver."
 
-let confserver ports ports_sec srv_pub_key_file srv_priv_key_file
+let confserver conf ports ports_sec srv_pub_key_file srv_priv_key_file
                incidents_history_length =
+  (* Some not-so-common options makes no sense for confserver and are likely
+   * a user error: *)
+  let check_unset what suggestion s =
+    if s <> "" then
+      Printf.sprintf "Option %s makes no sense for confserver (do you mean %s?)"
+        what suggestion |>
+      failwith in
+  check_unset "--client-public-key" "--server-public-key" conf.C.clt_pub_key ;
+  check_unset "--client-private-key" "--server-private-key" conf.clt_priv_key ;
+  (* Options confserver/confserver-key/identity also makes no sense, but could
+   * be passed as envvars not specifically for confserver and thus should not
+   * generate any errors. *)
   if ports = [] && ports_sec = [] then
     failwith "You must specify some ports to listen to with --secure and/or \
              --insecure." ;

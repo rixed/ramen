@@ -93,7 +93,7 @@ let persist_dir =
  * confserver, or an empty string to use the Unix $USER, or None when no
  * connection to the confserver is actually needed, in which case none
  * of the confserver options will be initialized. *)
-let copts ?default_username () =
+let copts ?default_username ?(is_confserver=false) () =
   let docs = Manpage.s_common_options in
   let debug =
     flag_of_opt ~docs CliInfo.debug
@@ -125,11 +125,11 @@ let copts ?default_username () =
     let i = info_of_opt ~docs CliInfo.masters in
     Arg.(value (opt_all string [] i))
   and confserver_url =
-    if default_username = None then Term.const "" else
+    if default_username = None || is_confserver then Term.const "" else
     let i = info_of_opt ~docs CliInfo.confserver_url in
     Arg.(value (opt ~vopt:"localhost" string "" i))
   and confserver_key =
-    if default_username = None then Term.const "" else
+    if default_username = None || is_confserver then Term.const "" else
     let i = info_of_opt ~docs CliInfo.confserver_key in
     Arg.(value (opt (key false) "" i))
   and username =
@@ -142,15 +142,15 @@ let copts ?default_username () =
     ) in
     Arg.(value (opt string def i))
   and client_pub_key =
-    if default_username = None then Term.const "" else
+    if default_username = None || is_confserver then Term.const "" else
     let i = info_of_opt ~docs CliInfo.client_pub_key in
     Arg.(value (opt (key false) "" i))
   and client_priv_key =
-    if default_username = None then Term.const "" else
+    if default_username = None || is_confserver then Term.const "" else
     let i = info_of_opt ~docs CliInfo.client_priv_key in
     Arg.(value (opt (key true) "" i))
   and identity_file =
-    if default_username = None then Term.const (N.path "") else
+    if default_username = None || is_confserver then Term.const (N.path "") else
     let i = info_of_opt ~docs CliInfo.identity_file in
     Arg.(value (opt path (N.path "") i))
   and colors =
@@ -449,7 +449,7 @@ let ignore_file_perms =
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
-      $ copts ~default_username:"_confserver" ()
+      $ copts ~default_username:"_confserver" ~is_confserver:true ()
       $ daemonize
       $ to_stdout
       $ to_syslog

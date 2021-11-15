@@ -291,7 +291,7 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ports_sec srv_pub_key_file srv_priv_key_file ignore_file_perms
                no_source_examples archive_total_size archive_recall_cost
                oldest_restored_site incidents_history_length () =
-  RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file
+  RamenCliCheck.confserver conf ports ports_sec srv_pub_key_file srv_priv_key_file
                            incidents_history_length ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.confserver ;
@@ -1446,7 +1446,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   RamenCliCheck.start conf ;
   let sync_url = List.hd ports in
   let conf = { conf with C.sync_url = sync_url } in
-  RamenCliCheck.confserver ports ports_sec srv_pub_key_file srv_priv_key_file
+  RamenCliCheck.confserver conf ports ports_sec srv_pub_key_file srv_priv_key_file
                            incidents_history_length ;
   RamenCliCheck.choreographer conf ;
   RamenCliCheck.execompserver conf max_simult_compils execomp_quarantine

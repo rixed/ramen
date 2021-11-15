@@ -748,7 +748,10 @@ let start
   let make_service do_authn bind =
     (* [bind] is either a single port number or "bind_addr:port" *)
     C.info_or_test conf "Listening %sto %s..."
-      (if do_authn then "securely " else "") bind ;
+      (if do_authn then
+        "securely using public key from "^ (srv_pub_key_file :> string) ^
+        " and secret key from "^ (srv_priv_key_file :> string)
+      else "") bind ;
     let bind_addr, service_name =
       match String.split ~by:":" bind with
       | exception Not_found ->
