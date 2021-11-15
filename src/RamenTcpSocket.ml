@@ -97,34 +97,19 @@ struct
         | sz -> Msg (ofs + sz, bytes))
 
   type write_buffer =
-    { (* The message to be written *)
+    { (* The message to be written, prefixed by the length (4 bytes, little
+         endian), or an empty bytes, meaning close: *)
       bytes : Bytes.t ;
-      (* How many bytes have been written so far. If < 4 then the prefix have
-       * not yet been fully written. Complete when = Bytes.length bytes + 4 *)
+      (* How many bytes have been written so far. *)
       mutable written : int }
 
   (* Modifies the passed [buf]: *)
   let try_write fd buf =
-    let prefix_of n =
-      if Int64.of_int n >= 0xffff_ffffL then (
-        !logger.error "Message too large for wrapping: %d" n ;
-        assert false) ;
-      Bytes.init 4 (fun i -> Char.chr ((n lsr (8 * i)) land 0xff)) in
-    let msg_len = Bytes.length buf.bytes in
-    let prefix = prefix_of msg_len in
-    let prefix_len = Bytes.length prefix in
     (* Closes are handled upriver: *)
-    assert (msg_len > 0) ;
-    (* The first two bytes are the message size: *)
+    assert (Bytes.length buf.bytes > 0) ;
     let sz =
-      (* Number of bytes from the message already written: *)
-      let msg_written = buf.written - prefix_len in
-      if msg_written < 0 then (
-        Unix.write fd prefix buf.written (~- msg_written)
-      ) else (
-        let len = Bytes.length buf.bytes - msg_written in
-        Unix.write fd buf.bytes msg_written len
-      ) in
+      let len = Bytes.length buf.bytes - buf.written in
+      Unix.write fd buf.bytes buf.written len in
     if debug then !logger.debug "Sent %d bytes" sz ;
     buf.written <- buf.written + sz
 end
@@ -147,11 +132,26 @@ let make_peer session name fd =
 
 let send peer bytes =
   if peer.fd <> None then (
+    let msg_len = Bytes.length bytes in
+    let bytes =
+      if msg_len = 0 then bytes else (
+        (* Prepend the length in a single bytes that can then be written at
+         * once (single syscall and single packet): *)
+        if msg_len >= 0xfff_ffff then (
+          !logger.error "Message suspiciously large, skipping (%d bytes)" msg_len ;
+          assert false) ;
+        let b = Bytes.create (4 + msg_len) in
+        for i = 0 to 3 do
+          Bytes.set b i (Char.chr ((msg_len lsr (8 * i)) land 0xff))
+        done ;
+        Bytes.blit bytes 0 b 4 msg_len ;
+        b
+      ) in
     if debug then
       !logger.debug "TcpSocket: Queuing a message of %d bytes to %s"
-        (Bytes.length bytes) peer.name ;
+        msg_len peer.name ;
     (* It is assumed that contention is super low on this one, since writes
-     * of the client thread are non locking (and server has no concurent
+     * of the client thread are non locking (and server has no concurrent
      * thread at all) *)
     with_lock peer.outbufs_lock (fun () ->
       Queue.add (BufferedIO.{ bytes ; written = 0 }) peer.outbufs))
