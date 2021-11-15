@@ -1,4 +1,5 @@
-(* This module implements a simple event-based TCP server. *)
+(* This module implements a simple event-based TCP server that transmit PDUs
+ * prefixed with a 4 bytes length (in little endian). *)
 open Batteries
 
 open RamenLog
@@ -98,8 +99,8 @@ struct
   type write_buffer =
     { (* The message to be written *)
       bytes : Bytes.t ;
-      (* How many bytes have been written so far. If < 2 then the prefix have
-       * not yet been fully written. Complete when = Bytes.length bytes + 2 *)
+      (* How many bytes have been written so far. If < 4 then the prefix have
+       * not yet been fully written. Complete when = Bytes.length bytes + 4 *)
       mutable written : int }
 
   (* Modifies the passed [buf]: *)
@@ -116,11 +117,13 @@ struct
     assert (msg_len > 0) ;
     (* The first two bytes are the message size: *)
     let sz =
-      if buf.written < prefix_len then (
-        Unix.write fd prefix buf.written (prefix_len - buf.written)
+      (* Number of bytes from the message already written: *)
+      let msg_written = buf.written - prefix_len in
+      if msg_written < 0 then (
+        Unix.write fd prefix buf.written (~- msg_written)
       ) else (
-        let len = Bytes.length buf.bytes - (buf.written - prefix_len) in
-        Unix.write fd buf.bytes (buf.written - prefix_len) len
+        let len = Bytes.length buf.bytes - msg_written in
+        Unix.write fd buf.bytes msg_written len
       ) in
     if debug then !logger.debug "Sent %d bytes" sz ;
     buf.written <- buf.written + sz
@@ -407,7 +410,8 @@ struct
             Unix.set_close_on_exec fd ;
             let session = make_session sockaddr in
             let name = name_of_sockaddr sockaddr in
-            !logger.info "TcpSocket: accepted a connection from %s" name ;
+            !logger.info "TcpSocket: accepted a connection to %s from %s"
+              t.name name ;
             t.peers <- make_peer session name fd :: t.peers
       ) ;
       t.peers <-
