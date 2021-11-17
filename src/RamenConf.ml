@@ -70,8 +70,13 @@ let connection_parameters ?(username="") ?(srv_pub_key="") ?(clt_pub_key="")
     let what = Printf.sprintf2 "Reading identity file %a"
                  N.path_print identity in
     log_exceptions ~what (fun () ->
+      (* Ramen commands overwrite what's in the identity file with command line
+       * supplied parameters, but for the parameters which associated envvar is
+       * almost always present in the environment: *)
       let id = Files.ppp_of_file identity_file_ppp_json identity in
-      (if username <> "" then username else id.username),
+      (* Favor the username from the identity file over $USER: *)
+      (if id.username <> "" then id.username else username),
+      (* Favor keys passed as parameters over those from the identify file: *)
       (if srv_pub_key <> "" then srv_pub_key else id.server_public_key),
       (if clt_pub_key <> "" then clt_pub_key else id.client_public_key),
       (if clt_priv_key <> "" then clt_priv_key else id.client_private_key))
