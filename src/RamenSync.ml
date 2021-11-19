@@ -394,35 +394,37 @@ struct
 
   (* Returns if a user can read/write/del a key: *)
   let permissions =
+    let (+) = Set.union in
     let only x = Set.singleton (User.Role.Specific x)in
     let user = Set.singleton (User.Role.User)
     and admin = Set.singleton (User.Role.Admin)
-    and none = Set.empty
-    and (+) = Set.union in
+    and none = Set.empty in
+    let anybody = admin + user in
     fun u -> function
     (* Everyone can read/write/delete: *)
     | Sources _
     | ReplayRequests
     | Teams _ ->
-        admin + user,
-        admin + user,
-        admin + user
+        anybody,
+        anybody,
+        anybody
     (* Nobody can delete: *)
     | DevNull
     | TargetConfig
     | Storage _
     | Notifications ->
-        admin + user,
-        admin + user,
+        anybody,
+        anybody,
         none
     (* Nobody can write nor delete: *)
+    | Time
     | Versions _ ->
-        admin + user,
+        anybody,
         none,
         none
     (* Default: reserve writes and dels to owner: *)
     | _ ->
-        admin + user,
+        anybody,
         admin + only u,
         admin + only u
 
