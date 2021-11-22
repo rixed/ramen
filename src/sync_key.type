@@ -61,7 +61,7 @@
 | Dashboards (
     string;
     this per_dash_key)
-// The following relate to alerting:
+// The following keys relate to alerting:
 | Notifications
 | Teams (
     $team_name;  // team_name

@@ -19,14 +19,14 @@
     mtime: float;
     can_write: bool;
     can_del: bool;
-    owner: string;    // default "_internal"?
+    owner: string;    // "" for no lock owner
     expiry: float;
   }
 | DelKey $sync_key
 // New lock or change of lock owner. owner must be <> "".
 | LockKey {
     k: $sync_key;
-    owner: string;
+    owner: string;  // must be <> ""
     expiry: float;
   }
 | UnlockKey $sync_key ]

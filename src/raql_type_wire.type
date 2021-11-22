@@ -4,7 +4,7 @@
 // module.
 {
   type:
-    [ Void
+    (base as [ Void
     | Bool
     | Char
     | Float
@@ -39,6 +39,6 @@
     | Arr this
     | Rec (string; this)[]
     | Sum (string; this)[]
-    | Map (this; this) ];
+    | Map (this; this) ]);
   nullable: bool;
 }
