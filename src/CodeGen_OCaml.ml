@@ -1040,7 +1040,7 @@ and emit_event_time oc opc =
     | Parameter ->
         let param = RamenTuple.params_find field_name opc.params in
         Printf.fprintf oc "(%t %s_%s_)"
-          (conv_from_to ~nullable:false param.ptyp.typ.typ TFloat)
+          (conv_from_to ~nullable:false param.typ.typ TFloat)
           (id_of_prefix Param)
           (field_name :> string)
   in
@@ -4348,13 +4348,13 @@ let emit_parameters oc params envvars =
   List.iter (fun p ->
     let ctx =
       Printf.sprintf2 "definition of parameter %a"
-        N.field_print p.ptyp.name in
+        N.field_print p.name in
     fail_with_context ctx (fun () ->
       (* FIXME: nullable parameters *)
       Printf.fprintf oc
         "let %s =\n\
          \tlet parser_ s_ =\n"
-        (id_of_field_name ~tuple:Param p.ptyp.name) ;
+        (id_of_field_name ~tuple:Param p.name) ;
       let emit_is_null fins str_var offs_var oc =
         Printf.fprintf oc
           "if looks_like_null ~offs:%s %s && \
@@ -4363,13 +4363,13 @@ let emit_parameters oc params envvars =
           offs_var str_var
           (List.print char_print_quoted) fins str_var offs_var
           offs_var offs_var in
-      emit_value_of_string 2 p.ptyp.typ "s_" "0" emit_is_null [] true oc ;
+      emit_value_of_string 2 p.typ "s_" "0" emit_is_null [] true oc ;
       Printf.fprintf oc
         "\tin\n\
          \tCodeGenLib.parameter_value ~def:(%s(%a)) parser_ %S\n\n"
-        (if p.ptyp.typ.DT.nullable && p.value <> VNull then "Some " else "")
+        (if p.typ.DT.nullable && p.value <> VNull then "Some " else "")
         emit_type p.value
-        (p.ptyp.name :> string))
+        (p.name :> string))
   ) params ;
   (* Also a function that takes a parameter name (string) and return its
    * value (as a string) - useful for text replacements within strings *)
@@ -4380,13 +4380,13 @@ let emit_parameters oc params envvars =
         let glob_name =
           Printf.sprintf "%s_%s_"
             (id_of_prefix Param)
-            (p.ptyp.name :> string) in
+            (p.name :> string) in
         Printf.fprintf oc "\t| %S -> %t %s%s\n"
-          (p.ptyp.name :> string)
-          (conv_from_to ~nullable:(p.ptyp.typ.DT.nullable)
-                        p.ptyp.typ.typ TString)
+          (p.name :> string)
+          (conv_from_to ~nullable:(p.typ.DT.nullable)
+                        p.typ.typ TString)
           glob_name
-          (if p.ptyp.typ.DT.nullable then Printf.sprintf " |? %S" string_of_null
+          (if p.typ.DT.nullable then Printf.sprintf " |? %S" string_of_null
            else ""))) params) ;
   (* params and envs must be accessible as records (encoded as tuples)
    * under names "params_" and "envs_". Note that since we can refer to
@@ -4400,7 +4400,7 @@ let emit_parameters oc params envvars =
       (list_print_as_tuple (fun oc p ->
         Printf.fprintf oc "%s_%s_"
           (id_of_prefix Param)
-          (p.ptyp.name :> string)))
+          (p.name :> string)))
         (RamenTuple.params_sort params)) ;
   fail_with_context "definition of the env record" (fun () ->
     Printf.fprintf oc

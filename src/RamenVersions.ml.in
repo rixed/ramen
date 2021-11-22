@@ -8,7 +8,7 @@ let dessser_version = DessserCompilConfig.version
 let release_tag = "v@PACKAGE_VERSION@"
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v100_"^ dessser_version (* last: Upgraded dessser *)
+let codegen = "v101_"^ dessser_version (* last: changed program_parameter type *)
 
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v10" (* last: Use dessser types *)
@@ -17,7 +17,7 @@ let instrumentation_tuple = "v10" (* last: Use dessser types *)
 let ringbuf = "v14" (* last: only have nulbits for nullable fields in recs/tups*)
 
 (* Workers state format *)
-let worker_state = "v24_"^ dessser_version (* last: changed Lang.variable *)
+let worker_state = "v25_"^ dessser_version (* last: changed program_parameter type *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version
@@ -38,4 +38,4 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v39" (* last: Changed encoding of tuples *)
+let sync_conf = "v40" (* last: changed program_parameter type *)

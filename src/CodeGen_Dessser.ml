@@ -896,7 +896,7 @@ let event_time ~r_env et out_type params =
         let param = RamenTuple.params_find field_name params in
         let e =
           convert DT.float (expr_of_field_name ~tuple:Param field_name) in
-        default_zero param.ptyp.typ e
+        default_zero param.typ e
   in
   let_ ~name:"start_"
        (mul (field_value_to_float sta_field sta_src)
@@ -2401,28 +2401,28 @@ let generate_global_env
    * encoding, for which a value parser for each used type is needed: *)
   let open Program_parameter.DessserGen in
   let parser_name p =
-    "param_"^ (p.ptyp.name :> string) ^"_value_of_string_" in
+    "param_"^ (p.name :> string) ^"_value_of_string_" in
   let def_value_name p =
-    "params_"^ (p.ptyp.name :> string) ^"_default_value_" in
+    "params_"^ (p.name :> string) ^"_default_value_" in
   let compunit =
     List.fold_left (fun compunit p ->
       let name = parser_name p
       and backend = DessserMiscTypes.OCaml
-      and typ = DT.func [| DT.string |] p.ptyp.typ
+      and typ = DT.func [| DT.string |] p.typ
       and dependencies =
         [ "make_ip_v4" ; "make_ip_v6" ; "make_cidr_v4" ; "make_cidr_v6" ] in
       DU.add_verbatim_definition
         compunit ~name ~typ ~backend ~dependencies
         (fun ~recurs ~rec_seq oc _ps ->
-          emit_string_parser ~recurs ~rec_seq oc name p.ptyp.typ)
+          emit_string_parser ~recurs ~rec_seq oc name p.typ)
     ) compunit params in
   (* Also adds the default value for each parameters: *)
   let compunit =
     List.fold_left (fun compunit p ->
       let name = def_value_name p in
       let compunit, _, _ =
-        RaQL2DIL.constant p.ptyp.typ p.value |>
-        comment ("Default value for "^ (p.ptyp.name :> string)) |>
+        RaQL2DIL.constant p.typ p.value |>
+        comment ("Default value for "^ (p.name :> string)) |>
         DU.add_identifier_of_expression compunit ~name in
       compunit
     ) compunit params in
@@ -2431,7 +2431,7 @@ let generate_global_env
     List.fold_left (fun (compunit, fields) p ->
       let def_value = identifier (def_value_name p)
       and str_parser = identifier (parser_name p)
-      and n = (p.ptyp.name :> string) in
+      and n = (p.name :> string) in
       let v =
         let_ ~name:"env"
           (getenv (string (param_envvar_prefix ^ n))) (fun env ->

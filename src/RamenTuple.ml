@@ -10,8 +10,8 @@ open RamenHelpersNoLog
 module T = RamenTypes
 module DT = DessserTypes
 module N = RamenName
+module PParam = Program_parameter.DessserGen
 
-open Program_parameter.DessserGen
 include Field_type.DessserGen
 
 type field_typ = t
@@ -57,6 +57,12 @@ let print_field_typ oc field =
     DT.print_mn field.typ ;
   Option.may (RamenUnits.print oc) field.units
 
+let print_param_typ oc param =
+  Printf.fprintf oc "%a %a"
+    N.field_print param.PParam.name
+    DT.print_mn param.typ ;
+  Option.may (RamenUnits.print oc) param.units
+
 let print_typ oc =
   (List.print ~first:"(" ~last:")" ~sep:", "
     (fun oc t -> print_field_typ oc t)) oc
@@ -67,16 +73,11 @@ let print_typ_names oc =
 
 (* Params form a special tuple with fixed values: *)
 
-type param = Program_parameter.DessserGen.t
-
-let hash_of_params params =
-  List.enum params /@
-  (fun p -> p.ptyp.name, p.value) |>
-  Hashtbl.of_enum
+type param = PParam.t
 
 let print_param oc p =
   Printf.fprintf oc "%a=%a"
-    N.field_print p.ptyp.name
+    N.field_print p.PParam.name
     T.print p.value
 
 let print_params oc =
@@ -84,59 +85,59 @@ let print_params oc =
 
 let params_sort params =
   let param_compare p1 p2 =
-    N.compare p1.ptyp.name p2.ptyp.name in
+    N.compare p1.PParam.name p2.PParam.name in
   List.fast_sort param_compare params
 
-let params_find n = List.find (fun p -> p.ptyp.name = n)
-let params_mem n = List.exists (fun p -> p.ptyp.name = n)
+let params_find n = List.find (fun p -> p.PParam.name = n)
+let params_mem n = List.exists (fun p -> p.PParam.name = n)
 
-let print_params_names oc =
-  print_typ_names oc % List.map (fun p -> p.ptyp) % params_sort
+let print_params_names oc params =
+  params_sort params |>
+  pretty_list_print (fun oc p ->
+    String.print oc (N.field_color p.PParam.name)) oc
 
 (* Same signature for different instances of the same program but changes
  * whenever the type of parameters change: *)
 
-let type_signature =
-  List.fold_left (fun s ft ->
+let params_type_signature params =
+  params_sort params |>
+  List.fold_left (fun s p ->
     (if s = "" then "" else s ^ "_") ^
-    (ft.name :> string) ^ ":" ^
-    DT.mn_to_string ft.typ
+    (p.PParam.name :> string) ^ ":" ^
+    DT.mn_to_string p.typ
   ) ""
-
-let params_type_signature =
-  type_signature % List.map (fun p -> p.ptyp) % params_sort
 
 let params_signature params =
   params_sort params |>
-  List.fold_left (fun s param ->
+  List.fold_left (fun s p ->
     (if s = "" then "" else s ^ "_") ^
-    (param.ptyp.name :> string) ^ ":" ^
-    DT.mn_to_string param.ptyp.typ ^ ":" ^
-    (T.to_string param.value)
+    (p.PParam.name :> string) ^ ":" ^
+    DT.mn_to_string p.typ ^ ":" ^
+    (T.to_string p.value)
   ) ""
 
 (* Override ps1 with values from ps2, ignoring the values of ps2 that are
  * not in ps1. Enlarge the values of ps2 as necessary: *)
 let overwrite_params ps1 ps2 =
   List.map (fun p1 ->
-    match assoc_array_find p1.ptyp.name ps2 with
+    match assoc_array_find p1.PParam.name ps2 with
     | exception Not_found -> p1
     | p2_val ->
         if p2_val = Raql_value.VNull then
-          if p1.ptyp.typ.DT.nullable then
+          if p1.typ.DT.nullable then
             { p1 with value = VNull }
           else
             Printf.sprintf2 "Parameter %a is not nullable so cannot \
                              be set to NULL"
-              N.field_print p1.ptyp.name |>
+              N.field_print p1.name |>
             failwith
-        else match T.enlarge_value p1.ptyp.typ.DT.typ p2_val with
+        else match T.enlarge_value p1.typ.DT.typ p2_val with
           | exception Invalid_argument msg ->
               Printf.sprintf2 "Parameter %a of type %a can not be \
                                promoted into a %a: %s"
-                N.field_print p1.ptyp.name
+                N.field_print p1.name
                 DT.print (T.type_of_value p2_val)
-                DT.print_mn p1.ptyp.typ
+                DT.print_mn p1.typ
                 msg |>
               failwith
           | value -> { p1 with value }

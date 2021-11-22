@@ -12,6 +12,7 @@ module C = RamenConf
 module DT = DessserTypes
 module E = RamenExpr
 module O = RamenOperation
+module PParam = Program_parameter.DessserGen
 module T = RamenTypes
 module Variable = RamenVariable
 module VSI = RamenSync.Value.SourceInfo
@@ -66,7 +67,7 @@ let make_func ?retention ?(is_lazy=false) ?name ?(doc="")
 
 let print_param oc p =
   Printf.fprintf oc "PARAMETER %a DEFAULTS TO %a;\n"
-    RamenTuple.print_field_typ p.Program_parameter.DessserGen.ptyp
+    RamenTuple.print_param_typ p
     T.print p.value
 
 let print_global oc g =
@@ -132,9 +133,9 @@ let checked (params, run_cond, globals, funcs) =
     Printf.sprintf "Name %s is not unique" name |> failwith in
   (* Check parameters have unique names: *)
   List.fold_left (fun s p ->
-    if Set.mem p.Program_parameter.DessserGen.ptyp.name s then
-      name_not_unique (p.ptyp.name :> string) ;
-    Set.add p.ptyp.name s
+    if Set.mem p.PParam.name s then
+      name_not_unique (p.name :> string) ;
+    Set.add p.name s
   ) Set.empty params |> ignore ;
   (* Check all functions in turn: *)
   let funcs, used_params, used_globals, _ =
@@ -197,9 +198,9 @@ let checked (params, run_cond, globals, funcs) =
   let params =
     List.filter (fun p ->
       let is_used =
-        Set.mem p.Program_parameter.DessserGen.ptyp.name used_params in
+        Set.mem p.PParam.name used_params in
       if not is_used then
-        !logger.warning "Parameter %s is unused" (N.field_color p.ptyp.name) ;
+        !logger.warning "Parameter %s is unused" (N.field_color p.name) ;
       is_used
     ) params in
   (* Similarly, for the same reason, remove unused globals: *)
@@ -232,9 +233,8 @@ struct
             ((duration >>: fun x -> Raql_value.VFloat x) |<|
              T.Parser.p_ ~min_int_width:0 |<|
              T.Parser.null)) ++
-          optional ~def:"" quoted_string ++
-          optional ~def:None (some RamenTuple.Parser.default_aggr) >>:
-          fun (((((name, typ_decl), units), value), doc), aggr) ->
+          optional ~def:"" quoted_string >>:
+          fun ((((name, typ_decl), units), value), doc) ->
             let name = N.field name in
             let typ, value =
               let open T in
@@ -282,9 +282,8 @@ struct
                         raise (Reject e)
                     | value -> typ, value
             in
-            Program_parameter.DessserGen.{
-              ptyp = { name ; typ ; units ; doc ; aggr } ;
-              value }
+            PParam.{
+              name ; typ ; units ; doc ; value }
         )
     ) m
 
@@ -452,7 +451,7 @@ let check_globals params globals =
     ) Set.String.empty globals in
   let s =
     List.fold_left (fun s p ->
-      Set.String.add (p.Program_parameter.DessserGen.ptyp.name :> string) s
+      Set.String.add (p.PParam.name :> string) s
     ) s params in
   if Set.String.cardinal s <> List.length globals + List.length params then
     failwith "Global variable names must be unique"

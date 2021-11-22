@@ -302,7 +302,7 @@ let update_conf_server conf session sites rc_entries =
         let params =
           let open Program_parameter.DessserGen in
           RamenTuple.overwrite_params info.VSI.default_params rc_params |>
-          List.map (fun p -> p.ptyp.name, p.value) |>
+          List.map (fun p -> p.name, p.value) |>
           Array.of_list in
         cached_params :=
           MapOfPrograms.add prog_name (info_sign, params) !cached_params ;

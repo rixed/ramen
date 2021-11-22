@@ -1942,12 +1942,12 @@ let check =
 let units_of_expr params units_of_input units_of_output =
   let units_of_params name =
     let open Program_parameter.DessserGen in
-    match List.find (fun p -> p.ptyp.name = name) params with
+    match List.find (fun p -> p.name = name) params with
     | exception Not_found ->
         Printf.sprintf2 "Unknown parameter %a while looking for units"
           N.field_print name |>
         failwith
-    | p -> p.ptyp.units
+    | p -> p.units
   in
   let rec uoe ~indent e =
     let char_of_indent = Char.chr (Char.code 'a' + indent) in

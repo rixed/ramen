@@ -248,12 +248,10 @@ let infer_field_doc_aggr func parents params =
             when doc = "" || aggr = None ->
             let open Program_parameter.DessserGen in
             let n = N.field n in
-            (match List.find (fun p -> p.ptyp.name = n) params with
+            (match List.find (fun p -> p.name = n) params with
             | exception Not_found -> ()
             | p ->
-                let t = p.ptyp in
-                if doc = "" then set_doc alias t.doc ;
-                if aggr = None then set_aggr alias t.aggr)
+                if doc = "" then set_doc alias p.doc)
         | _ -> ()
       ) aggregate_fields
   | _ -> ()

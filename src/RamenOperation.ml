@@ -1742,9 +1742,9 @@ struct
       | Ok (res, rem) ->
         let params =
           [ Program_parameter.DessserGen.{
-              ptyp = { name = N.field "avg_window" ;
-                       typ = DT.i32 ;
-                       units = None ; doc = "" ; aggr = None } ;
+              name = N.field "avg_window" ;
+              typ = DT.i32 ;
+              units = None ; doc = "" ;
               value = Raql_value.(VI32 10l) }] in
         BatPervasives.Ok (
           RamenOperation.checked ~unit_tests:true params [] res,

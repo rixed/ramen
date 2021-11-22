@@ -2532,8 +2532,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
             failwith
         | param ->
             emit_assert_id_eq_typ tuple_sizes records field_names
-              (t_of_expr e) oc param.ptyp.typ.DT.typ ;
-            emit_assert_id_is_bool (n_of_expr e) oc param.ptyp.typ.DT.nullable ;
+              (t_of_expr e) oc param.typ.DT.typ ;
+            emit_assert_id_is_bool (n_of_expr e) oc param.typ.DT.nullable ;
             (* Also make this expression stands for this param field: *)
             register_input param_fields None path e)
     | GlobalVar ->
