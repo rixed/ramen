@@ -539,7 +539,7 @@ let get_string_list =
     | Raql_value.VString _ -> true
     | _ -> false in
   function
-  | Some (Value.RamenValue (Raql_value.VLst vs))
+  | Some (Value.RamenValue (Raql_value.VArr vs))
     when Array.for_all is_string vs ->
       Array.enum vs /@
       (function VString s -> N.path s | _ -> assert false) |>

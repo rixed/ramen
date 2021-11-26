@@ -183,7 +183,7 @@ let rec read_value tx offs vt =
       VVec v, offs
   | TArr t ->
       let v, offs = read_list t tx offs in
-      VLst v, offs
+      VArr v, offs
   | TSet _ ->
       todo "unserialization of sets"
   | TMap _ ->

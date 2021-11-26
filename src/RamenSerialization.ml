@@ -173,7 +173,7 @@ let value_of_string t s =
     (value_of_string DT.(required TFloat) "15042")
   VNull \
     (value_of_string DT.(optional TFloat) "null")
-  (VLst [| VFloat 0.; VFloat 1.; VFloat 2. |]) \
+  (VArr [| VFloat 0.; VFloat 1.; VFloat 2. |]) \
     (value_of_string DT.(optional (TArr (required TFloat))) "[ 0; 1; 2]")
   (VI32 239l) \
     (value_of_string DT.(optional (TArr (required TI16))) \
@@ -191,7 +191,7 @@ let value_of_string t s =
         109;15;47;115;103;22;35;125;176;64;77;123;44;29;40;72;51;54;62;27;\
         84;101;76;107;28;75;31;59;92;111;230;135;16;91;110;202;21;78;6;66;\
         145]" |> \
-        (function VLst l -> Raql_value.VI32 (Int32.of_int (Array.length l)) \
+        (function VArr l -> Raql_value.VI32 (Int32.of_int (Array.length l)) \
                 | v -> v))
 *)
 
@@ -246,7 +246,7 @@ let filter_tuple_by fields where =
           raise e) in
       let op =
         let op_in x = function
-          | Raql_value.VVec a | Raql_value.VLst a ->
+          | Raql_value.VVec a | Raql_value.VArr a ->
               Array.exists (fun x' -> x = x') a
           | _ -> assert false in
         match op with

@@ -226,7 +226,7 @@ let rec type_of_value =
    * list of t1 that happens to be empty, we cannot use it in another context
    * where another list is expected of course. But empty list literal can still
    * be assigned any type. *)
-  | VLst vs ->
+  | VArr vs ->
       TArr (sub_types_of_array vs)
   | VMap m ->
       let k, v = sub_types_of_map m in
@@ -289,7 +289,7 @@ let rec print_custom ?(null="NULL") ?(quoting=true) ?(hex_floats=false) oc =
                    (print_custom ~null ~quoting ~hex_floats) oc vs
   (* It is more user friendly to write lists as arrays and blur the line
    * between those for the user: *)
-  | VLst vs  -> Array.print ~first:"[" ~last:"]" ~sep:";"
+  | VArr vs  -> Array.print ~first:"[" ~last:"]" ~sep:";"
                    (print_custom ~null ~quoting ~hex_floats) oc vs
   (* Print maps as association lists: *)
   | VMap m ->
@@ -596,8 +596,8 @@ let rec enlarge_value t v =
           ) kts)
     | VVec vs, TVec (d, t) when d = 0 || d = Array.length vs ->
         VVec (Array.map (enlarge_value t.typ) vs)
-    | (VVec vs | VLst vs), TArr t ->
-        VLst (Array.map (enlarge_value t.typ) vs)
+    | (VVec vs | VArr vs), TArr t ->
+        VArr (Array.map (enlarge_value t.typ) vs)
     | _ ->
         Printf.sprintf2 "value %a (%s) cannot be enlarged into a %s"
           print v
@@ -778,7 +778,7 @@ let rec any_value_of_type ?avoid_null = function
       VVec (Array.create d (any_value_of_maybe_nullable ?avoid_null t))
   (* Avoid loosing type info by returning a non-empty list: *)
   | TArr t ->
-      VLst [| any_value_of_maybe_nullable ?avoid_null t |]
+      VArr [| any_value_of_maybe_nullable ?avoid_null t |]
   | TMap (k, v) -> (* Represent maps as association lists: *)
       VMap [| any_value_of_maybe_nullable ?avoid_null k,
               any_value_of_maybe_nullable ?avoid_null v |]
@@ -1033,7 +1033,7 @@ struct
 
   let empty_list m =
     let m = "empty list" :: m in
-    (string "[]" >>: fun () -> VLst [||]) m
+    (string "[]" >>: fun () -> VArr [||]) m
 
   (* TODO: consider functions as taking a single tuple *)
   let tup_sep =

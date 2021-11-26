@@ -100,7 +100,7 @@ let rec constant mn v =
           make_vec (List.init d (fun i -> constant mn vs.(i)))
       | _ ->
           bad_type ())
-  | VLst vs ->
+  | VArr vs ->
       (match mn.typ with
       | DT.TArr mn ->
           make_arr mn (List.init (Array.length vs) (fun i ->

@@ -207,7 +207,7 @@ let rec find_expr_of_path e path =
        * constant literal, as long as the type-checker uses the given type of
        * that makeshift expression literally, since this expression is
        * otherwise undeclared: *)
-      | E.Stateless (SL0 (Const T.(VTup vs | VVec vs | VLst vs))) ->
+      | E.Stateless (SL0 (Const T.(VTup vs | VVec vs | VArr vs))) ->
           (match vs.(idx) with
           | exception Invalid_argument _ ->
               invalid_path ()

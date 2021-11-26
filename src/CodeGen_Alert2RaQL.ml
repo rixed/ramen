@@ -120,8 +120,8 @@ let generate_alert get_program (src_file : N.path) a =
         (* Turn 'in [x]' into '= x': *)
         let op, v =
           match w.op, v with
-          | "in", (VVec [| x |] | VLst [| x |]) -> "=", x
-          | "not in", (VVec [| x |] | VLst [| x |]) -> "<>", x
+          | "in", (VVec [| x |] | VArr [| x |]) -> "=", x
+          | "not in", (VVec [| x |] | VArr [| x |]) -> "<>", x
           | _ -> w.op, v in
         let s =
           Printf.sprintf2 "%s %s %a"

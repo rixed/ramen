@@ -1047,7 +1047,7 @@ let rec raql_of_dil_value mn v =
               raql_of_dil_value mn (unsafe_nth (u32_of_int i) v)) |>
             make_arr out_t ]
       | TArr mn ->
-          apply (ext_identifier "Raql_value.VLst") [
+          apply (ext_identifier "Raql_value.VArr") [
             map_ void (func2 DT.void mn (fun _init -> raql_of_dil_value mn)) v
           ]
       | TMap _ -> assert false (* No values of that type *)
@@ -2089,7 +2089,7 @@ let generate_function
          "VTup", required (arr out_t) ;
          "VVec", required (arr out_t) ;
          "VRec", required (arr (pair string out_t)) ;
-         "VLst", required (arr out_t) ] |>
+         "VArr", required (arr out_t) ] |>
     List.fold_left (fun compunit (n, in_t) ->
       let name = "Raql_value."^ n in
       let t = DT.func [| in_t |] out_t in

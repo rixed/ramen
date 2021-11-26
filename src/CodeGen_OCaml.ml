@@ -330,7 +330,7 @@ let rec emit_value oc mn =
   | TVec (_d, t) ->
       Printf.fprintf oc "Raql_value.VVec (Array.map %a x_)" emit_value t
   | TArr t ->
-      Printf.fprintf oc "Raql_value.VLst (Array.map %a x_)" emit_value t
+      Printf.fprintf oc "Raql_value.VArr (Array.map %a x_)" emit_value t
   | t ->
       invalid_arg ("emit_value: "^ DT.to_string t)) ;
   String.print oc ")"
@@ -388,7 +388,7 @@ let rec emit_type oc =
       emit_type oc (VTup vs)
   | VVec vs   -> Array.print emit_type oc vs
   (* For now ramen lists are ocaml arrays. Should they be ocaml lists? *)
-  | VLst vs  -> Array.print emit_type oc vs
+  | VArr vs  -> Array.print emit_type oc vs
   (* Internal OCaml representation of maps are hash tables: *)
   | VMap kvs  ->
       Array.print ~first:"(let h_ = Hashtbl.create 10 in "

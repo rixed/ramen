@@ -98,7 +98,7 @@ let rec miss_distance exp actual =
   | VNull, VNull -> 0.
   | (VTup es, VTup as_)
   | (VVec es, VVec as_)
-  | (VLst es, VLst as_) ->
+  | (VArr es, VArr as_) ->
       let len = max (Array.length es) (Array.length as_) in
       let dist = ref 0. in
       for i = 0 to len - 1 do

@@ -48,7 +48,7 @@ type t =
   | VCidr of RamenIp.Cidr.t
   | VTup of t array
   | VVec of t array (* All values must have the same type *)
-  | VLst of t array (* All values must have the same type *)
+  | VArr of t array (* All values must have the same type *)
   (* Note: The labels are only needed for pretty printing the values. *)
   | VRec of (string * t) array
   | VMap of (t * t) array
@@ -91,7 +91,7 @@ let rec of_wire = function
   | VCidr (V6 { ip ; mask }) -> VCidr (V6 (ip, mask))
   | VTup x -> VTup (Array.map of_wire x)
   | VVec x -> VVec (Array.map of_wire x)
-  | VLst x -> VLst (Array.map of_wire x)
+  | VArr x -> VArr (Array.map of_wire x)
   | VRec x -> VRec (Array.map (fun (n, v) -> n, of_wire v) x)
   | VMap x -> VMap (Array.map (fun (k, v) -> of_wire k, of_wire v) x)
 
@@ -131,7 +131,7 @@ let rec to_wire = function
   | VCidr (V6 (ip, mask)) -> VCidr (V6 { ip ; mask })
   | VTup x -> VTup (Array.map to_wire x)
   | VVec x -> VVec (Array.map to_wire x)
-  | VLst x -> VLst (Array.map to_wire x)
+  | VArr x -> VArr (Array.map to_wire x)
   | VRec x -> VRec (Array.map (fun (n, v) -> n, to_wire v) x)
   | VMap x -> VMap (Array.map (fun (k, v) -> to_wire k, to_wire v) x)
 
