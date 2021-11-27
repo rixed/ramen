@@ -37,8 +37,8 @@
     | Tup this[]
     | Vec (u32; this)
     | Arr this
-    | Rec (string; this)[]
-    | Sum (string; this)[]
+    | Rec (named_type as (string; this))[]
+    | Sum (this named_type)[]
     | Map (this; this) ]);
   nullable: bool;
 }

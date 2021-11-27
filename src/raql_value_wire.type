@@ -33,6 +33,7 @@
 | VTup this[]
 | VVec this[] // All values must have the same type
 | VArr this[] // All values must have the same type
+// Note: RaQL has no sum type value (for now)
 // Note: The labels are only needed for pretty printing the values.
-| VRec (string; this)[]
+| VRec (named_value as (string; this))[]
 | VMap (this; this)[] ]
