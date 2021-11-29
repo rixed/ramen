@@ -432,6 +432,8 @@ let send_msg msg_sockets =
     send peer (Bytes.unsafe_of_string msg) (* FIXME *)
   ) msg_sockets
 
+exception Ignore
+
 let validate_cmd =
   let extension_is_known = function
     | "ramen" | "info" | "alert" -> true
@@ -449,7 +451,7 @@ let validate_cmd =
   | CltCmd.SetKey (DevNull, _)
   | UpdKey (DevNull, _) ->
       (* Although not an error, we want to prevent this to be written: *)
-      raise Exit
+      raise Ignore
   (* Forbids to create sources with empty name or unknown extension: *)
   | NewKey (Sources (path, _), _, _, _)
     when not (path_is_valid path) ->
@@ -714,7 +716,7 @@ let start
             User.print_pub_key clt_pub_key
             CltMsg.print msg ;
           (match validate_cmd msg.cmd with
-          | exception Exit ->
+          | exception Ignore ->
               !logger.debug "Ignoring"
           | exception Failure err ->
               Server.set_user_err srv peer.session.user peer.session.socket
