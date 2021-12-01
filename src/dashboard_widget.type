@@ -1,13 +1,13 @@
 [ Text string
-| Chart {
+| Chart (chart as {
     title: string;
-    type: [ Plot ];
-    axis: {
+    type: (type as [ Plot ]);
+    axes: (axis as {
       left: bool;
       force_zero: bool;
-      scale: [ Linear | Logarithmic ]
-    }[];
-    sources: {
+      scale: (scale as [ Linear | Logarithmic ])
+    })[];
+    sources: (source as {
       name: $fq_function_name;
       visible: bool;
       fields: {
@@ -30,5 +30,5 @@
         factors: string[];
         axis: u8;
       }[];
-    }[];
-  } ]
+    })[];
+  }) ]

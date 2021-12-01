@@ -755,11 +755,11 @@ struct
     let print oc = function
       | Text t ->
           Printf.fprintf oc "{ title=%S }" t
-      | Chart { title ; chart_axis ; sources } ->
-          Printf.fprintf oc "{ chart %S, %d sources and %d axis }"
+      | Chart { title ; axes ; sources } ->
+          Printf.fprintf oc "{ chart %S, %d sources and %d axes }"
             title
             (Array.length sources)
-            (Array.length chart_axis)
+            (Array.length axes)
   end
 
   (* Alerting give rise to those configuration objects:
