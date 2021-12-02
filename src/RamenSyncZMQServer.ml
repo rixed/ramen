@@ -484,10 +484,18 @@ let delete_session srv session =
     ) srv.Server.subscriptions
   and delete_user_tails session =
     let uid = User.id session.user in
-    Server.H.filteri_inplace (fun k _ ->
+    Server.H.filteri_inplace (fun k hv ->
       match k with
-      | Key.Tails (_, _, _, Subscriber u) when uid <> u ->
-          !logger.debug "Deleting tail subscription %a" Key.print k ;
+      | Key.Tails (_, _, _, Subscriber u) when uid = u ->
+          !logger.debug "Deleting tail subscription %a belonging to %s"
+            Key.print k u ;
+          (* Notify other users that may be interested (notice that this user
+           * subscriptions have been deleted beforehand, but it is still
+           * excluded explicitly for extra caution) *)
+          Server.notify srv k hv.Server.prepared_key
+                        (fun u -> User.has_any_role hv.can_read u &&
+                                  not (User.equal u session.user))
+                        (fun _ -> DelKey k) ;
           false
       | _ ->
           true
