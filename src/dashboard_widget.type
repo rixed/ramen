@@ -10,7 +10,7 @@
     sources: (source as {
       name: $fq_function_name;
       visible: bool;
-      fields: {
+      fields: (field as {
         opacity: float;
         color: u32;
         // Strictly speaking there is no need for Unused (unused fields could
@@ -29,6 +29,6 @@
         column: string;
         factors: string[];
         axis: u8;
-      }[];
+      })[];
     })[];
   }) ]
