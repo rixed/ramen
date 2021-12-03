@@ -25,7 +25,7 @@
         // So, on a given axis, all stacked fields will be stacked together,
         // all stack-centered fields will be stack-centered together, and all
         // individual fields will be represented individually. *)
-        representation: [ Unused | Independent | Stacked | StackCentered ];
+        representation: (representation as [ Unused | Independent | Stacked | StackCentered ]);
         column: string;
         factors: string[];
         axis: u8;
