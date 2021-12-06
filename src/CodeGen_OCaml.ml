@@ -482,12 +482,6 @@ let rec omod_of_type = function
   | t ->
       invalid_arg ("omod_of_type: "^ DT.to_string t)
 
-(* Simpler, temp version of the above: *)
-let filter_out_private_from_tup tup =
-  List.filter (fun ft ->
-    not (N.is_private ft.RamenTuple.name)
-  ) tup
-
 (* Why don't we have explicit casts in the AST so that we could stop
  * caring about those pesky conversions once and for all? Because the
  * AST changes to types that we want to work, but do not (have to) know
@@ -2661,7 +2655,7 @@ let rec emit_sersize_of_var indent typ oc var =
  * or in any real record) which name start with an underscore ('_').
  * They are normal fields for the parser, the typer and most of the generated
  * code. In particular, they are part of the internal record representation.
- * They are skipped over on fieldmasks and also when serializing.
+ * They cannot be selected therefore are seldom serialized.
  * When unserializing the missing values are replaced by any cheap value (so
  * that no distinct type for records with or without private fields are
  * needed).

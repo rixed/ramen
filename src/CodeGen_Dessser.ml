@@ -1078,7 +1078,7 @@ let factors_of_tuple func_op out_type =
 
 let ocamlifier mn compunit =
   let cmt =
-    Printf.sprintf2 "Ocamlify a value of type %a"
+    Printf.sprintf2 "OCamlify a value of type %a"
       DT.print_mn mn in
   let open DE.Ops in
   compunit,

@@ -326,7 +326,8 @@ let write_to_rb ~while_ out_rb file_spec
     (fun () ->
       match Hashtbl.find file_spec.DO.channels dest_channel with
       | exception Not_found ->
-          (* Can happen at leaf functions after a replay: *)
+          (* Can happen at leaf functions after a replay, or when replaying
+           * a specific channel that the outref does not accept: *)
           if out_rb.rate_limit_log_drops () then
             !logger.debug "Drop a tuple for %a not interested in channel %a"
               N.path_print out_rb.fname Channel.print dest_channel ;

@@ -15,8 +15,7 @@
           doc: string;
           operation: $raql_operation;
           // out_record and factors are here temporarily to help client,
-          // but client are supposed to get these from the above function
-          // as soon as they can properly deserialize the configuration.
+          // but client are supposed to get these from the above operation.
           out_record: $raql_type;
           factors: $field_name[[]];
           signature: string;

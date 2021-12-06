@@ -454,7 +454,6 @@ let process_in ?(while_=always) ?(max_count=0) session =
   let rec loop count =
     if while_ () && stop > Unix.gettimeofday () then (
       may_send_ping session ;
-      !logger.debug "Trying to read a configuration message..." ;
       match recv_cmd session with
       | exception Unix.(Unix_error ((EAGAIN|EINTR), _, _)) ->
           !logger.debug "No more configuration messages to read for now"

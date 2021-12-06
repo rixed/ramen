@@ -1043,9 +1043,10 @@ let replay
                                else ExitCodes.interrupted))) ;
   (* Ignore sigusr1 and sigpipe: *)
   set_signals Sys.[sigusr1; sigpipe] Signal_ignore ;
-  !logger.debug "Will replay archive from %a since %f until %f"
+  !logger.debug "Will replay archive from %a since %a until %a"
     N.path_print_quoted rb_archive
-    since until ;
+    print_as_date since
+    print_as_date until ;
   let num_replayed_tuples = ref 0 in
   let _publish_stats, outputer =
     Publish.start_zmq_client conf ~while_:not_quit quit

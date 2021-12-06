@@ -1157,7 +1157,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
             failwith "Function has no event time information"
           else (fun _ -> 0., 0.)
       | Some et ->
-          (* As we might be tailling from several instance of the same
+          (* As we might be tailing from several instances of the same
            * worker, we have already lost track of the params at this point.
            * Problem solved by removing the event-time notation and type
            * altogether and use only the conventional start/stop fields. *)
