@@ -960,7 +960,7 @@ let sort_expr ~r_env in_t es =
  * the given RamenTypes.t. This is useful for instance to get hand off the
  * factors to CodeGenLib. [v] is the DIL expression to get the runtime value. *)
 (* TODO: Move this function into RamenValue aka RamenTypes *)
-let rec raql_of_dil_value mn v =
+let rec raql_of_dil_value ?(with_priv=true) mn v =
   let open DE.Ops in
   let out_t = DT.(required (TExt "ramen_value")) in
   let_ ~name:"v" v (fun v ->
@@ -969,7 +969,7 @@ let rec raql_of_dil_value mn v =
         ~then_:(ext_identifier "Raql_value.VNull")
         ~else_:(
           let mn' = DT.{ mn with nullable = false } in
-          raql_of_dil_value mn' (force v))
+          raql_of_dil_value ~with_priv mn' (force v))
     else
       (* As far as Dessser's OCaml backend is concerned, constructor are like
        * functions: *)
@@ -1023,32 +1023,36 @@ let rec raql_of_dil_value mn v =
                               get_field "mask" (get_alt "v6" v) ]) ]
       | TUsr { def ; name } ->
           let d =
-            raql_of_dil_value DT.(required (develop def)) v in
+            raql_of_dil_value ~with_priv DT.(required (develop def)) v in
           make_usr name [ d ]
       | TTup mns ->
           apply (ext_identifier "Raql_value.VTup") [
             Array.mapi (fun i mn ->
-              raql_of_dil_value mn (get_item i v)
+              raql_of_dil_value ~with_priv mn (get_item i v)
             ) mns |>
             Array.to_list |>
             make_arr out_t ]
       | TRec mns ->
           apply (ext_identifier "Raql_value.VRec") [
-            Array.map (fun (n, mn) ->
-              make_pair
-                (string n)
-                (raql_of_dil_value mn (get_field n v))
+            Array.filter_map (fun (n, mn) ->
+              if with_priv || not (N.is_private (N.field n)) then
+                Some (
+                  make_pair
+                    (string n)
+                    (raql_of_dil_value ~with_priv mn (get_field n v)))
+              else
+                None
             ) mns |>
             Array.to_list |>
             make_arr DT.(pair string out_t) ]
       | TVec (d, mn) ->
           apply (ext_identifier "Raql_value.VVec") [
             List.init d (fun i ->
-              raql_of_dil_value mn (unsafe_nth (u32_of_int i) v)) |>
+              raql_of_dil_value ~with_priv mn (unsafe_nth (u32_of_int i) v)) |>
             make_arr out_t ]
       | TArr mn ->
           apply (ext_identifier "Raql_value.VArr") [
-            map_ void (func2 DT.void mn (fun _init -> raql_of_dil_value mn)) v
+            map_ void (func2 DT.void mn (fun _init -> raql_of_dil_value ~with_priv mn)) v
           ]
       | TMap _ -> assert false (* No values of that type *)
       | TSum _ -> invalid_arg "raql_of_dil_value for Sum type"
@@ -1067,7 +1071,7 @@ let factors_of_tuple func_op out_type =
       let t = (List.find (fun t -> t.RamenTuple.name = factor) typ).typ in
       apply (ext_identifier "CodeGenLib_Dessser.make_factor_value")
             [ string (factor :> string) ;
-              raql_of_dil_value t (get_field (factor :> string) v_out) ]
+              raql_of_dil_value ~with_priv:false t (get_field (factor :> string) v_out) ]
     ) factors |>
     make_arr DT.(required (TExt "factor_value"))) |>
   comment cmt
@@ -1078,7 +1082,7 @@ let ocamlifier mn compunit =
       DT.print_mn mn in
   let open DE.Ops in
   compunit,
-  func1 mn (raql_of_dil_value mn) |>
+  func1 mn (raql_of_dil_value ~with_priv:false mn) |>
   comment cmt
 
 let print_path oc path =

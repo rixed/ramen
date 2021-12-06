@@ -275,7 +275,7 @@ let emit_float oc f =
  * factors to CodeGenLib or for early filters. *)
 (* FIXME: base this on a lower level "value_of_var varname mn" to avoid unnecessary
  * function calls *)
-let rec emit_value oc mn =
+let rec emit_value oc ?(with_priv=true) mn =
   let open Stdint in
   if mn.DT.nullable then
     String.print oc "(function None -> Raql_value.VNull | Some x_ -> "
@@ -314,23 +314,24 @@ let rec emit_value oc mn =
   | TUsr { name = "Cidr6" ; _ } -> p "VCidrv6"
   | TUsr { name = "Cidr" ; _ } -> p "VCidr"
   | TUsr { def ; _ } ->
-      emit_value oc (DT.required (DT.develop def))
+      emit_value oc ~with_priv (DT.required (DT.develop def))
   | TTup ts ->
       Printf.fprintf oc "(let %a = x_ in Raql_value.VTup %a)"
         (array_print_as_tuple_i (fun oc i _ ->
           Printf.fprintf oc "x%d_" i)) ts
         (array_print_i (fun i oc mn ->
-          Printf.fprintf oc "(%a x%d_)" emit_value mn i)) ts
+          Printf.fprintf oc "(%a x%d_)" (emit_value ~with_priv) mn i)) ts
   | TRec kts ->
       Printf.fprintf oc "(let %a = x_ in Raql_value.VRec %a)"
         (array_print_as_tuple_i (fun oc i _ ->
           Printf.fprintf oc "x%d_" i)) kts
-        (array_print_i (fun i oc (fn, mn) ->
-          Printf.fprintf oc "(%S, (%a x%d_))" fn emit_value mn i)) kts
+        (array_print_i ~sep:"" (fun i oc (fn, mn) ->
+          if with_priv || not (N.is_private (N.field fn)) then
+            Printf.fprintf oc "(%S, (%a x%d_));" fn (emit_value ~with_priv) mn i)) kts
   | TVec (_d, t) ->
-      Printf.fprintf oc "Raql_value.VVec (Array.map %a x_)" emit_value t
+      Printf.fprintf oc "Raql_value.VVec (Array.map %a x_)" (emit_value ~with_priv) t
   | TArr t ->
-      Printf.fprintf oc "Raql_value.VArr (Array.map %a x_)" emit_value t
+      Printf.fprintf oc "Raql_value.VArr (Array.map %a x_)" (emit_value ~with_priv) t
   | t ->
       invalid_arg ("emit_value: "^ DT.to_string t)) ;
   String.print oc ")"
@@ -3055,11 +3056,14 @@ let emit_serialize_function indent name oc typ =
     (indent + 2) typ copy skip "fieldmask_" oc "(offs_, nulli_)" ;
   p "  offs_\n\n"
 
+(* The OCamlify function is used to publish tuples in the configuration (for
+ * tail or replays). We want to exclude private fields from those and match
+ * that function's declared output type. *)
 let emit_ocamlify_function name oc op =
   let p fmt = emit oc 0 fmt in
   let mn = O.out_record_of_operation ~with_priv:true op in
   p "let %s =" name ;
-  p "  %a\n" emit_value mn
+  p "  %a\n" (emit_value ~with_priv:false) mn
 
 let rec emit_indent oc n =
   if n > 0 then (
@@ -3127,7 +3131,7 @@ let emit_factors_of_tuple name func_op oc =
       (List.find (fun t -> t.RamenTuple.name = factor) typ).typ in
     Printf.fprintf oc "\t%S, %a %s ;\n"
       (factor :> string)
-      emit_value typ
+      (emit_value ~with_priv:false) typ
       (id_of_field_name ~tuple:Out factor)
   ) factors ;
   (* TODO *)
@@ -3147,7 +3151,7 @@ let rec emit_extractor path var oc =
     emit_extractor rest var oc in
   match path with
   | (mn, u) :: [] when u = Uint32.zero ->
-      Printf.fprintf oc "%a %s" emit_value mn var
+      Printf.fprintf oc "%a %s" (emit_value ~with_priv:true) mn var
   | (DT.{ typ = TVec _ ; nullable = false }, i) :: rest ->
       let var = var ^".("^ Uint32.to_string i ^")" in
       emit_extractor rest var oc

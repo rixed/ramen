@@ -1134,8 +1134,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
       failwith ;
     let _prog, _prog_name, func = function_of_fq clt fq in
     let pub = O.out_type_of_operation ~with_priv:false func.VSI.operation in
-    let typ = O.out_type_of_operation ~with_priv:true func.VSI.operation in
-    let ser = O.out_record_of_operation ~with_priv:true func.VSI.operation in
+    let ser = O.out_record_of_operation ~with_priv:false func.VSI.operation in
     let event_time = O.event_time_of_operation func.operation in
     (* Prepare to print the tails *)
     let field_names = RamenExport.checked_field_names pub field_names in
@@ -1143,7 +1142,7 @@ let tail conf func_name_or_code with_header with_units sep null raw
     let where_fields = List.map (fun (f, _, _) -> f) where in
     let _ = RamenExport.checked_field_names pub where_fields in
     let head_idx, head_typ =
-      RamenExport.header_of_type ~with_event_time field_names typ in
+      RamenExport.header_of_type ~with_event_time field_names pub in
     let open TermTable in
     let head_typ = Array.of_list head_typ in
     let head = head_of_types ~with_units head_typ in

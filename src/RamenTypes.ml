@@ -127,6 +127,7 @@ let num_columns = function
   | { typ = TTup mns ; _ } -> Array.length mns
   | _ -> 1
 
+(* FIXME: simpler: forbid records made of only private fields *)
 let filter_out_private mn =
   let rec aux mn =
     match mn.typ with
