@@ -52,8 +52,11 @@ let start conf ~while_ =
         let what =
           Printf.sprintf2 "creating replay for resp_key %a"
             Key.print resp_key in
-        log_and_ignore_exceptions ~what
-          (create_replay conf session resp_key target since until) explain
+        log_and_ignore_exceptions ~what (fun () ->
+          create_replay conf session resp_key target since until explain ;
+          (* That ReplayRequests is now useless: *)
+          ZMQClient.(send_cmd session (CltCmd.DelKey k))
+        ) ()
     | _ -> () in
   let on_new session k v uid mtime _can_write _can_del _owner _expiry =
     on_set session k v uid mtime in
