@@ -212,7 +212,10 @@ struct
               List.iter (function
                 | Key.Error _
                 | Key.Versions _
-                | Key.Tails (_, _, _, Subscriber _) as k, _ ->
+                | Key.Tails (_, _, _, Subscriber _)
+                (* Be wary of replay requests found at startup that could cause
+                 * crashloop, better delete them *)
+                | Key.ReplayRequests as k, _ ->
                     !logger.debug "Skipping key %a"
                       Key.print k
                 | Key.Sources (n, "info") as k, _
