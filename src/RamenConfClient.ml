@@ -45,10 +45,10 @@ let value_of_string key str =
       Value.of_int64 (Int64.of_string str)
   | Teams (_, Contacts _) ->
       Value.AlertingContact (
-        dessser_of_string Alerting_contact.DessserGen.of_json str)
+        dessser_of_string Alerting_contact.DessserGen.wrap_of_json str)
   | Notifications ->
       Value.Notification (
-        dessser_of_string Alerting_notification.DessserGen.of_json str)
+        dessser_of_string Alerting_notification.DessserGen.wrap_of_json str)
   | Sources _
   | TargetConfig
   | PerSite (_, PerWorker _)

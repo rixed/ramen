@@ -596,7 +596,7 @@ struct
       dessser_to_string sersize_of_json to_json a
 
     let of_string s =
-      dessser_of_string of_json s
+      dessser_of_string wrap_of_json s
 
     let print_simple_filter oc f =
       Printf.fprintf oc "%a %s %s"

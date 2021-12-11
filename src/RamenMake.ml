@@ -125,7 +125,7 @@ let may_patch_info src_ext md5s = function
 
 let read_alert =
   let alert_of_file =
-    Files.dessser_from_file "alerts" Value.Alert.of_json in
+    Files.dessser_from_file "alerts" Value.Alert.wrap_of_json in
   fun fname ->
     alert_of_file fname
 

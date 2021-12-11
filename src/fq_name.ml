@@ -38,4 +38,10 @@ module DessserGen = struct
   let of_json p =
     let t, p = Wire.of_json p in
     N.fq t, p
+
+  (* Same as above but taking and returning normal pointer instead of
+   * "augmented" pointers: *)
+  let wrap_of_json p =
+    let t, p = Wire.wrap_of_json p in
+    N.fq t, p
 end

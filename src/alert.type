@@ -6,7 +6,7 @@
   group-by: $field_name[[]]?;
   having: $simple_filter[[]] default [[]];
   threshold:
-    [ Constant float |
+    (threshold as [ Constant float |
       Baseline {
         avg_window: float default 3600;
         sample_size: u32 default 1000;
@@ -14,7 +14,7 @@
         seasonality: u32 default 168; // 24*7
         smooth_factor: float default 0.5;
         max_distance: [ Absolute float | Relative float ];
-      } ];
+      } ]);
   hysteresis: float default 0;
   duration: float default 0;
   ratio: float default 1;
