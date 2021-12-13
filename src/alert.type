@@ -6,7 +6,8 @@
   group-by: $field_name[[]]?;
   having: $simple_filter[[]] default [[]];
   threshold:
-    (threshold as [ Constant float |
+    (threshold as
+    [ Constant float |
       Baseline {
         avg_window: float default 3600;
         sample_size: u32 default 1000;
@@ -21,7 +22,9 @@
   time-step: float default 0;
   tops: $field_name[[]] default [[]];
   carry-fields: $field_name[[]] default [[]];
-  carry-csts: ($field_name; string)[[]] default [[]];
+  carry-csts:
+    (constant as
+      { name: $field_name; value: string })[[]] default [[]];
   id: string default "";
   desc-title: string default "";
   desc-firing: string default "";

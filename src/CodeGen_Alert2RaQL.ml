@@ -445,10 +445,10 @@ let generate_alert get_program (src_file : N.path) a =
         Printf.fprintf oc "    not ok\n" ;
       Printf.fprintf oc "      AS firing,\n" ;
       Printf.fprintf oc "    %S AS id,\n" a.id ;
-      List.iter (fun (name, value) ->
+      List.iter (fun cst ->
         Printf.fprintf oc "    %S AS %s,\n"
-          value
-          (ramen_quote (name : N.field :> string))
+          cst.VA.value
+          (ramen_quote (cst.name : N.field :> string))
       ) a.carry_csts ;
       Printf.fprintf oc "    1 AS certainty,\n" ;
       (* This cast to string can handle the NULL case: *)
