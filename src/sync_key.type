@@ -74,36 +74,38 @@
 // when converting to strings.
 // Note: only the last [incidents_history_length] incidents are kept.
 | Incidents (
-    string;
-    [ // The notification that started this incident:
-      FirstStartNotif
-      // The last notification with firing=1 (useful for timing out the
-      // incident):
-    | LastStartNotif
-      // If we received the firing=0 notification:
-    | LastStopNotif
-      // The last notification that changed the state (firing or not) of
-      // this incident. Gives the current nature of the incident
-      // (firing/recovered):
-    | LastStateChangeNotif
-      // The name of the team assigned to this incident:
-    | Team
-    | Dialogs (
-        string;  // contact name
-        [ // Number of delivery attempts of the start or stop message.
-          NumDeliveryAttempts
-          // Timestamps of the first and last delivery attempt
-        | FirstDeliveryAttempt
-        | LastDeliveryAttempt
-          // Scheduling:
-        | NextScheduled
-        | NextSend
-        | DeliveryStatus
-          // Written by the user to ack this dialog; Value does not matter as
-          // everything we need (user and time) is in the meta data already.
-          // There is one per dialog because we might want to use configure several
-          // independent delivery mechanisms (such as: page the user, write in a DB,
-          // and add to a message bus) each of which must complete in isolation.
-        | Ack ])
-      // Log of everything that happened wrt. this incident:
-    | Journal (float; u32) ]) ] // time * random
+    string; // the incident identifier
+    (incident_key as
+      [ // The notification that started this incident:
+        FirstStartNotif
+        // The last notification with firing=1 (useful for timing out the
+        // incident):
+      | LastStartNotif
+        // If we received the firing=0 notification:
+      | LastStopNotif
+        // The last notification that changed the state (firing or not) of
+        // this incident. Gives the current nature of the incident
+        // (firing/recovered):
+      | LastStateChangeNotif
+        // The name of the team assigned to this incident:
+      | Team
+      | Dialogs (
+          string;  // contact name
+          (dialog_key as
+            [ // Number of delivery attempts of the start or stop message.
+              NumDeliveryAttempts
+              // Timestamps of the first and last delivery attempt
+            | FirstDeliveryAttempt
+            | LastDeliveryAttempt
+              // Scheduling:
+            | NextScheduled
+            | NextSend
+            | DeliveryStatus
+              // Written by the user to ack this dialog; Value does not matter as
+              // everything we need (user and time) is in the meta data already.
+              // There is one per dialog because we might want to use configure several
+              // independent delivery mechanisms (such as: page the user, write in a DB,
+              // and add to a message bus) each of which must complete in isolation.
+            | Ack ]))
+        // Log of everything that happened wrt. this incident:
+      | Journal (float; u32) ])) ] // time * random
