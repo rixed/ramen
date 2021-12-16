@@ -6,6 +6,7 @@ open Cmdliner
 open Batteries
 open RamenHelpersNoLog
 open RamenHelpers
+open RamenConsts
 module C = RamenConf
 module CliInfo = RamenConstsCliInfo
 module Default = RamenConstsDefault
@@ -449,7 +450,7 @@ let ignore_file_perms =
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
-      $ copts ~default_username:"_confserver" ~is_confserver:true ()
+      $ copts ~default_username:confserver_uid ~is_confserver:true ()
       $ daemonize
       $ to_stdout
       $ to_syslog
@@ -1226,7 +1227,7 @@ let archivist_loop =
 let start =
   Term.(
     (const RamenCliCmd.start
-      $ copts ~default_username:"_confserver" ()
+      $ copts ~default_username:confserver_uid ()
       $ daemonize
       $ to_stdout
       $ to_syslog

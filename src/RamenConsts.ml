@@ -114,3 +114,7 @@ let default_team_name = N.team "default"
 (* How often execompserver should check if the compiled binaries are still
  * present on disc (secs): *)
 let check_binaries_on_disk_every = 10.
+
+(* Username used in the confserver by the confserver. Must start with a "_"
+ * like other daemons: *)
+let confserver_uid = "_confserver"

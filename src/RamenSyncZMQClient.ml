@@ -120,13 +120,13 @@ let check_ok session k v =
   )
 
 let check_new_cbs session on_msg =
-  fun _clt k v uid mtime can_write can_del owner expiry ->
+  fun _clt k v newKey_uid mtime can_write can_del owner expiry ->
     check_ok session k v ;
     Hashtbl.find_all session.on_dones k |>
     List.iter (fun (cmd_id, filter, cb) ->
       let srv_cmd =
         SrvMsg.NewKey {
-          newKey_k = k ; v ; uid ; mtime ; can_write ;
+          newKey_k = k ; v ; newKey_uid ; mtime ; can_write ;
           can_del ; newKey_owner = owner ; newKey_expiry = expiry } in
       if filter srv_cmd then (
         Hashtbl.remove session.on_dones k ;
@@ -135,7 +135,7 @@ let check_new_cbs session on_msg =
         cb ()
       ) else
         !logger.debug "on_dones cb filter does not pass.") ;
-    on_msg session k v uid mtime can_write can_del owner expiry
+    on_msg session k v newKey_uid mtime can_write can_del owner expiry
 
 let check_set_cbs session on_msg =
   fun _clt k v uid mtime ->
@@ -158,7 +158,7 @@ let check_del_cbs session on_msg =
   fun _clt k prev_v ->
     Hashtbl.find_all session.on_dones k |>
     List.iter (fun (cmd_id, filter, cb) ->
-      let srv_cmd = SrvMsg.DelKey k in
+      let srv_cmd = SrvMsg.DelKey { delKey_k = k ; uid = "" } in
       if filter srv_cmd then (
         Hashtbl.remove session.on_dones k ;
         log_done cmd_id ;
@@ -326,7 +326,7 @@ let send_cmd
   )
 
 let check_timeout clt = function
-  | SrvMsg.DelKey k when Some k = my_errors clt ->
+  | SrvMsg.DelKey { delKey_k ; _ } when Some delKey_k = my_errors clt ->
       !logger.error "Bummer! The server timed us out!"
   | _ -> ()
 

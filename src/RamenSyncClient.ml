@@ -149,14 +149,14 @@ struct
             t.on_set t setKey_k setKey_v setKey_uid setKey_mtime
         )
 
-    | SrvMsg.NewKey { newKey_k ; v ; uid ; mtime ; can_write ; can_del ;
+    | SrvMsg.NewKey { newKey_k ; v ; newKey_uid ; mtime ; can_write ; can_del ;
                       newKey_owner ; newKey_expiry } ->
         let new_hv ()  =
-          { value = v ; uid ; mtime ; owner = newKey_owner ;
+          { value = v ; uid = newKey_uid ; mtime ; owner = newKey_owner ;
             expiry = newKey_expiry ; eagerly = Nope } in
         let set_hv hv =
             t.h <- Tree.add newKey_k hv t.h ;
-            t.on_new t newKey_k v uid mtime can_write can_del newKey_owner
+            t.on_new t newKey_k v newKey_uid mtime can_write can_del newKey_owner
                      newKey_expiry in
         (match Tree.get t.h newKey_k with
         | exception Not_found ->
@@ -170,34 +170,35 @@ struct
                 Key.print newKey_k ;
             (* Store the value: *)
             prev.value <- v ;
-            prev.uid <- uid ;
+            prev.uid <- newKey_uid ;
             prev.mtime <- mtime ;
             prev.owner <- newKey_owner ;
             prev.expiry <- newKey_expiry ;
             prev.eagerly <- Nope ;
             (* Callbacks *)
-            t.on_set t newKey_k v uid mtime ;
+            t.on_set t newKey_k v newKey_uid mtime ;
             if prev.owner = "" && newKey_owner <> "" then
               t.on_lock t newKey_k newKey_owner newKey_expiry
             else if prev.owner <> "" && newKey_owner = "" then
               t.on_unlock t newKey_k
         )
 
-    | SrvMsg.DelKey k ->
-        (match Tree.get t.h k with
+    | SrvMsg.DelKey { delKey_k ; uid } ->
+        (match Tree.get t.h delKey_k with
         | exception Not_found ->
-            !logger.error "Server wants to delete unknown key %a"
-              Key.print k ;
+            !logger.error "%s wants to delete unknown key %a"
+              uid
+              Key.print delKey_k ;
             dump_keys t
         | hv ->
             if hv.eagerly <> Deleted then (
-              let conts = H.find_all t.waiters k in
+              let conts = H.find_all t.waiters delKey_k in
               if conts <> [] then
                 !logger.error "%d waiters were waiting for key %a at deletion"
                   (List.length conts)
-                  Key.print k) ;
-            t.h <- Tree.rem k t.h ;
-            t.on_del t k hv.value)
+                  Key.print delKey_k) ;
+            t.h <- Tree.rem delKey_k t.h ;
+            t.on_del t delKey_k hv.value)
 
     | SrvMsg.LockKey { k ; owner ; expiry } ->
         if owner = "" then

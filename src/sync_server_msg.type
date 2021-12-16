@@ -22,7 +22,9 @@
     owner: string;    // "" for no lock owner
     expiry: float;
   }
-| DelKey $sync_key
+| DelKey {
+    k: $sync_key;
+    uid: string }     // For debugging/log purposes, also indicate who deleted it
 // New lock or change of lock owner. owner must be <> "".
 | LockKey {
     k: $sync_key;

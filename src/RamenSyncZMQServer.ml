@@ -473,8 +473,8 @@ let delete_session srv session =
       Server.H.modify_opt k (fun hv_opt ->
         Option.may (fun hv ->
           Server.notify srv k hv.Server.prepared_key
-                        (User.has_any_role hv.can_read)
-                        (fun _ -> DelKey k)
+            (User.has_any_role hv.can_read)
+            (fun _ -> DelKey { delKey_k = k ; uid = confserver_uid })
         ) hv_opt ;
         None
       ) srv.Server.h
@@ -496,9 +496,9 @@ let delete_session srv session =
            * subscriptions have been deleted beforehand, but it is still
            * excluded explicitly for extra caution) *)
           Server.notify srv k hv.Server.prepared_key
-                        (fun u -> User.has_any_role hv.can_read u &&
-                                  not (User.equal u session.user))
-                        (fun _ -> DelKey k) ;
+            (fun u -> User.has_any_role hv.can_read u &&
+                      not (User.equal u session.user))
+            (fun _ -> DelKey { delKey_k = k ; uid = confserver_uid }) ;
           false
       | _ ->
           true

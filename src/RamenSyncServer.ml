@@ -216,8 +216,9 @@ struct
         let msg u =
           let can_write = User.has_any_role can_write u
           and can_del = User.has_any_role can_del u in
-          SrvMsg.NewKey { newKey_k = k ; v ; uid ; mtime ; can_write ; can_del ;
-                          newKey_owner = owner ; newKey_expiry = expiry } in
+          SrvMsg.NewKey { newKey_k = k ; v ; newKey_uid = uid ; mtime ;
+                          can_write ; can_del ; newKey_owner = owner ;
+                          newKey_expiry = expiry } in
         let is_permitted user =
           User.has_any_role can_read user &&
           (echo || not (User.equal user u)) in
@@ -269,7 +270,8 @@ struct
         let is_permitted user =
           User.has_any_role prev.can_read user &&
           (echo || not (User.equal user u)) in
-        notify t k prev.prepared_key is_permitted (fun _ -> DelKey k)
+        notify t k prev.prepared_key is_permitted (fun _ ->
+          DelKey { delKey_k = k ; uid = (User.id u) })
 
   let lock t u k ~must_exist ~lock_timeo ~recurs =
     !logger.debug "Locking %a to user %a"
@@ -423,9 +425,9 @@ struct
       and can_write = User.has_any_role hv.can_write u
       and can_del = User.has_any_role hv.can_del u in
       let msg =
-        SrvMsg.NewKey { newKey_k = k ; v = hv.v ; uid ; mtime = hv.mtime ;
-                        can_write ; can_del ; newKey_owner = owner ;
-                        newKey_expiry = expiry } in
+        SrvMsg.NewKey { newKey_k = k ; v = hv.v ; newKey_uid = uid ;
+                        mtime = hv.mtime ; can_write ; can_del ;
+                        newKey_owner = owner ; newKey_expiry = expiry } in
       t.send_msg (Enum.singleton (peer, msg))
     ) sorted ;
     !logger.debug "Initial synchronisation for user %a: Complete!" User.print u

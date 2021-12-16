@@ -7,9 +7,6 @@ let dessser_version = DessserCompilConfig.version
  * anything. *)
 let release_tag = "v@PACKAGE_VERSION@"
 
-(* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v102_"^ dessser_version (* last: changed raql_type type *)
-
 (* Instrumentation data sent from workers to Ramen *)
 let instrumentation_tuple = "v10" (* last: Use dessser types *)
 
@@ -38,4 +35,7 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v42" (* last: changed alert type *)
+let sync_conf = "v43" (* last: Added uid to server's DelKey *)
+
+(* Code generation: sources, binaries, marshaled types... *)
+let codegen = "v102_"^ dessser_version ^"_"^ sync_conf (* last: changed raql_type type *)

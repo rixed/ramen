@@ -274,21 +274,22 @@ struct
             Value.print setKey_v
             setKey_uid
             print_as_date setKey_mtime
-      | NewKey { newKey_k ; v ; uid ; mtime ;
+      | NewKey { newKey_k ; v ; newKey_uid ; mtime ;
                  can_write ; can_del ; newKey_owner ;
                  newKey_expiry } ->
           Printf.fprintf oc "NewKey { k=%a; v=%a; uid=%s; mtime=%a; can=%s; %t }"
             Key.print newKey_k
             Value.print v
-            uid
+            newKey_uid
             print_as_date mtime
             ((if can_write then "write" else "") ^
              (if can_write && can_del then "+" else "") ^
              (if can_del then "del" else ""))
             (print_lock_owner newKey_owner newKey_expiry)
-      | DelKey k ->
-          Printf.fprintf oc "DelKey %a"
-            Key.print k
+      | DelKey { delKey_k ; uid } ->
+          Printf.fprintf oc "DelKey { k=%a; uid=%s }"
+            Key.print delKey_k
+            uid
       | LockKey { k ; owner ; expiry } ->
           Printf.fprintf oc "LockKey { k=%a; %t }"
             Key.print k
