@@ -113,7 +113,7 @@ RUN cd /root/ramen && \
 # Uninstall everything we can
 RUN DEBIAN_FRONTEND=noninteractive \
     SUDO_FORCE_REMOVE=yes \
-    apt-get purge --yes --allow-remove-essential \
+    apt-get purge --yes \
       bzip2 \
       ca-certificates \
       curl \
@@ -128,7 +128,6 @@ RUN DEBIAN_FRONTEND=noninteractive \
       m4 \
       make \
       manpages \
-      mawk \
       mount \
       net-tools \
       netbase \
