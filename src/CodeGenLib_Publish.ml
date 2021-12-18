@@ -415,7 +415,7 @@ let writer_to_file ~while_ fname spec scalar_extractors
 let publish_tuple key mask tuple =
   ignore mask ; (* TODO: use the mask to reduce the tuple! *)
   let tuple = Value.{ skipped = Uint32.zero ; values = tuple } in
-  !logger.info "Published a tuple into %a" Key.print key ;
+  !logger.debug "Published a tuple into %a" Key.print key ;
   batch_tuple key tuple
 
 let delete_key key =
