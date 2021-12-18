@@ -445,8 +445,7 @@ let writer_to_sync conf key spec ocamlify_tuple =
         if conf.C.is_replayer then (
           (* Replayers do not count EndOfReplays, as the only one they
            * will ever see is the one they publish themselves. *)
-          flush_batch key ;
-          delete_key key
+          flush_batch key
         ) else (
           Hashtbl.modify_opt chn (fun prev ->
             let terminate () =
@@ -487,8 +486,7 @@ let writer_to_sync conf key spec ocamlify_tuple =
     | _ -> ()),
   (fun () ->
     (* It might have been deleted already though: *)
-    flush_batch key ;
-    delete_key key)
+    flush_batch key)
 
 let publish_stats stats_key init_stats stats =
   (* Those stats are the stats since startup. Combine them with whatever was
