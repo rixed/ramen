@@ -422,6 +422,11 @@ let delete_key key =
   !logger.info "Deleting publishing key %a" Key.print key ;
   add_cmd (CltCmd.DelKey key)
 
+(* Deletes both the recipient response key and the replay for that channel: *)
+let delete_replay chn resp_key =
+  delete_key resp_key ;
+  delete_key (Key.Replays chn)
+
 (* Save the number of sources per channels *)
 let num_sources_per_channel = Hashtbl.create 10
 
@@ -450,7 +455,7 @@ let writer_to_sync conf key spec ocamlify_tuple =
           Hashtbl.modify_opt chn (fun prev ->
             let terminate () =
               flush_batch key ;
-              delete_key key ;
+              delete_replay chn key ;
               None in
             match prev with
             | None ->
