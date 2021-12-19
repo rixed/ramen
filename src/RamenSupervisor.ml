@@ -43,41 +43,6 @@ let test_notifs_every = ref 0.
 (* How to set max_readers on workers: *)
 let lmdb_max_readers = ref None
 
-(* A single worker can replay for several channels. This is very useful
- * when a dashboard reloads with many graphs requesting the same time interval.
- * So replayers are aggregated for a little while before spawning them.
- * No need to persist this hash though. *)
-
-type replayers = (N.site_fq, replayer) Hashtbl.t
-
-and replayer =
-  { (*site_fq : N.site_fq ;*)
-    (* Aggregated from all replays. Won't change once the replayer is
-     * spawned. *)
-    mutable time_range : TimeRange.t ;
-    (* Used to count the end of retransmissions: *)
-    id : int ;
-    (* Actual process is spawned only a bit later: *)
-    creation : float ;
-    (* Set when the replayer has started and then always set.
-     * Until then new channels can be added. *)
-    mutable pid : int option ;
-    (* When the replayer actually stopped: *)
-    mutable stopped : bool ;
-    last_killed : float ref ;
-    (* What running replays are using this process.
-     * Can be killed/deleted when this drops to zero. *)
-    mutable replays : Value.Replay.t Map.Int.t }
-
-let make_replayer now =
-  { time_range = TimeRange.empty ;
-    id = Random.int RingBufLib.max_replayer_id ;
-    creation = now ;
-    pid = None ;
-    stopped = false ;
-    last_killed = ref 0. ;
-    replays = Map.Int.empty }
-
 open Binocle
 
 let stats_worker_crashes =
