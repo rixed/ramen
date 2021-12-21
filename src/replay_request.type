@@ -1,7 +1,7 @@
 // Replay requests can be written to the configuration tree and are turned
-// into actual replays by the choreographer.
-// Result will be written into the configuration tree and will include all
-// fields.
+// into actual replays by the replay-service.
+// Result will be written into the configuration tree at [resp_key], and will include
+// all (public) fields.
 {
   target: $fq_function_name;
   since: float;

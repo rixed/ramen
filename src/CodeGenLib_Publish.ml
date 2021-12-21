@@ -79,8 +79,13 @@ let flush_all_batches () =
   Hashtbl.clear tuple_batches
 
 let flush_batch key =
+  !logger.debug "Flush_batch for %a" Key.print key ;
   hashtbl_take tuple_batches key |>
   Option.may (send_tuple_batch key)
+
+(* The list of channels for which this replayer is in charge of deleting the replay
+ * and response keys: *)
+let del_when_done = ref []
 
 (* Condvar dance to hand on the initial value of stats (right after the
  * initial sync) to the worker thread: *)
@@ -423,8 +428,8 @@ let delete_key key =
   add_cmd (CltCmd.DelKey key)
 
 (* Deletes both the recipient response key and the replay for that channel: *)
-let delete_replay chn resp_key =
-  delete_key resp_key ;
+let delete_replay chn =
+  !logger.info "Deleting replay %a" Channel.print chn ;
   delete_key (Key.Replays chn)
 
 (* Save the number of sources per channels *)
@@ -442,25 +447,31 @@ let writer_to_sync conf key spec ocamlify_tuple =
             if not (OutRef.timed_out !CodeGenLib.now timeo)
             then
               publish (ocamlify_tuple tuple))
-    | RingBufLib.EndOfReplay (chn, replayer_id), None ->
+    | RingBufLib.EndOfReplay (chn, _replayer_id), None ->
         assert (chn = dest_channel) ; (* by definition *)
-        !logger.info "Publishing EndOfReplay from replayer %d on channel %a"
-          replayer_id
-          Channel.print chn ;
         if conf.C.is_replayer then (
-          (* Replayers do not count EndOfReplays, as the only one they
+          (* Replayers do not count EndOfReplay messages, as the only one they
            * will ever see is the one they publish themselves. *)
-          flush_batch key
+          flush_batch key ;
+          !logger.debug "del when done with %a? %b"
+            Channel.print chn
+            (List.mem chn !del_when_done) ;
+          if List.mem chn !del_when_done then (
+            delete_replay chn ;
+            delete_key key
+          )
         ) else (
           Hashtbl.modify_opt chn (fun prev ->
             let terminate () =
               flush_batch key ;
-              delete_replay chn key ;
+              delete_replay chn ;
+              delete_key key ;
               None in
             match prev with
             | None ->
                 (* First time we receive an end-of-channel, lets record how
-                 * many sources must terminate before we delete the resp key: *)
+                 * many sources must terminate before we delete the resp key
+                 * and the replay: *)
                 (match Hashtbl.find file_spec.DO.channels chn with
                 | exception Not_found ->
                     !logger.info "Received an end-of-channel message for \

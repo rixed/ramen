@@ -683,9 +683,10 @@ struct
     include Replayer.DessserGen
 
     let print oc t =
-      Printf.fprintf oc "Replayer { pid=%a; channels=%a }"
+      Printf.fprintf oc "Replayer { pid=%a; channels=%a; exit_status=%a }"
         (Option.print (fun oc n -> Uint32.to_string n |> String.print oc)) t.pid
-        (Array.print Channel.print) t.channels
+        (Array.print (Tuple2.print Channel.print Bool.print)) t.channels
+        (Option.print String.print) t.exit_status
 
     let make creation time_range channels =
       { time_range ; creation ; pid = None ; last_killed = 0. ;

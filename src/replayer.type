@@ -13,5 +13,7 @@
   exit_status: string?;
   // What running channels are using this process.
   // The replayer can be killed/deleted when empty.
-  channels: u16[]
+  // Alongside each channel, a boolean indicates if the replayer is in charge of
+  // deleting the replay and response key for that channel.
+  channels: (u16; bool)[]
 }

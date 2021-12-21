@@ -6,7 +6,7 @@
   until: float;
   recipient:
     [ RingBuf $file_path
-    | SyncKey $sync_key ]; // some configuration key as a string
+    | SyncKey $sync_key ];
   sources: $fq_function_name[];
   links: ($fq_function_name; $fq_function_name)[];
   timeout_date: float;

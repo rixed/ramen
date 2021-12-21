@@ -1026,11 +1026,20 @@ let replay
   let rb_archive =
     N.path (getenv ~def:"/tmp/archive.b" "rb_archive")
   and since = getenv "since" |> float_of_string
-  and until = getenv "until" |> float_of_string
-  and channel_ids = getenv "channel_ids" |>
-                    string_split_on_char ',' |>
-                    List.map Channel.of_string
-  and replayer_id = getenv "replayer_id" |> int_of_string
+  and until = getenv "until" |> float_of_string in
+  let parse_chans env_name =
+    getenv env_name |>
+    string_split_on_char ',' |>
+    List.filter ((<>) "") |>
+    List.map Channel.of_string in
+  let mono_chans = parse_chans "mono_channels"
+  and multi_chans = parse_chans "multi_channels" in
+  Publish.del_when_done := mono_chans ;
+  !logger.info "del_when_done with channels %a"
+    (List.print Channel.print) !Publish.del_when_done ;
+  let channel_ids = mono_chans @ multi_chans in
+  assert (channel_ids <> []) ;
+  let replayer_id = getenv "replayer_id" |> int_of_string
   in
   !logger.debug "Starting REPLAY of %a. Will log into %s at level %s."
     N.fq_print conf.C.fq

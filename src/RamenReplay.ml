@@ -243,7 +243,7 @@ let find_sources
       pick_best_way ways
 
 (* Create the replay structure but does not start it (nor create the
- * final_rb).
+ * final [resp_key] or temporary ringbuffer file).
  * Notice that the target is always local, which free us from the
  * site identifier that would otherwise be necessary. If one wants
  * to replay remote (or a combination of local and remote) workers
@@ -321,6 +321,19 @@ let teardown_links conf session t =
   Array.iter (fun (psite_fq, _) -> rem_out_from psite_fq) t.links ;
   rem_out_from t.target
 
+(* In the general case, a replay will require several replayers and the target
+ * function will aggregate the channel and provide the client with the end
+ * result.  In simpler cases though, a single replayer will get directly from
+ * the archive what the client asked for, and will write it itself directly
+ * into client's response key. In that case, this single replayer will have to
+ * delete the replay and the response key itself. *)
+let is_mono_replayer replay =
+  match replay.VR.sources, replay.links with
+  | [| single_fq |], [||] ->
+      single_fq = replay.target
+  | _ ->
+      false
+
 (* When a replay target have parents, and (some of) those parents are replayed,
  * replayers take their outputs from the outputs of the worker they impersonate,
  * with the addition of the replay channel.
@@ -328,7 +341,7 @@ let teardown_links conf session t =
  * Eventually, the replay target is configured to output to the replay client
  * (usually a SyncKey).
  *
- * [settup_links] does something a bit simpler: it configures all the "links"
+ * [setup_links] does something a bit simpler: it configures all the "links"
  * (ie all connections leading from the replayers to the replay target) with the
  * channel, including the replayed workers, so that the replayer can use the
  * exact same outputs than the worker they impersonate, at the expense of
@@ -343,7 +356,7 @@ let teardown_links conf session t =
  * The replayed will also try to write tuples to this client, but it will never
  * receive anything on that channel. *)
 
-let settup_links conf ~while_ session func_of_fq t =
+let setup_links conf ~while_ session func_of_fq t =
   (* Also indicate to the target how many end-of-chans to count before it
    * can end the publication of tuples. *)
   let num_sources = Int16.of_int (Array.length t.VR.sources) in
@@ -366,6 +379,9 @@ let settup_links conf ~while_ session func_of_fq t =
   let target_fieldmask = RamenFieldMask.of_string t.target_fieldmask in
   let what = Printf.sprintf2 "Setting up links for channel %a"
                RamenChannel.print t.channel in
+  (* Connects the target to the response key/ringbuf (also needed if the
+   * mono replayer sends directly to the requestor since its the same
+   * OutRef as the target: *)
   log_and_ignore_exceptions ~what (fun () ->
     if conf.C.site = t.target.site then
       let prog_name, func = func_of_fq target_fq in
@@ -375,6 +391,7 @@ let settup_links conf ~while_ session func_of_fq t =
       | VR.SyncKey k ->
           connect_to_sync_key prog_name func k target_fieldmask
   ) () ;
+  (* And then add all the links from workers to workers for that channel: *)
   Array.iter (fun (from, to_) ->
     if conf.C.site = from.Fq_function_name.DessserGen.site then
       let pfq = N.fq_of_program from.program from.function_ in
