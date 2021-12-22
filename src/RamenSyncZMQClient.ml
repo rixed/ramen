@@ -531,13 +531,15 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
           ?(on_lock=ignore4) ?(on_unlock=ignore2)
           ?(conntimeo=0.) ?(recvtimeo= ~-.1.)
           ?(sesstimeo=Default.sync_sessions_timeout) sync_loop =
+  let use_encryption =
+    srv_pub_key <> "" && clt_pub_key <> "" && clt_priv_key <> "" in
   !logger.debug "Initializing configuration Client" ;
   let url = if url = "" then "localhost" else url in
   let url =
     if String.contains url ':' then url
     else url ^":"^ string_of_int (
-      if srv_pub_key = "" then Default.confserver_port
-      else Default.confserver_port_sec) in
+      if use_encryption then Default.confserver_port_sec
+      else Default.confserver_port) in
   let host, service_name =
     try String.split ~by:":" url
     with Not_found ->
@@ -559,12 +561,12 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
            * This is OK because those callbacks won't be called before the initial
            * sync starts. *)
           let authn =
-            if srv_pub_key = "" then
-              Authn.make_clear_session ()
-            else
+            if use_encryption then
               Authn.(make_session (Some (pub_key_of_z85 srv_pub_key))
                 (pub_key_of_z85 clt_pub_key)
-                (priv_key_of_z85 clt_priv_key)) in
+                (priv_key_of_z85 clt_priv_key))
+            else
+              Authn.make_clear_session () in
           let session =
             { socket ; authn ; clt = None ;
               timeout = sesstimeo ; last_sent = Unix.time () ;

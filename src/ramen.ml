@@ -54,7 +54,7 @@ let port =
   in
   Arg.conv ~docv:"PORT" (parse, print)
 
-(* Never take keys from the command line directly, but read them from
+(* Never take private keys from the command line directly, but read them from
  * files. If secure, also check the file is not world readable. *)
 let key secure =
   let parse s =
