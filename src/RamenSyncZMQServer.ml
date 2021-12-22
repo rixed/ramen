@@ -763,7 +763,7 @@ let start
     C.info_or_test conf "Listening %sto %s..."
       (if do_authn then
         "securely using public key from "^ (srv_pub_key_file :> string) ^
-        " and secret key from "^ (srv_priv_key_file :> string)
+        " and secret key from "^ (srv_priv_key_file :> string) ^" "
       else "") bind ;
     let bind_addr, service_name =
       match String.split ~by:":" bind with

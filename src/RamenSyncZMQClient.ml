@@ -533,7 +533,9 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
           ?(sesstimeo=Default.sync_sessions_timeout) sync_loop =
   let use_encryption =
     srv_pub_key <> "" && clt_pub_key <> "" && clt_priv_key <> "" in
-  !logger.debug "Initializing configuration Client" ;
+  !logger.debug "Initializing configuration Client (%S, %S, %S -> %s)"
+    srv_pub_key clt_pub_key clt_priv_key
+    (if use_encryption then "use encryption" else "no encryption") ;
   let url = if url = "" then "localhost" else url in
   let url =
     if String.contains url ':' then url
