@@ -5688,7 +5688,7 @@ rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 
 
-ac_config_files="$ac_config_files Makefile opam src/RamenVersions.ml debian.control rmadmin/rmadmin.pro tests/features/api.feature docker/Dockerfile-dev"
+ac_config_files="$ac_config_files Makefile opam src/RamenVersions.ml debian.control rmadmin/rmadmin.pro tests/features/api.feature docker/Dockerfile docker/Dockerfile-dev"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -6386,6 +6386,7 @@ do
     "debian.control") CONFIG_FILES="$CONFIG_FILES debian.control" ;;
     "rmadmin/rmadmin.pro") CONFIG_FILES="$CONFIG_FILES rmadmin/rmadmin.pro" ;;
     "tests/features/api.feature") CONFIG_FILES="$CONFIG_FILES tests/features/api.feature" ;;
+    "docker/Dockerfile") CONFIG_FILES="$CONFIG_FILES docker/Dockerfile" ;;
     "docker/Dockerfile-dev") CONFIG_FILES="$CONFIG_FILES docker/Dockerfile-dev" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5;;

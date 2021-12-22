@@ -95,7 +95,7 @@ RUN cd /root && \
 RUN cd /root && \
     git clone https://github.com/rixed/ramen.git && \
     cd ramen && \
-    git checkout v6.12.14 && \
+    git checkout v@PACKAGE_VERSION@ && \
     ./configure && \
     opam install --yes --deps-only .
 
