@@ -71,14 +71,6 @@ ENV MANPATH=:/root/.opam/ramen/man
 ENV PATH=/root/.opam/ramen/bin:/root/.gem/ruby/2.5.0/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ENV RAMEN_LIBS=/root/ramen/bundle
 
-RUN opam install --yes depext && \
-    opam depext --noninteractive \
-      conf-gsl conf-blas conf-lapack conf-pkg-config sqlite3 && \
-    opam repo add --set-default ocalme \
-      git://github.com/rixed/ocalme-opam-repository.git && \
-    opam repo priority ocalme 1 && \
-    opam install --yes inotify qtest ipaddr csv
-
 # Now install z3 from source (as we need both executable and libs):
 RUN cd /root && \
     git clone https://github.com/Z3Prover/z3.git && \
@@ -95,7 +87,18 @@ RUN cd /root && \
 RUN cd /root && \
     git clone https://github.com/rixed/ramen.git && \
     cd ramen && \
-    git checkout v@PACKAGE_VERSION@ && \
+    git checkout v@PACKAGE_VERSION@
+
+# Upgrade opam packages only after the previous step have cleaned docker caches:
+RUN opam install --yes depext && \
+    opam depext --noninteractive \
+      conf-gsl conf-blas conf-lapack conf-pkg-config sqlite3 && \
+    opam repo add --set-default ocalme \
+      git://github.com/rixed/ocalme-opam-repository.git && \
+    opam repo priority ocalme 1 && \
+    opam install --yes inotify qtest ipaddr csv
+
+RUN cd /root && \
     ./configure && \
     opam install --yes --deps-only .
 
