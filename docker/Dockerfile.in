@@ -47,7 +47,6 @@ RUN echo 'APT::Install-Recommends "0";' > \
         ocaml-nox \
         patch \
         php-cli \
-        procps \
         rsync \
         ruby-rspec \
         socat \
