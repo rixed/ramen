@@ -109,10 +109,21 @@ let sub ?what u1 u2 =
   assoc_array_merge (fun u1 u2 ->
     match u1, u2 with
     | Some (p1, r1), Some (p2, r2) when p1 = p2 ->
-        if not r1 && r2 then
-          fail "cannot subtract a relative unit" ;
-        (* Only way to get a relative unit is to do relative - absolute: *)
-        Some (p1, r1 && r2)
+        (* relative - relative -> absolute
+         * relative - absolute -> relative
+         * absolute - relative -> meaningless
+         * absolute - absolute -> absolute *)
+        let r =
+          match r1, r2 with
+          | true, true ->
+              false
+          | true, false ->
+              true
+          | false, true ->
+              fail "cannot subtract a relative from an absolute unit"
+          | false, false ->
+              false in
+        Some (p1, r)
     | _ -> fail "not the same units"
   ) u1 u2
 
