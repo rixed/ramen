@@ -102,7 +102,7 @@ let site =
     typ = Scalar }
 
 let bundle_dir =
-  { names = [ "bundle-dir" ] ;
+  { names = [ "bundle-dir" ; "libs" ] ;
     env = "RAMEN_LIBS" ;
     doc = "Directory where to find libraries for the embedded compiler." ;
     docv = "" ;
