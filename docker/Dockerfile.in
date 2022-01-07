@@ -56,7 +56,8 @@ RUN echo 'APT::Install-Recommends "0";' > \
         wget
 
 COPY install-opam.sh /tmp
-RUN echo | /tmp/install-opam.sh
+RUN echo | /tmp/install-opam.sh && \
+    rm /tmp/install-opam.sh
 
 RUN /usr/local/bin/opam init --no-setup --disable-sandboxing && \
     /usr/local/bin/opam update --yes && \
@@ -153,7 +154,8 @@ RUN DEBIAN_FRONTEND=noninteractive \
       wget \
       xauth && \
   DEBIAN_FRONTEND=noninteractive \
-    apt-get clean
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /var/log/apt /var/log/dpkg.log
 
 RUN strip /usr/bin/z3 && \
     rm -rf /root/ocaml-lmdb /root/ramen /root/z3 \

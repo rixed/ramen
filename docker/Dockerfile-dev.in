@@ -75,7 +75,8 @@ RUN if grep -q '^11' /etc/debian_version; then \
     fi
 
 COPY install-opam.sh /tmp
-RUN echo | /tmp/install-opam.sh
+RUN echo | /tmp/install-opam.sh && \
+    rm /tmp/install-opam.sh
 
 RUN /usr/local/bin/opam init --no-setup --disable-sandboxing
 RUN /usr/local/bin/opam update --yes
