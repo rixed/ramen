@@ -337,21 +337,21 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL1 (Cos, e)) ->
       Printf.fprintf oc "COS (%a)" p e
   | Stateless (SL1 (Sin, e)) ->
-      Printf.fprintf oc "COS (%a)" p e
+      Printf.fprintf oc "SIN (%a)" p e
   | Stateless (SL1 (Tan, e)) ->
-      Printf.fprintf oc "COS (%a)" p e
+      Printf.fprintf oc "TAN (%a)" p e
   | Stateless (SL1 (ACos, e)) ->
-      Printf.fprintf oc "COS (%a)" p e
+      Printf.fprintf oc "ACOS (%a)" p e
   | Stateless (SL1 (ASin, e)) ->
-      Printf.fprintf oc "COS (%a)" p e
+      Printf.fprintf oc "ASIN (%a)" p e
   | Stateless (SL1 (ATan, e)) ->
-      Printf.fprintf oc "COS (%a)" p e
+      Printf.fprintf oc "ATAN (%a)" p e
   | Stateless (SL1 (CosH, e)) ->
-      Printf.fprintf oc "COS (%a)" p e
+      Printf.fprintf oc "COSH (%a)" p e
   | Stateless (SL1 (SinH, e)) ->
-      Printf.fprintf oc "COS (%a)" p e
+      Printf.fprintf oc "SINH (%a)" p e
   | Stateless (SL1 (TanH, e)) ->
-      Printf.fprintf oc "COS (%a)" p e
+      Printf.fprintf oc "TANH (%a)" p e
   | Stateless (SL1 (Hash, e)) ->
       Printf.fprintf oc "HASH (%a)" p e
   | Stateless (SL1 (Sparkline, e)) ->
@@ -369,7 +369,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL2 (In, e1, e2)) ->
       Printf.fprintf oc "(%a) IN (%a)" p e1 p e2
   | Stateless (SL1 ((BeginOfRange|EndOfRange as op), e)) ->
-      Printf.fprintf oc "%s of (%a)"
+      Printf.fprintf oc "%s OF (%a)"
         (if op = BeginOfRange then "BEGIN" else "END")
         p e ;
   | Stateless (SL1 (Strptime, e)) ->
