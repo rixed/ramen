@@ -449,15 +449,18 @@ let writer_to_sync conf key spec ocamlify_tuple =
     | RingBufLib.EndOfReplay (chn, _replayer_id), None ->
         assert (chn = dest_channel) ; (* by definition *)
         if conf.C.is_replayer then (
-          (* Replayers do not count EndOfReplay messages, as the only one they
-           * will ever see is the one they publish themselves. *)
-          flush_batch key ;
-          !logger.debug "del when done with %a? %b"
-            Channel.print chn
-            (List.mem chn !del_when_done) ;
-          if List.mem chn !del_when_done then (
-            delete_replay chn ;
-            delete_key key
+          (* Check this file is interested in [chn]: *)
+          if Hashtbl.mem file_spec.DO.channels chn then (
+            (* Replayers do not count EndOfReplay messages, as the only one they
+             * will ever see is the one they publish themselves. *)
+            flush_batch key ;
+            !logger.debug "del when done with %a? %b"
+              Channel.print chn
+              (List.mem chn !del_when_done) ;
+            if List.mem chn !del_when_done then (
+              delete_replay chn ;
+              delete_key key
+            )
           )
         ) else (
           Hashtbl.modify_opt chn (fun prev ->
