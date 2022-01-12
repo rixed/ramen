@@ -109,9 +109,11 @@ let sites_matching_identifier conf all_sites = function
       ) all_sites
 
 let compute_archives conf prog_name func =
-  (* We are going to scan the current archive, which is always in RingBuf
-   * format. arc_dir_of_bname would return the same directory for an Orc
-   * file anyway: *)
+  (* We are going to scan the current archive, which location is retrieved
+   * from the name of the current archive (which is also going to be scanned
+   * hereafter). The current archive is always in RingBuf format, but
+   * [arc_dir_of_bname] would return the same directory for an Orc file
+   * anyway: *)
   let fq = VSI.fq_name prog_name func in
   let bname =
     Paths.archive_buf_name ~file_type:OWD.RingBuf conf prog_name func in

@@ -31,6 +31,7 @@
   // Total number of errors outputing values (including for replays):
   tot_out_errs: u64;
   // These two measure the average size of a complete (as in SELECT *) value:
+  // Sum of all measured full tuples:
   tot_full_bytes: u64;
   // Number of samples used to compute the above tot_full_bytes:
   tot_full_bytes_samples: u64;

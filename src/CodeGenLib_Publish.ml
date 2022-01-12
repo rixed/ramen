@@ -44,12 +44,12 @@ let cmd_queue_lock = Mutex.create ()
 let cmd_queue_not_empty = Condition.create ()
 
 let add_cmd cmd =
-  !logger.debug "Enqueing a new command: %a"
+  !logger.debug "Enqueuing a new command: %a"
     Client.CltMsg.print_cmd cmd ;
   with_lock cmd_queue_lock (fun () ->
     cmd_queue := cmd :: !cmd_queue ;
     Condition.signal cmd_queue_not_empty) ;
-  !logger.debug "Done enqueing command"
+  !logger.debug "Done enqueuing command"
 
 (* Store all tuple batch per response key.
  * value is a count and a list (in reverse order) *)
@@ -424,12 +424,11 @@ let publish_tuple key mask tuple =
   batch_tuple key tuple
 
 let delete_key key =
-  !logger.info "Deleting publishing key %a" Key.print key ;
+  !logger.info "Deleting key %a" Key.print key ;
   add_cmd (CltCmd.DelKey key)
 
 (* Deletes both the recipient response key and the replay for that channel: *)
 let delete_replay chn =
-  !logger.info "Deleting replay %a" Channel.print chn ;
   delete_key (Key.Replays chn)
 
 (* Save the number of sources per channels *)
