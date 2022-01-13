@@ -219,7 +219,7 @@ let may_publish_tail conf ocamlify_tuple =
         let seq = !next_seq in
         incr next_seq ;
         let k = topic_pub (Uint32.of_int seq) in
-        add_cmd (CltCmd.NewKey (k, v, 0., false))
+        add_cmd (CltCmd.SetKey (k, v))
     | _ -> ()
 
 (*
