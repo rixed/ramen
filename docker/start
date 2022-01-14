@@ -53,8 +53,8 @@ if test -n "$CONFSERVER_PRIVKEY"; then
   # Create a default admin user with some secret key:
   mkdir -p "$RAMEN_DIR/confserver/users"
   cat > "$RAMEN_DIR/confserver/users/rixed" << EOF
-  { roles = [ Admin ] ;
-    clt_pub_key = "qfm*mEpTD^+b#LwRR9TP(v[T/IJqc-I+:8G5=k#Y" }
+  {"roles":[{"Admin":null},{"User":null}],
+   "clt_pub_key":"qfm*mEpTD^+b#LwRR9TP(v[T\/IJqc-I+:8G5=k#Y"}
 EOF
   services="$services,confserver"
 elif test -n "$CONFSERVER_PUBKEY"; then
@@ -69,7 +69,7 @@ else
   echo "WARNING: DEMO VERSION WILL BIND * AND AUTH EVERYONE AS ADMIN"
   mkdir -p "$RAMEN_DIR/confserver/users"
   cat > "$RAMEN_DIR/confserver/users/rixed" << EOF
-  { roles = [ Admin ] ; clt_pub_key = "" }
+  {"roles":[{"Admin":null},{"User":null}], "clt_pub_key":""}
 EOF
   INSECURE_BIND_ADDR=*
   services="$services,confserver"
