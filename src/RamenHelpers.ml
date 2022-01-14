@@ -381,7 +381,8 @@ let udp_server ?(buffer_size=2000) ~what ~inet_addr ~port ?(while_=always) k =
   (* FIXME: it seems that binding that socket makes cohttp leak descriptors
    * when sending reports to ramen. Oh boy! *)
   let sock_of_domain domain =
-    let sock = socket domain SOCK_DGRAM 0 in
+    let sock = socket ~cloexec:true domain SOCK_DGRAM 0 in
+    setsockopt sock SO_REUSEADDR true ;
     bind sock (ADDR_INET (inet_addr, port)) ;
     sock in
   let sock =
@@ -400,12 +401,110 @@ let udp_server ?(buffer_size=2000) ~what ~inet_addr ~port ?(while_=always) k =
         match sockaddr with
         | ADDR_INET (addr, _port) -> Some addr
         | _ -> None in
-      k ?sender buffer recv_len ;
+      let _ = k ?sender buffer 0 recv_len in
       (until_exit [@tailcall]) ()
   in
   try until_exit ()
   with Exit -> (* from the above restart_on_eintr *)
     ()
+
+type tcp_client =
+  { sender : Unix.inet_addr ;
+    buffer : Bytes.t ;
+    mutable start : int ;
+    mutable stop : int }
+
+let make_tcp_client ?(buffer_size=100000) sender =
+  { sender ;
+    buffer = Bytes.create buffer_size ;
+    start = 0 ; stop = 0 }
+
+(* Same behavior as the udp_server, but the callback is supposed to return how
+ * much it has read from the buffer. *)
+let tcp_server ?buffer_size ~what ~inet_addr ~port ?(while_=always) k =
+  if port < 0 || port > 65535 then
+    Printf.sprintf "%s: port number (%d) not within valid range" what port |>
+    failwith ;
+  let open Unix in
+  let sock_of_domain domain =
+    let sock = socket ~cloexec:true domain SOCK_STREAM 0 in
+    setsockopt sock SO_REUSEADDR true ;
+    bind sock (ADDR_INET (inet_addr, port)) ;
+    sock in
+  let sock =
+    try sock_of_domain PF_INET6
+    with _ -> sock_of_domain PF_INET in
+  !logger.info "Listening for connections on %s:%d"
+    (Unix.string_of_inet_addr inet_addr) port ;
+  listen sock 5 ;
+  set_nonblock sock ;
+  (* Identify clients by their socket: *)
+  let clients : (file_descr, tcp_client) Hashtbl.t = Hashtbl.create 10 in
+  let accept_one () =
+    match accept sock with
+    | exception e ->
+        !logger.error "Cannot accept connection on %d: %s"
+          port (Printexc.to_string e)
+    | fd, sockaddr ->
+        let sender =
+          match sockaddr with
+          | ADDR_INET (sender, _) -> sender
+          | _ -> assert false (* Because we listen on TCP *) in
+        set_close_on_exec fd ;
+        !logger.info "Accepted a connection to %s from %s"
+          what (name_of_sockaddr sockaddr) ;
+        Hashtbl.add clients fd (make_tcp_client ?buffer_size sender) in
+  let rec until_exit () =
+    if while_ () then
+      let read_fds = Hashtbl.keys clients |> List.of_enum |> List.cons sock in
+      let no_timeout = ~-.1. in
+      let readable_fds, _, _ =
+        restart_on_eintr ~while_ (select read_fds [] []) no_timeout in
+      List.iter (fun fd ->
+        if fd = sock then (
+          accept_one ()
+        ) else (
+          let clt = Hashtbl.find clients fd in
+          let sz = read fd clt.buffer clt.stop (Bytes.length clt.buffer - clt.stop) in
+          if sz = 0 then (
+            !logger.info "Client disconnected from %s" what ;
+            close fd ;
+            Hashtbl.remove clients fd
+          ) else (
+            !logger.debug "Received %d bytes on TCP port %d" sz port ;
+            let new_stop = clt.stop + sz in
+            let consumed =
+              k ?sender:(Some clt.sender) clt.buffer clt.start new_stop in
+            assert (consumed >= 0 && consumed <= new_stop - clt.start) ;
+            let new_start = clt.start + consumed in
+            if new_stop - new_start < 1000 ||
+               Bytes.length clt.buffer - new_stop < 5 * sz then (
+              (* Truncate the buffer *)
+              Bytes.blit clt.buffer new_start clt.buffer 0 (new_stop - new_start) ;
+              clt.start <- 0 ;
+              clt.stop <- new_stop - new_start
+            ) else (
+              (* Keep the buffer as it is: *)
+              clt.start <- new_start ;
+              clt.stop <- new_stop
+            ) ;
+            !logger.debug "Client buffer is now used from %d to %d"
+              clt.start clt.stop
+          )
+        )
+      ) readable_fds ;
+      (until_exit [@tailcall]) () in
+  try until_exit ()
+  with Exit -> (* from the above restart_on_eintr *)
+    ()
+
+let ip_server ?buffer_size ~what ~inet_addr ~port ~ip_proto
+              ?while_ k =
+  match ip_proto with
+  | Raql_ip_protocol.DessserGen.UDP ->
+      udp_server ?buffer_size ~what ~inet_addr ~port ?while_ k
+  | TCP ->
+      tcp_server ?buffer_size ~what ~inet_addr ~port ?while_ k
 
 let fail_for_good = ref false
 

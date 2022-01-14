@@ -18,8 +18,6 @@
 enum collectd_decode_status {
   // When everything went well
   COLLECTD_OK,
-  // When we were expecting more data at the end of the message
-  COLLECTD_SHORT_DATA,
   // When we were not given enough memory
   COLLECTD_NOT_ENOUGH_RAM,
   // When we failed to make sense of the data
@@ -45,6 +43,6 @@ extern enum collectd_decode_status collectd_decode(
   // Where to draw data from:
   size_t mem_size, void *mem,
   // Output parameters: metric pairs and their number
-  unsigned *num_metrics, struct collectd_metric **metrics);
+  unsigned *num_metrics, struct collectd_metric **metrics, unsigned *consumed);
 
 #endif

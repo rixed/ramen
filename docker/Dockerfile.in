@@ -189,5 +189,6 @@ EXPOSE 29329/TCP
 EXPOSE 29380/TCP
 # Graphite sink
 EXPOSE 2003/UDP
+EXPOSE 2003/TCP
 
 LABEL maintainer="rixed@happyleptic.org"

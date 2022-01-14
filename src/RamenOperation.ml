@@ -24,6 +24,7 @@ module Globals = RamenGlobalVariables
 module N = RamenName
 module T = RamenTypes
 module Variable = RamenVariable
+module IpProtocol = Raql_ip_protocol.DessserGen
 
 (*$inject
   open TestHelpers
@@ -317,11 +318,12 @@ and print with_types oc op =
       RamenEventTime.print oc et
     ) event_time
 
-  | ListenFor { net_addr ; port ; proto } ->
-    Printf.fprintf oc "%tLISTEN FOR %s ON %s:%s" sp
+  | ListenFor { net_addr ; port ; ip_proto ; proto } ->
+    Printf.fprintf oc "%tLISTEN FOR %s ON %s:%s PROTO %s" sp
       (RamenProtocols.string_of_proto proto)
       net_addr
       (Uint16.to_string port)
+      (RamenProtocols.string_of_ip_proto ip_proto)
 
 (* We need some tools to fold/iterate over all expressions contained in an
  * operation. We always do so depth first. *)
@@ -1313,6 +1315,13 @@ struct
     | NetflowV5 -> 2055
     | Graphite -> 2003
 
+  let default_ip_proto_of_protocol =
+    let open Raql_net_protocol.DessserGen in
+    function
+    | Collectd -> IpProtocol.UDP
+    | NetflowV5 -> IpProtocol.UDP
+    | Graphite -> IpProtocol.UDP
+
   let net_protocol m =
     let m = "network protocol" :: m in
     let open Raql_net_protocol.DessserGen in
@@ -1354,6 +1363,13 @@ struct
           Uint16.of_int))
     ) m
 
+  let ip_proto m =
+    let m = "IP protocol" :: m in
+    (
+      (strinG "UDP" >>: fun () -> IpProtocol.UDP) |<|
+      (strinG "TCP" >>: fun () -> IpProtocol.TCP)
+    ) m
+
   let listen_clause m =
     let m = "listen on operation" :: m in
     (strinG "listen" -- blanks --
@@ -1362,8 +1378,12 @@ struct
      optional ~def:None (
        blanks --
        optional ~def:() (strinG "on" -- blanks) -+
-       some host_port) >>:
-     fun (proto, addr_opt) ->
+       some host_port) ++
+     optional ~def:None (
+       blanks --
+       optional ~def:() (strinG "proto" -- blanks) -+
+       some ip_proto) >>:
+     fun ((proto, addr_opt), ip_proto) ->
         let net_addr, port =
           match addr_opt with
           | None ->
@@ -1375,7 +1395,8 @@ struct
           | Some (addr, Some port) ->
               addr,
               port in
-        net_addr, port, proto) m
+        let ip_proto = ip_proto |? default_ip_proto_of_protocol proto in
+        net_addr, port, ip_proto, proto) m
 
   let csv_specs m =
     let fields_schema m =
@@ -1520,7 +1541,7 @@ struct
     | CommitClause of commit_spec list
     | FromClause of data_source list
     | EveryClause of E.t option
-    | ListenClause of (string * Uint16.t * RamenProtocols.t)
+    | ListenClause of (string * Uint16.t * IpProtocol.t * RamenProtocols.t)
     | InstrumentationClause of string
     | ReadClause of (external_source * external_format)
   (* A special from clause that accept globs, used to match workers in
@@ -1724,8 +1745,8 @@ struct
                     every ; aggregate_factors }
       else if not_aggregate && not_read && not_event_time &&
               not_instrumentation && listen <> None then
-        let net_addr, port, proto = Option.get listen in
-        ListenFor { net_addr ; port ; proto ; factors }
+        let net_addr, port, ip_proto, proto = Option.get listen in
+        ListenFor { net_addr ; port ; proto ; ip_proto ; factors }
       else if not_aggregate && not_listen &&
               not_instrumentation &&
               read <> None then
@@ -1835,7 +1856,7 @@ struct
     "SELECT 1 AS 'one' EVERY 1{seconds}" \
         (test_op "YIELD 1 AS one EVERY 1 SECONDS")
 
-    "LISTEN FOR NetflowV5 ON 1.2.3.4:1234" \
+    "LISTEN FOR NetflowV5 ON 1.2.3.4:1234 PROTO UDP" \
         (test_op "LISTEN FOR netflow ON 1.2.3.4:1234")
 
     "FROM 'foo' SELECT *" (test_op "select * from foo")

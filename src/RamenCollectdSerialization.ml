@@ -17,20 +17,21 @@ type collectd_metric =
   (* And the values (up to 5): *)
   float * float option * float option * float option * float option
 
-external decode : Bytes.t -> int -> collectd_metric array = "wrap_collectd_decode"
+external decode : Bytes.t -> int -> int -> collectd_metric array * int = "wrap_collectd_decode"
 
-let collector ~inet_addr ~port ?while_ k =
+let collector ~inet_addr ~port ~ip_proto ?while_ k =
   (* Listen to incoming UDP datagrams on given port: *)
-  let serve ?sender buffer recv_len =
+  let serve ?sender buffer start stop =
     !logger.debug "Received %d bytes from collectd @ %s"
-      recv_len
+      (stop - start)
       (match sender with None -> "??" |
        Some ip -> Unix.string_of_inet_addr ip) ;
-    decode buffer recv_len |>
-    Array.iter k
+    let metrics, consumed = decode buffer start stop in
+    Array.iter k metrics ;
+    consumed
   in
   (* collectd current network.c buffer is 1452 bytes: *)
-  udp_server
+  ip_server ~ip_proto
     ~what:"collectd sink" ~buffer_size:1500 ~inet_addr ~port ?while_ serve
 
 let test ?(port=25826) () =

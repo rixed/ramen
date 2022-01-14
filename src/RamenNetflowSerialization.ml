@@ -5,6 +5,7 @@ open Stdint
 open DessserOCamlBackEndHelpers
 open RamenLog
 open RamenHelpers
+open RamenHelpersNoLog
 open RamenNetflow
 
 (* <blink>DO NOT ALTER</blink> this record without also updating
@@ -40,17 +41,20 @@ external decode :
   Bytes.t -> int -> RamenIp.t option -> netflow_metric array =
   "wrap_netflow_v5_decode"
 
-let collector ~inet_addr ~port ?while_ k =
+let collector ~inet_addr ~port ~ip_proto ?while_ k =
   (* Listen to incoming UDP datagrams on given port: *)
-  let serve ?sender buffer recv_len =
+  let serve ?sender buffer start stop =
+    if start <> 0 then todo "Netflow over TCP" ;
+    let recv_len = stop - start in
     let sender = Option.map RamenIp.of_unix_addr sender in
     !logger.debug "Received %d bytes from netflow source @ %a"
       recv_len
       (Option.print RamenIp.print) sender ;
     decode buffer recv_len sender |>
-    Array.iter k
+    Array.iter k ;
+    recv_len
   in
-  udp_server
+  ip_server ~ip_proto
     ~what:"netflow sink" ~inet_addr ~port ?while_ serve
 
 let test ?(port=2055) () =

@@ -3321,7 +3321,7 @@ let emit_read opc name source_name parser_name =
     p "    serialize_tuple_ ocamlify_tuple_" ;
     p "    orc_make_handler_ orc_write orc_close\n\n")
 
-let emit_listen_on opc name net_addr port proto =
+let emit_listen_on opc name net_addr port ip_proto proto =
   let open RamenProtocols in
   let op = option_get "must have function" __LOC__ opc.op in
   let addr_str =
@@ -3341,10 +3341,12 @@ let emit_listen_on opc name net_addr port proto =
   fail_with_context "listening function" (fun () ->
     p "let %s () =" name ;
     p "  CodeGenLib_Skeletons.listen_on" ;
-    p "    (%s ~inet_addr:(Unix.inet_addr_of_string %S) ~port:%s)"
+    p "    (%s ~inet_addr:(Unix.inet_addr_of_string %S) \
+             ~ip_proto:Raql_ip_protocol.DessserGen.%s ~port:%s)"
       collector
       addr_str
-      (Uint16.to_string port);
+      (RamenProtocols.string_of_ip_proto ip_proto)
+      (Uint16.to_string port) ;
     p "    %S sersize_of_tuple_ time_of_tuple_"
       (string_of_proto proto) ;
     p "    factors_of_tuple_ scalar_extractors_" ;
@@ -4460,8 +4462,8 @@ let emit_operation name top_half_name func_op in_type
         emit_read_kafka opc param_env env_env globals_env source_name specs) ;
     emit_parse_external opc parser_name format_name ;
     emit_read opc name source_name parser_name
-  | ListenFor { net_addr ; port ; proto } ->
-    emit_listen_on opc name net_addr port proto
+  | ListenFor { net_addr ; port ; ip_proto ; proto } ->
+    emit_listen_on opc name net_addr port ip_proto proto
   | Aggregate _ ->
     emit_aggregate opc global_state_env group_state_env
                    env_env param_env globals_env

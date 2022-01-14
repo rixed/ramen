@@ -138,6 +138,7 @@
 | ListenFor {
     net_addr: string; // TODO: Should be a string or IP valued $raql_expr
     port: u16;    // TODO: also a $raql_expr
+    ip_proto: $raql_ip_protocol;
     proto: $raql_net_protocol;
     factors: $field_name[[]];
   } ]

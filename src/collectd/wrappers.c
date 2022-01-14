@@ -30,23 +30,27 @@ static void set_nullable_string(value block, unsigned idx, char const *str)
   CAMLreturn0;
 }
 
-CAMLprim value wrap_collectd_decode(value buffer_, value num_bytes_)
+CAMLprim value wrap_collectd_decode(value buffer_, value start_, value stop_)
 {
-  CAMLparam2(buffer_, num_bytes_);
-  CAMLlocal3(res, m_tup, tmp);
-  unsigned num_bytes = Long_val(num_bytes_);
-  assert(caml_string_length(buffer_) >= num_bytes);
+  CAMLparam3(buffer_, start_, stop_);
+  CAMLlocal4(res, arr, m_tup, tmp);
+  unsigned start = Long_val(start_);
+  unsigned stop = Long_val(stop_);
+  assert(start <= stop);
+  assert(start <= caml_string_length(buffer_));
+  assert(stop <= caml_string_length(buffer_));
 
   unsigned num_metrics;
   struct collectd_metric *metrics; // Will point into mem
+  unsigned consumed;
   char mem[4096];
   // Must not call caml_alloc from there until we are done with buffer
-  char *buffer = String_val(buffer_);
+  char *buffer = String_val(buffer_) + start;
   enum collectd_decode_status status =
-    collectd_decode(num_bytes, buffer, sizeof(mem), mem, &num_metrics, &metrics);
+    collectd_decode(stop - start, buffer, sizeof(mem), mem, &num_metrics, &metrics, &consumed);
 
-  // Return an array of collectd_metric:
-  res = caml_alloc(num_metrics, 0);
+  /* Return an array of collectd_metric and number of consumed bytes */
+  arr = caml_alloc(num_metrics, 0);
 
   //printf("collectd_decode: collected %u metrics\n", num_metrics);
   for (unsigned i = 0; i < num_metrics; i++) {
@@ -69,14 +73,11 @@ CAMLprim value wrap_collectd_decode(value buffer_, value num_bytes_)
     for (; v < COLLECTD_NB_VALUES; v++) {
       Store_field(m_tup, 6+v, Val_int(0)); // None
     }
-    Store_field(res, i, m_tup);
+    Store_field(arr, i, m_tup);
   }
 
   switch (status) {
     case COLLECTD_OK:
-      break;
-    case COLLECTD_SHORT_DATA:
-      fprintf(stderr, "collectd_decode: short data!\n");
       break;
     case COLLECTD_NOT_ENOUGH_RAM:
       fprintf(stderr, "collectd_decode: not enough RAM!\n");
@@ -86,5 +87,9 @@ CAMLprim value wrap_collectd_decode(value buffer_, value num_bytes_)
       break;
   }
 
+  /* Now add the number of consumed bytes: */
+  res = caml_alloc_tuple(2);
+  Store_field(res, 0, arr);
+  Store_field(res, 1, Val_long(consumed));
   CAMLreturn(res);
 }

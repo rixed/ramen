@@ -122,24 +122,39 @@ let parse ?sender ~recept_time line =
     (parse ~recept_time:1.23 "foo.bar 42")
 *)
 
-let collector ~inet_addr ~port ?while_ k =
+let collector ~inet_addr ~port ~ip_proto ?while_ k =
   let lines_of_string s =
     (string_split_on_char '\n' s |> List.enum) // ((<>) "")
   in
-  let serve ?sender buffer recv_len =
+  let serve ?sender buffer start stop =
     let sender = Option.map RamenIp.of_unix_addr sender in
-    !logger.debug "Received a graphite UDP datagram from %a"
-      (Option.print RamenIp.print) sender ;
-    let recept_time = Unix.gettimeofday () in
-    match
-      (Bytes.sub_string buffer 0 recv_len |>
-       lines_of_string) /@
-      String.trim /@
-      parse ?sender ~recept_time with
-    | exception e ->
-        print_exception ~what:"Converting graphite plain text into tuple" e
-    | tuples ->
-        Enum.iter k tuples
+    let recv_len = stop - start in
+    (* Look for the actual stop we are going to use: the last newline
+     * character *)
+    match Bytes.rindex_from buffer (stop - 1) '\n' with
+    | exception Not_found ->
+        0
+    | newline when newline < start ->
+        0
+    | newline ->
+        let stop = newline + 1 in
+        !logger.debug
+          "Received a graphite message of %d bytes (out of %d) from %a"
+          (stop - start) recv_len
+          (Option.print RamenIp.print) sender ;
+        let recept_time = Unix.gettimeofday () in
+        match
+          (Bytes.sub_string buffer start stop |>
+           lines_of_string) /@
+          String.trim /@
+          parse ?sender ~recept_time with
+        | exception e ->
+            print_exception ~what:"Converting graphite plain text into tuple" e ;
+            (* Ignore that batch and proceed: *)
+            stop - start
+        | tuples ->
+            Enum.iter k tuples ;
+            stop - start
   in
-  udp_server
+  ip_server ~ip_proto
     ~what:"graphite sink" ~buffer_size:60000 ~inet_addr ~port ?while_ serve

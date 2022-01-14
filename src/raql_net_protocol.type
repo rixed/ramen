@@ -1,2 +1,2 @@
-// Protocols suppoerted by readers
+// Protocols supported by readers
 [ Collectd | NetflowV5 | Graphite ]

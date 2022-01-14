@@ -52,7 +52,7 @@ static char *alloc_string(struct arena *arena, size_t len)
 
 enum collectd_decode_status collectd_decode(
   size_t msg_size, char const *msg_, size_t mem_size, void *mem,
-  unsigned *num_metrics, struct collectd_metric **metrics)
+  unsigned *num_metrics, struct collectd_metric **metrics, unsigned *consumed)
 {
   unsigned char const *msg = (unsigned char const *)msg_;
   struct arena *arena = (struct arena *)mem;
@@ -60,6 +60,7 @@ enum collectd_decode_status collectd_decode(
 
   *num_metrics = 0;
   *metrics = arena->bytes;
+  *consumed = 0;
 
   /* Context. We keep those values until replaced.
    * Experience shows that the data type (type=6) comes last so we commit the
@@ -78,7 +79,7 @@ enum collectd_decode_status collectd_decode(
   // Each iteration decodes a part
   for (size_t p = 0; p < msg_size; ) {
 #   define CHECK(SZ) do { \
-      if (p + SZ > msg_size) return COLLECTD_SHORT_DATA; \
+      if (p + SZ > msg_size) break; \
     } while (0)
     // decode part header
     CHECK(4);
@@ -204,6 +205,7 @@ enum collectd_decode_status collectd_decode(
           }
 
           (*num_metrics) ++;
+          *consumed = p;
         }
         break;
       default: // skip anything else

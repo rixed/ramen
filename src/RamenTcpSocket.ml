@@ -1,5 +1,6 @@
 (* This module implements a simple event-based TCP server that transmit PDUs
- * prefixed with a 4 bytes length (in little endian). *)
+ * prefixed with a 4 bytes length (in little endian). Used by the configuration
+ * server. *)
 open Batteries
 
 open RamenLog

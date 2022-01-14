@@ -245,6 +245,7 @@ TYPE_SOURCES = \
 	src/raql_binding_key.type \
 	src/raql_expr.type \
 	src/raql_net_protocol.type \
+	src/raql_ip_protocol.type \
 	src/raql_select_field.type \
 	src/raql_flush_method.type \
 	src/raql_operation.type \

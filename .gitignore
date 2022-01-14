@@ -160,6 +160,7 @@ src/event_time_field.ml
 src/raql_operation.ml
 src/raql_flush_method.ml
 src/raql_net_protocol.ml
+src/raql_ip_protocol.ml
 src/raql_select_field.ml
 src/raql_binding_key.ml
 src/raql_path_comp.ml
