@@ -68,9 +68,8 @@ let factors_of_function persist_dir pname func =
       (* extension for the GC. *)
       N.path (sign ^".factors") ]
 
-(* Finally, operations have two additional output streams: one for
- * instrumentation statistics, and one for notifications. Both are
- * common to all running operations, low traffic, and archived. *)
+(* Finally, operations have one additional output stream for legacy
+ * instrumentation statistics. FIXME: get rid of it. *)
 let report_ringbuf persist_dir =
   N.path_cat
     [ persist_dir ; N.path "instrumentation_ringbuf" ;
