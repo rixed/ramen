@@ -98,7 +98,7 @@ RUN opam install --yes depext && \
     opam repo priority ocalme 1 && \
     opam install --yes inotify qtest ipaddr csv
 
-RUN cd /root && \
+RUN cd /root/ramen && \
     ./configure && \
     opam install --yes --deps-only .
 
@@ -188,6 +188,6 @@ EXPOSE 29329/TCP
 # Httpd
 EXPOSE 29380/TCP
 # Graphite sink
-EXPOSE 2003/TCP
+EXPOSE 2003/UDP
 
 LABEL maintainer="rixed@happyleptic.org"
