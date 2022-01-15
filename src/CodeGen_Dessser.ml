@@ -1412,6 +1412,13 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
     add_expr compunit "commit_cond0_true_when_eq_"
              (DE.Ops.bool cond0_true_when_eq) in
   let compunit =
+    (* This one must be emitted before any other using [out_prev_type] *)
+    fail_with_context "coding for optional-field getter functions" (fun () ->
+      fold_fields out_type compunit (fun compunit field_name field_type ->
+        let fun_name = "maybe_"^ (field_name : N.field :> string) ^"_" in
+        maybe_field out_type field_name field_type |>
+        add_expr compunit fun_name)) in
+  let compunit =
     fail_with_context "coding for commit condition function" (fun () ->
       commit_when_clause
         ~r_env in_type minimal_type out_prev_type
@@ -1421,12 +1428,6 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
     fail_with_context "coding for key extraction function" (fun () ->
       key_of_input ~r_env in_type key |>
       add_expr compunit "key_of_input_") in
-  let compunit =
-    fail_with_context "coding for optional-field getter functions" (fun () ->
-      fold_fields out_type compunit (fun compunit field_name field_type ->
-        let fun_name = "maybe_"^ (field_name : N.field :> string) ^"_" in
-        maybe_field out_type field_name field_type |>
-        add_expr compunit fun_name)) in
   let compunit =
     fail_with_context "coding for select-clause function" (fun () ->
       select_clause ~r_env ~build_minimal:true out_fields

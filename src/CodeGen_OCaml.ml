@@ -4130,6 +4130,9 @@ let emit_aggregate opc global_state_env group_state_env
                     ["global_"] ~where ~commit_cond ~opc aggregate_fields) ;
   fail_with_context "tuple reader" (fun () ->
     emit_deserialize_function 0 "read_in_tuple_" ~opc in_typ) ;
+  (* This one must be emitted before any other using the out_prev_tuple *)
+  fail_with_context "optional-field extraction functions" (fun () ->
+    emit_maybe_fields opc.code opc.typ) ;
   fail_with_context "where-fast function" (fun () ->
     emit_where ~env:(global_state_env @ base_env) "where_fast_" in_typ ~opc
       where_fast) ;
@@ -4139,8 +4142,6 @@ let emit_aggregate opc global_state_env group_state_env
   fail_with_context "key extraction function" (fun () ->
     emit_key_of_input "key_of_input_" in_typ ~env:(global_state_env @ base_env)
                       ~opc key) ;
-  fail_with_context "optional-field extraction functions" (fun () ->
-    emit_maybe_fields opc.code opc.typ) ;
   fail_with_context "commit condition function" (fun () ->
     emit_when ~env:(group_state_env @ global_state_env @ base_env) "commit_cond_"
               in_typ minimal_typ ~opc commit_cond_rest) ;

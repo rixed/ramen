@@ -1,0 +1,4 @@
+DEFINE f1 AS SELECT true AS x EVERY 1s;
+
+DEFINE f2 AS SELECT x FROM f1
+  WHEN x <> COALESCE(previous.x, false);
