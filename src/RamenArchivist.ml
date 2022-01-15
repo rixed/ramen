@@ -642,7 +642,7 @@ let realloc conf session =
         let src_path = N.src_path_of_program prog_name in
         let constify_retention r =
           match r.Retention.duration with
-          | E.{ text = Stateless (SL0 (Const (VFloat _))) ; _ } -> r
+          | e when E.float_of_const e <> None -> r
           | E.{ text = Stateless (SL2 (Get, n, _)) ; _ } ->
               let param_name =
                 E.string_of_const n |> option_get "retention" __LOC__ |>
