@@ -114,7 +114,7 @@ struct
     (* Add a few examples: *)
     let add_example name ext v =
       let can_read = anybody
-      and can_write = nobody
+      and can_write = admin
       and can_del = admin
       and k = Key.Sources (N.src_path ("examples/"^ name), ext) in
       create_unlocked srv k v ~can_read ~can_write ~can_del in
