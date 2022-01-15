@@ -139,8 +139,8 @@ struct
       Generators.Network.logs ;
     add_ramen_example "generators/network/aggregated"
       Generators.Network.aggregated ;
-    add_ramen_example "generators/waveforms"
-      Generators.waveforms ;
+    add_ramen_example "generators/basic"
+      Generators.basic;
 end
 
 (*
