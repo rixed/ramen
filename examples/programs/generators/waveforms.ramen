@@ -1,0 +1,12 @@
+-- vim: ft=sql
+
+DEFINE LAZY waveforms AS
+  SELECT
+    NOW as start,
+    (start // 60) % 2 AS square,
+    SIN (start * PI / 30) AS wave,
+    (start - TRUNCATE(start, 60)) / 60 AS sawtooth,
+    1 + COALESCE(previous.counter, 0) AS counter,
+    0.1 * (RANDOM - 0.5) + COALESCE(previous.walker, 0) AS _walker,
+    IF _walker > 1 THEN 1 - (_walker - 1) ELSE IF _walker < -1 THEN -1 + (-1 - _walker) ELSE _walker AS walker
+  EVERY 1s;
