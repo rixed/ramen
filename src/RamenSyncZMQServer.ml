@@ -121,7 +121,9 @@ struct
     let add_ramen_example name text =
       let v = Value.of_string text in
       add_example name "ramen" v
-    and add_alert_example name text =
+    (* FIXME: example alerts depend on generated#1min, which does not run,
+     * therefore alerts cannot compile. So they are not in the example set. *)
+    and _add_alert_example name text =
       let a = dessser_of_string Value.Alert.wrap_of_json text in
       let v = Value.Alert a in
       add_example name "alert" v
@@ -129,16 +131,16 @@ struct
     let open RamenSourceExamples in
     add_ramen_example "monitoring/network/security"
       Monitoring.Network.security ;
-    add_ramen_example "monitoring/hosts"
+    add_ramen_example "monitoring/network/hosts"
       Monitoring.Network.hosts ;
     add_ramen_example "monitoring/network/traffic"
       Monitoring.Network.traffic ;
-    add_ramen_example "monitoring/generated/logs"
-      Monitoring.Generated.logs ;
-    add_ramen_example "monitoring/generated/aggregated"
-      Monitoring.Generated.aggregated ;
-    add_alert_example "monitoring/generated/alerts/error_rate"
-      Monitoring.Generated.error_rate
+    add_ramen_example "generators/network/logs"
+      Generators.Network.logs ;
+    add_ramen_example "generators/network/aggregated"
+      Generators.Network.aggregated ;
+    add_ramen_example "generators/waveforms"
+      Generators.waveforms ;
 end
 
 (*

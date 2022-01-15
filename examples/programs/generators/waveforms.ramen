@@ -1,12 +1,16 @@
--- vim: ft=sql
+-- vim: ft=sql expandtab
+-- Example program yielding various waveforms that can come handy for toying
+-- around or testing.
 
 DEFINE LAZY waveforms AS
   SELECT
     NOW as start,
-    (start // 60) % 2 AS square,
+    2 * (((start // 60) % 2) - 0.5) AS square,
     SIN (start * PI / 30) AS wave,
     (start - TRUNCATE(start, 60)) / 60 AS sawtooth,
-    1 + COALESCE(previous.counter, 0) AS counter,
-    0.1 * (RANDOM - 0.5) + COALESCE(previous.walker, 0) AS _walker,
-    IF _walker > 1 THEN 1 - (_walker - 1) ELSE IF _walker < -1 THEN -1 + (-1 - _walker) ELSE _walker AS walker
+    0.1 * (RANDOM - 0.5 + 0.2 * square) + COALESCE(previous.walker, 0) AS walker,
+    IF walker > 1 THEN 1 - (walker - 1)
+    ELSE IF walker < -1 THEN -1 + (-1 - walker)
+    ELSE walker
+      AS bounded_walker
   EVERY 1s;
