@@ -45,30 +45,31 @@ let add conf output_file username roles srv_pub_key_file
                     allowed in insecure connections." ;
   let client_public_key, client_private_key = Authn.random_keypair () in
   User.Db.make_user conf.C.users_dir username roles client_public_key ;
-  (fun f ->
-    match output_file with
-    | None -> f stdout
-    | Some fname ->
-        File.with_file_out ~mode:[`create; `text ; `excl]
-                           (fname : N.path :> string) f ;
-        !logger.info "User identity created in %a for user %s."
-          N.path_print fname username ;
-        !logger.info "You should now transmit this file to this user and \
-                      then delete it.")
-    (fun oc ->
-      let user_id =
-        PPP.to_string C.identity_file_ppp_json
-          { username ; server_public_key ; client_public_key ;
-            client_private_key } in
-      if also_dump_server_conf then
-        let srv_conf_fname = User.Db.file_name conf.C.users_dir username in
-        let srv_conf = Files.read_whole_file srv_conf_fname in
-        Printf.fprintf oc
-          "This is the server configuration:\n%s\n\n\
-           And this is your identity file:\n%s\n"
-          srv_conf user_id
-      else
-        String.print oc user_id)
+  let output oc =
+    let user_id =
+      PPP.to_string C.identity_file_ppp_json
+        { username ; server_public_key ; client_public_key ;
+          client_private_key } in
+    let user_id = user_id ^ "\n" in
+    if also_dump_server_conf then
+      let srv_conf_fname = User.Db.file_name conf.C.users_dir username in
+      let srv_conf = Files.read_whole_file srv_conf_fname in
+      Printf.fprintf oc
+        "This is the server configuration:\n%s\n\n\
+         And this is your identity file:\n%s\n"
+        srv_conf user_id
+    else
+      String.print oc user_id in
+  match output_file with
+  | None ->
+      output stdout
+  | Some fname ->
+      File.with_file_out ~mode:[`create; `text ; `excl]
+                         (fname : N.path :> string) output ;
+      !logger.info "User identity created in %a for user %s."
+        N.path_print fname username ;
+      !logger.info "You should now transmit this file to this user and \
+                    then delete it."
 
 let del conf username () =
   if not (User.Db.user_exists conf.C.users_dir username) then
