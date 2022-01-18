@@ -53,15 +53,17 @@ let initial_environments op =
   let glob_env, loc_env =
     O.fold_expr ([], []) (fun _c _s (glo, loc as prev) e ->
       match e.E.text with
-      | Stateful (g, _, _) ->
+      | Stateful { lifespan ; _ } ->
           let n = CodeGen_OCaml.name_of_state e in
-          (match g with
-          | E.GlobalState ->
+          (match lifespan with
+          | Some E.GlobalState ->
               let v = CodeGen_OCaml.id_of_state GlobalState ^"."^ n in
               (State e.uniq_num, v) :: glo, loc
-          | E.LocalState ->
+          | Some E.LocalState ->
               let v = CodeGen_OCaml.id_of_state LocalState ^"."^ n in
-              glo, (State e.uniq_num, v) :: loc)
+              glo, (State e.uniq_num, v) :: loc
+          | None ->
+              assert false (* Must have been replaced already *))
       | _ -> prev
     ) op in
   glob_env, loc_env

@@ -229,12 +229,12 @@ let generate_alert get_program (src_file : N.path) a =
         match e.E.text with
         (* If the field we re-aggregate is a min, then we can safely aggregate
          * it again with the min function. Same for max, and sum. *)
-        | E.(Stateful (_, _, SF1 (AggrMin, _))) -> "min"
-        | E.(Stateful (_, _, SF1 (AggrMax, _))) -> "max"
-        | E.(Stateful (_, _, SF1 (AggrSum, _))) -> "sum"
+        | E.Stateful { operation = SF1 (AggrMin, _) ; _ } -> "min"
+        | E.Stateful { operation = SF1 (AggrMax, _) ; _ } -> "max"
+        | E.Stateful { operation = SF1 (AggrSum, _) ; _ } -> "sum"
         (* If the field was an average, then our last hope is to reuse the
          * same expression, hoping that the components will be available: *)
-        | E.(Stateful (_, _, SF1 (AggrAvg, _))) -> "same"
+        | E.Stateful { operation = SF1 (AggrAvg, _) ; _ } -> "same"
         | _ ->
             (* Beware that the carry_fields need not be numeric: *)
             if DT.is_numeric ft.RamenTuple.typ.DT.typ then "sum"

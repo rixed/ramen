@@ -155,11 +155,12 @@ let rec constant mn v =
  * can be changed with set-vec.
  *)
 
-let pick_state r_env e state_lifespan =
+let pick_state r_env e lifespan =
   let state_var =
-    match state_lifespan with
-    | E.LocalState -> Variable.GroupState
-    | E.GlobalState -> Variable.GlobalState in
+    match lifespan with
+    | Some E.LocalState -> Variable.GroupState
+    | Some E.GlobalState -> Variable.GlobalState
+    | None -> assert false (* Must have been replaced long ago *) in
   try List.assoc (RecordValue state_var) r_env
   with Not_found ->
     Printf.sprintf2
@@ -251,30 +252,31 @@ let rec init_state ?depth ~r_env e =
     if e.E.typ.DT.nullable then not_null v, DT.optional t
     else v, DT.required t in
   match e.E.text with
-  | Stateful (_, _, SF1 ((AggrMin | AggrMax | AggrFirst | AggrLast), _)) ->
+  | Stateful { operation = SF1 ((AggrMin | AggrMax | AggrFirst | AggrLast), _) ; _ } ->
       (* A bool to tell if there ever was a value, and the selected value *)
       make_tup [ bool false ; null e.typ.DT.typ ],
       DT.(required (tup [| bool ; optional e.typ.DT.typ |]))
-  | Stateful (_, _, SF1 (AggrSum, _)) when e.typ.DT.typ = DT.TFloat ->
+  | Stateful { operation = SF1 (AggrSum, _) ; _ }
+    when e.typ.DT.typ = DT.TFloat ->
       let ksum = DS.Kahan.init in
       as_nullable_as_e ksum DS.Kahan.state_t.DT.typ
-  | Stateful (_, _, SF1 (AggrSum, _)) ->
+  | Stateful { operation = SF1 (AggrSum, _) ; _ } ->
       convert e.E.typ (u8_of_int 0),
       e.E.typ
-  | Stateful (_, _, SF1 (AggrAvg, _)) ->
+  | Stateful { operation = SF1 (AggrAvg, _) ; _ } ->
       (* The state of the avg is composed of the count and the (Kahan) sum: *)
       make_tup [ u32_of_int 0 ; DS.Kahan.init ],
       DT.(required (tup [| u32 ; DS.Kahan.state_t |]))
-  | Stateful (_, _, SF1 (AggrAnd, _)) ->
+  | Stateful { operation = SF1 (AggrAnd, _) ; _ } ->
       bool true,
       DT.bool
-  | Stateful (_, _, SF1 (AggrOr, _)) ->
+  | Stateful { operation = SF1 (AggrOr, _) ; _ } ->
       bool false,
       DT.bool
-  | Stateful (_, _, SF1 ((AggrBitAnd | AggrBitOr | AggrBitXor), _)) ->
+  | Stateful { operation = SF1 ((AggrBitAnd | AggrBitOr | AggrBitXor), _) ; _ } ->
       convert e.E.typ (u8_of_int 0),
       e.E.typ
-  | Stateful (_, _, SF1 (Group, _)) ->
+  | Stateful { operation = SF1 (Group, _) ; _ } ->
       (* Groups are typed as lists not sets: *)
       let item_t =
         match e.E.typ.DT.typ with
@@ -282,10 +284,10 @@ let rec init_state ?depth ~r_env e =
         | _ -> invalid_arg ("init_state: "^ E.to_string e) in
       empty_set item_t,
       DT.(required (set Simple item_t))
-  | Stateful (_, _, SF1 (Count, _)) ->
+  | Stateful { operation = SF1 (Count, _) ; _ } ->
       convert e.E.typ (u8_of_int 0),
       e.E.typ
-  | Stateful (_, _, SF1 (Distinct, e)) ->
+  | Stateful { operation = SF1 (Distinct, e) ; _ } ->
       (* Distinct result is a boolean telling if the last met value was already
        * present in the hash, so we also need to store that bool in the state
        * unfortunately. Since the hash_table is already mutable, let's also make
@@ -294,7 +296,7 @@ let rec init_state ?depth ~r_env e =
         [ hash_table e.E.typ (u8_of_int 100) ;
           make_ref (bool false) ],
       DT.(required (tup [| required (set HashTable e.E.typ) ; ref_ bool |]))
-  | Stateful (_, _, SF2 (Lag, steps, e)) ->
+  | Stateful { operation = SF2 (Lag, steps, e) ; _ } ->
       (* The state is just going to be a list of past values initialized with
        * NULLs (the value when we have so far received less than that number of
        * steps) and the index of the oldest value. *)
@@ -310,15 +312,16 @@ let rec init_state ?depth ~r_env e =
           "oldest_index", make_ref (u32_of_int 0) ],
       DT.(required (record [| "past_values", required (arr (optional item_vtyp)) ;
                               "oldest_index", ref_ u32 |]))
-  | Stateful (_, _, SF2 (ExpSmooth, _, _)) ->
+  | Stateful { operation = SF2 (ExpSmooth, _, _) ; _ } ->
       null e.E.typ.DT.typ,
       DT.optional e.E.typ.DT.typ
-  | Stateful (_, skip_nulls, SF2 (Sample, n, e)) ->
+  | Stateful { skip_nulls ; operation = SF2 (Sample, n, e) ; _ } ->
       let n = expr n in
       let item_t = item_type_for_sample skip_nulls e in
       sampling item_t n,
       DT.(required (set Sampling item_t))
-  | Stateful (_, _, SF3 (MovingAvg, p, k, x)) when E.is_one p ->
+  | Stateful { operation = SF3 (MovingAvg, p, k, x) ; }
+    when E.is_one p ->
       let one = convert DT.(required k.E.typ.DT.typ) (u8_of_int 1) in
       let k = expr k in
       let len = add k one in
@@ -328,19 +331,19 @@ let rec init_state ?depth ~r_env e =
           "count", make_ref (u32_of_int 0) ],
       DT.(required (record [| "values", required (arr x.E.typ) ;
                               "count", ref_ u32 |]))
-  | Stateful (_, _, SF3 (Hysteresis, _, _, _)) ->
+  | Stateful { operation = SF3 (Hysteresis, _, _, _) ; _ } ->
       (* The value is supposed to be originally within bounds: *)
       let init = bool true in
       as_nullable_as_e init DT.TBool
   (* Remember is implemented completely as external functions for init, update
    * and finalize (using CodeGenLib.Remember).
    * TOP should probably be external too: *)
-  | Stateful (_, _, SF4 (Remember _, fpr, _, dur, _)) ->
+  | Stateful { operation = SF4 (Remember _, fpr, _, dur, _) ; _ } ->
       let frp = to_float (expr fpr)
       and dur = to_float (expr dur) in
       apply (ext_identifier "CodeGenLib.Remember.init") [ frp ; dur ],
       DT.(required (ext "remember_state"))
-  | Stateful (_, _, SF4s (Largest { inv ; _ }, _, _, _, by)) ->
+  | Stateful { operation = SF4s (Largest { inv ; _ }, _, _, _, by) ; _ } ->
       let item_t = item_type_for_largest e by in
       let cmp = cmp ~inv item_t in
       make_rec
@@ -350,7 +353,7 @@ let rec init_state ?depth ~r_env e =
           "count", make_ref (u32_of_int 0) ],
       DT.(required (record [| "values", required (set Heap item_t) ;
                               "count", ref_ u32 |]))
-  | Stateful (_, _, Past { max_age ; sample_size ; _ }) ->
+  | Stateful { operation = Past { max_age ; sample_size ; _ } ; _ } ->
       if sample_size <> None then
         todo "PAST operator with integrated sampling" ;
       let v_t = lst_item_type e in
@@ -365,7 +368,9 @@ let rec init_state ?depth ~r_env e =
       DT.(required (record [| "values", required (set Heap item_t) ;
                               "max_age", float ;
                               "tumbled", ref_ (optional (set Heap item_t)) |]))
-  | Stateful (_, skip_nulls, Top { size ; max_size ; sigmas ; top_what ; _ }) ->
+  | Stateful { skip_nulls ;
+               operation =
+                 Top { size ; max_size ; sigmas ; top_what ; _ } ; _ } ->
       (* Dessser TOP set uses a special [insert_weighted] operator to insert
        * values with a weight. It has no notion of time and decay so decay will
        * be implemented when updating the state by inflating the weights with
@@ -1250,7 +1255,7 @@ and expression ?(depth=0) ~r_env e =
      * When the argument is a list then those functions are actually stateless:
      *)
     (* FIXME: do not store a state for those in any state vector *)
-    | Stateful (_, skip_nulls, SF1 (aggr, e_list))
+    | Stateful { skip_nulls ; operation = SF1 (aggr, e_list) ; _ }
       when E.is_a_list e_list ->
         let state, _ = init_state ~r_env e in
         let list_item_t =
@@ -1286,22 +1291,22 @@ and expression ?(depth=0) ~r_env e =
         (* Finalize the state: *)
         null_map state (fun state ->
           finalize_sf1 aggr state e.typ)
-    | Stateful (state_lifespan, _, SF1 (aggr, _)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; operation = SF1 (aggr, _) ; _ } ->
+        let state_rec = pick_state r_env e lifespan in
         let state = get_state state_rec e in
         finalize_sf1 aggr state e.typ
-    | Stateful (state_lifespan, _, SF2 (Lag, _, _)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; operation = SF2 (Lag, _, _) ; _ } ->
+        let state_rec = pick_state r_env e lifespan in
         let_ ~name:"lag_state" (get_state state_rec e) (fun state ->
           let past_vals = get_field "past_values" state
           and oldest_index = get_field "oldest_index" state in
           nth (get_ref oldest_index) past_vals)
-    | Stateful (state_lifespan, _, SF2 (ExpSmooth, _, _)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; operation = SF2 (ExpSmooth, _, _) ; _ } ->
+        let state_rec = pick_state r_env e lifespan in
         let state = get_state state_rec e in
         force ~what:"finalize ExpSmooth" state
-    | Stateful (state_lifespan, skip_nulls, SF2 (Sample, _, item_e)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; skip_nulls ; operation = SF2 (Sample, _, item_e) } ->
+        let state_rec = pick_state r_env e lifespan in
         let state = get_state state_rec e in
         (* If the result is nullable then empty-set is Null. Otherwise
          * an empty set is not possible according to type-checking. *)
@@ -1313,8 +1318,8 @@ and expression ?(depth=0) ~r_env e =
               ~else_:(not_null set)
           else
             set)
-    | Stateful (state_lifespan, _, SF3 (MovingAvg, _, _, _)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; operation = SF3 (MovingAvg, _, _, _) ; _ } ->
+        let state_rec = pick_state r_env e lifespan in
         let_ ~name:"mavg_state" (get_state state_rec e) (fun state ->
           let values = get_field "values" state in
           let_ ~name:"values" values (fun values ->
@@ -1333,13 +1338,14 @@ and expression ?(depth=0) ~r_env e =
                       s ]) in
                 (* [div] already returns a nullable *)
                 div sum (to_float (cardinality values)))))
-    | Stateful (state_lifespan, _, SF3 (Hysteresis, _, _, _)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; operation = SF3 (Hysteresis, _, _, _) ; _ } ->
+        let state_rec = pick_state r_env e lifespan in
         let state = get_state state_rec e in
         state (* The state is the final result *)
-    | Stateful (state_lifespan, _,
-                SF4s (Largest { up_to ; _ }, max_len, but, _, by)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ;
+                 operation = SF4s (Largest { up_to ; _ }, max_len, but, _, by) ;
+                 _ } ->
+        let state_rec = pick_state r_env e lifespan in
         let state = get_state state_rec e in
         let values = get_field "values" state in
         let_ ~name:"values" values (fun values ->
@@ -1362,13 +1368,12 @@ and expression ?(depth=0) ~r_env e =
                 if_ cond
                   ~then_:(null e.E.typ.DT.typ)
                   ~else_:res))))
-    | Stateful (state_lifespan, _,
-                SF4 (Remember _, _, _, _, _)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; operation = SF4 (Remember _, _, _, _, _) ; _ } ->
+        let state_rec = pick_state r_env e lifespan in
         let state = get_state state_rec e in
         apply (ext_identifier "CodeGenLib.Remember.finalize") [ state ]
-    | Stateful (state_lifespan, _, Past { tumbling ; _ }) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; operation = Past { tumbling ; _ } ; _ } ->
+        let state_rec = pick_state r_env e lifespan in
         let_ ~name:"past_state" (get_state state_rec e) (fun state ->
           let values = get_field "values" state in
           let v_t = lst_item_type e in
@@ -1383,8 +1388,8 @@ and expression ?(depth=0) ~r_env e =
                 not_null (map_ nop proj (arr_of_set tumbled)))
             else
               not_null (map_ nop proj (arr_of_set values)))))
-    | Stateful (state_lifespan, _, Top { top_what ; output ; _ }) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; operation = Top { top_what ; output ; _ } ; _ } ->
+        let state_rec = pick_state r_env e lifespan in
         let state = get_state state_rec e in
         let top = get_field "top" state in
         (match output with
@@ -1514,20 +1519,20 @@ let update_state_for_expr ~r_env ~what e =
       else
         set_state state_rec state_t e new_state in
     match e.E.text with
-    | Stateful (_, _, SF1 (_, e1)) when E.is_a_list e1 ->
+    | Stateful { operation = SF1 (_, e1) ; _ } when E.is_a_list e1 ->
         (* Those are not actually stateful, see [expression] where those are
          * handled as stateless operators. *)
         lst
-    | Stateful (state_lifespan, skip_nulls, SF1 (aggr, e1)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; skip_nulls ; operation = SF1 (aggr, e1) } ->
+        let state_rec = pick_state r_env e lifespan in
         with_expr ~skip_nulls e1 (fun d1 ->
           with_state state_rec e (fun state state_t ->
             update_state_sf1 aggr d1 e1.E.typ state e.typ.DT.typ |>
             may_set state_rec state_t)
         ) :: lst
     (* FIXME: not all parameters are subject to skip_nulls! *)
-    | Stateful (state_lifespan, skip_nulls, SF2 (aggr, e1, e2)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; skip_nulls ; operation = SF2 (aggr, e1, e2) } ->
+        let state_rec = pick_state r_env e lifespan in
         with_expr ~skip_nulls e1 (fun d1 ->
           with_expr ~skip_nulls e2 (fun d2 ->
             with_state state_rec e (fun state state_t ->
@@ -1535,8 +1540,9 @@ let update_state_for_expr ~r_env ~what e =
                                e.typ.typ |>
               may_set state_rec state_t))
         ) :: lst
-    | Stateful (state_lifespan, skip_nulls, SF3 (aggr, e1, e2, e3)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; skip_nulls ;
+                 operation = SF3 (aggr, e1, e2, e3) } ->
+        let state_rec = pick_state r_env e lifespan in
         with_expr ~skip_nulls e1 (fun d1 ->
           with_expr ~skip_nulls e2 (fun d2 ->
             with_expr ~skip_nulls e3 (fun d3 ->
@@ -1545,8 +1551,9 @@ let update_state_for_expr ~r_env ~what e =
                                  d3 e3.E.typ state state_t |>
                 may_set state_rec state_t)))
         ) :: lst
-    | Stateful (state_lifespan, skip_nulls, SF4 (aggr, e1, e2, e3, e4)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; skip_nulls ;
+                 operation = SF4 (aggr, e1, e2, e3, e4) } ->
+        let state_rec = pick_state r_env e lifespan in
         with_expr ~skip_nulls e1 (fun d1 ->
           with_expr ~skip_nulls e2 (fun d2 ->
             with_expr ~skip_nulls e3 (fun d3 ->
@@ -1556,8 +1563,9 @@ let update_state_for_expr ~r_env ~what e =
                                    d3 e3.E.typ d4 e4.E.typ state state_t |>
                   may_set state_rec state_t))))
         ) :: lst
-    | Stateful (state_lifespan, skip_nulls, SF4s (aggr, e1, e2, e3, e4s)) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; skip_nulls ;
+                 operation = SF4s (aggr, e1, e2, e3, e4s) } ->
+        let state_rec = pick_state r_env e lifespan in
         with_expr ~skip_nulls e1 (fun d1 ->
           with_expr ~skip_nulls e2 (fun d2 ->
             with_expr ~skip_nulls e3 (fun d3 ->
@@ -1566,8 +1574,9 @@ let update_state_for_expr ~r_env ~what e =
                   update_state_sf4s aggr d1 d2 d3 d4s state |>
                   may_set state_rec state_t))))
         ) :: lst
-    | Stateful (state_lifespan, skip_nulls, Past { what ; time ; tumbling ; _ }) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; skip_nulls ;
+                 operation = Past { what ; time ; tumbling ; _ } } ->
+        let state_rec = pick_state r_env e lifespan in
         with_expr ~skip_nulls what (fun what ->
           with_expr ~skip_nulls time (fun time ->
             with_state state_rec e (fun state state_t ->
@@ -1575,9 +1584,9 @@ let update_state_for_expr ~r_env ~what e =
               update_state_past ~convert_in:true tumbling what time state v_t |>
               may_set state_rec state_t))
         ) :: lst
-    | Stateful (state_lifespan, skip_nulls,
-                Top { top_what ; by ; top_time ; duration ; _ }) ->
-        let state_rec = pick_state r_env e state_lifespan in
+    | Stateful { lifespan ; skip_nulls ;
+                 operation = Top { top_what ; by ; top_time ; duration ; _ } } ->
+        let state_rec = pick_state r_env e lifespan in
         with_expr ~skip_nulls top_what (fun what ->
           with_expr ~skip_nulls by (fun by ->
             with_expr ~skip_nulls top_time (fun time ->

@@ -214,7 +214,10 @@ let rec print ?(max_depth=max_int) with_types oc e =
 and print_text ?(max_depth=max_int) with_types oc text =
   let st g n =
     (* TODO: do not display default *)
-    (match g with LocalState -> " LOCALLY" | GlobalState -> " GLOBALLY") ^
+    (match g with
+    | Some LocalState -> " LOCALLY"
+    | Some GlobalState -> " GLOBALLY"
+    | None -> "") ^
     (if n then " skip nulls" else " keep nulls")
   and print_args =
     List.print ~first:"(" ~last:")" ~sep:", "
@@ -423,59 +426,70 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "LEAST %a" print_args es
   | Stateless (SL1s (Print, es)) ->
       Printf.fprintf oc "PRINT %a" print_args es
-  | Stateful (g, n, SF1 (AggrMin, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (AggrMin, e) } ->
       Printf.fprintf oc "MIN%s(%a)" (st g n) p e
-  | Stateful (g, n, SF1 (AggrMax, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (AggrMax, e) } ->
       Printf.fprintf oc "MAX%s(%a)" (st g n) p e
-  | Stateful (g, n, SF1 (AggrSum, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (AggrSum, e) } ->
       Printf.fprintf oc "SUM%s(%a)" (st g n) p e
-  | Stateful (g, n, SF1 (AggrAvg, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (AggrAvg, e) } ->
       Printf.fprintf oc "AVG%s(%a)" (st g n) p e
-  | Stateful (g, n, SF1 (AggrAnd, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (AggrAnd, e) } ->
       Printf.fprintf oc "AND%s(%a)" (st g n) p e
-  | Stateful (g, n, SF1 (AggrOr, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (AggrOr, e) } ->
       Printf.fprintf oc "OR%s(%a)" (st g n) p e
-  | Stateful (g, n, SF1 (AggrBitAnd, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (AggrBitAnd, e) } ->
       Printf.fprintf oc "BITAND%s(%a)" (st g n) p e
-  | Stateful (g, n, SF1 (AggrBitOr, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (AggrBitOr, e) } ->
       Printf.fprintf oc "BITOR%s(%a)" (st g n) p e
-  | Stateful (g, n, SF1 (AggrBitXor, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (AggrBitXor, e) } ->
       Printf.fprintf oc "BITXOR%s(%a)" (st g n) p e
-  | Stateful (g, n, SF1 (AggrFirst, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (AggrFirst, e) } ->
       Printf.fprintf oc "FIRST%s(%a)" (st g n) p e
-  | Stateful (g, n, SF1 (AggrLast, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (AggrLast, e) } ->
       Printf.fprintf oc "LAST%s(%a)" (st g n) p e
-  | Stateful (g, n, SF1 (AggrHistogram (min, max, num_buckets), e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ;
+               operation = SF1 (AggrHistogram (min, max, num_buckets), e) } ->
       Printf.fprintf oc "HISTOGRAM%s(%a, %g, %g, %s)" (st g n)
         p e min max
         (Uint32.to_string num_buckets)
-  | Stateful (g, n, SF2 (Lag, e1, e2)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ;
+               operation = SF2 (Lag, e1, e2) } ->
       Printf.fprintf oc "LAG%s(%a, %a)" (st g n) p e1 p e2
-  | Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ;
+               operation = SF3 (MovingAvg, e1, e2, e3) } ->
       Printf.fprintf oc "SEASON_MOVEAVG%s(%a, %a, %a)"
         (st g n) p e1 p e2 p e3
-  | Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ;
+               operation = SF4 (DampedHolt, e1, e2, e3, e4) } ->
       Printf.fprintf oc "DAMPED_HOLT%s(%a, %a, %a, %a)"
         (st g n) p e1 p e2 p e3 p e4
-  | Stateful (g, n, SF4 (Remember refresh, fpr, tim, dur, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ;
+               operation = SF4 (Remember refresh, fpr, tim, dur, e) } ->
       Printf.fprintf oc "%s%s %a"
         (if refresh then "REMEMBER" else "RECALL")
         (st g n) print_args [ fpr ; tim ; dur ; e ]
-  | Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ;
+               operation = SF4s (MultiLinReg, e1, e2, e3, e4s) } ->
       Printf.fprintf oc "SEASON_FIT_MULTI%s %a"
         (st g n) print_args (e1 :: e2 :: e3 :: e4s)
-  | Stateful (g, n, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ;
+               operation = SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6) } ->
       Printf.fprintf oc "DAMPED_HOLD_WINTER%S(%a, %a, %a, %a, %a, %a)"
         (st g n) p e1 p e2 p e3 p e4 p e5 p e6
-  | Stateful (g, n, SF1 (Distinct, e1)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ;
+               operation = SF1 (Distinct, e1) } ->
       Printf.fprintf oc "DISTINCT%s %a" (st g n) p e1
-  | Stateful (g, n, SF2 (ExpSmooth, e1, e2)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ;
+               operation = SF2 (ExpSmooth, e1, e2) } ->
       Printf.fprintf oc "SMOOTH%s(%a, %a)" (st g n) p e1 p e2
-  | Stateful (g, n, SF3 (Hysteresis, meas, accept, max)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ;
+               operation = SF3 (Hysteresis, meas, accept, max) } ->
       Printf.fprintf oc "HYSTERESIS%s(%a, %a, %a)"
         (st g n) p meas p accept p max
-  | Stateful (g, n, Top { output ; size ; max_size ; top_what ; by ; top_time ;
-                          duration ; sigmas }) ->
+  | Stateful { lifespan = g ; skip_nulls = n ;
+               operation = Top { output ; size ; max_size ; top_what ; by ;
+                                 top_time ; duration ; sigmas } } ->
       (match output with
       | Rank ->
           Printf.fprintf oc
@@ -505,7 +519,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
         (st g n) p by p duration p top_time ;
       if not (is_zero sigmas) then
         Printf.fprintf oc " ABOVE %a SIGMAS" p sigmas
-  | Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, es)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF4s (Largest { inv ; up_to }, c, but, e, es) } ->
       let print_by oc es =
         if es <> [] then
           Printf.fprintf oc " BY %a"
@@ -521,18 +535,18 @@ and print_text ?(max_depth=max_int) with_types oc text =
         (st g n)
         p e
         print_by es
-  | Stateful (g, n, SF2 (Sample, c, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF2 (Sample, c, e) } ->
       Printf.fprintf oc "SAMPLE%s(%a, %a)" (st g n) p c p e
-  | Stateful (g, n, SF2 (OneOutOf, i, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF2 (OneOutOf, i, e) } ->
       Printf.fprintf oc "ONE OUT OF %a%s %a" p i (st g n) p e
-  | Stateful (g, n, SF3 (OnceEvery tumbling, d, t, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF3 (OnceEvery tumbling, d, t, e) } ->
       Printf.fprintf oc "ONCE EVERY %a %s%s(%a, %a)"
         p d
         (if tumbling then "TUMBLING" else "SLIDING")
         (st g n)
         p e
         p t
-  | Stateful (g, n, Past { what ; time ; max_age ; tumbling ; sample_size }) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = Past { what ; time ; max_age ; tumbling ; sample_size } } ->
       (match sample_size with
       | None -> ()
       | Some sz ->
@@ -541,9 +555,9 @@ and print_text ?(max_depth=max_int) with_types oc text =
         p max_age
         (if tumbling then "TUMBLING" else "SLIDING")
         (st g n) p what p time
-  | Stateful (g, n, SF1 (Group, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (Group, e) } ->
       Printf.fprintf oc "GROUP%s %a" (st g n) p e
-  | Stateful (g, n, SF1 (Count, e)) ->
+  | Stateful { lifespan = g ; skip_nulls = n ; operation = SF1 (Count, e) } ->
       Printf.fprintf oc "COUNT%s %a" (st g n) p e
 
   | Generator (Split (e1, e2)) ->
@@ -636,27 +650,49 @@ let rec map f s e =
   | Stateless (SL3 (o, e1, e2, e3)) ->
       { e with text = Stateless (SL3 (o, m e1, m e2, m e3)) }
 
-  | Stateful (g, n, SF1 (o, e1)) ->
-      { e with text = Stateful (g, n, SF1 (o, m e1)) }
-  | Stateful (g, n, SF2 (o, e1, e2)) ->
-      { e with text = Stateful (g, n, SF2 (o, m e1, m e2)) }
-  | Stateful (g, n, SF3 (o, e1, e2, e3)) ->
-      { e with text = Stateful (g, n, SF3 (o, m e1, m e2, m e3)) }
-  | Stateful (g, n, SF4 (o, e1, e2, e3, e4)) ->
-      { e with text = Stateful (g, n, SF4 (o, m e1, m e2, m e3, m e4)) }
-  | Stateful (g, n, SF6 (o, e1, e2, e3, e4, e5, e6)) ->
-      { e with text = Stateful (g, n, SF6 (o, m e1, m e2, m e3, m e4, m e5, m e6)) }
-  | Stateful (g, n, SF4s (o, e1, e2, e3, e4s)) ->
-      { e with text = Stateful (g, n, SF4s (o, m e1, m e2, m e3, mm e4s)) }
-  | Stateful (g, n, Top ({ size ; by ; top_time ; duration ; top_what ; max_size ;
-                           sigmas } as a)) ->
-      { e with text = Stateful (g, n, Top { a with
-        size = m size ; by = m by ; top_time = m top_time ; duration = m duration ;
-        top_what = m top_what ; max_size = om max_size ; sigmas = m sigmas }) }
-  | Stateful (g, n, Past { what ; time ; max_age ; tumbling ; sample_size }) ->
-      { e with text = Stateful (g, n, Past {
-        what = m what ; time = m time ; max_age = m max_age ; tumbling ;
-        sample_size = om sample_size }) }
+  | Stateful { lifespan ; skip_nulls ; operation = SF1 (o, e1) } ->
+      { e with text =
+          Stateful { lifespan ; skip_nulls ; operation = SF1 (o, m e1) } }
+  | Stateful { lifespan ; skip_nulls ; operation = SF2 (o, e1, e2) } ->
+      { e with text =
+          Stateful { lifespan ; skip_nulls ;
+                     operation = SF2 (o, m e1, m e2) } }
+  | Stateful { lifespan ; skip_nulls ; operation = SF3 (o, e1, e2, e3) } ->
+      { e with text =
+          Stateful { lifespan ; skip_nulls ;
+                     operation = SF3 (o, m e1, m e2, m e3) } }
+  | Stateful { lifespan ; skip_nulls ;
+               operation = SF4 (o, e1, e2, e3, e4) } ->
+      { e with text =
+          Stateful { lifespan ; skip_nulls ;
+                     operation = SF4 (o, m e1, m e2, m e3, m e4) } }
+  | Stateful { lifespan ; skip_nulls ;
+               operation = SF6 (o, e1, e2, e3, e4, e5, e6) } ->
+      { e with text =
+          Stateful { lifespan ; skip_nulls ;
+                     operation = SF6 (o, m e1, m e2, m e3, m e4, m e5, m e6) } }
+  | Stateful { lifespan ; skip_nulls ;
+               operation = SF4s (o, e1, e2, e3, e4s) } ->
+      { e with text =
+          Stateful { lifespan ; skip_nulls ;
+                     operation = SF4s (o, m e1, m e2, m e3, mm e4s) } }
+  | Stateful { lifespan ; skip_nulls ;
+               operation = Top ({ size ; by ; top_time ; duration ; top_what ;
+                                  max_size ; sigmas } as a) } ->
+      { e with text =
+          Stateful { lifespan ; skip_nulls ;
+                     operation = Top { a with
+            size = m size ; by = m by ; top_time = m top_time ;
+            duration = m duration ; top_what = m top_what ;
+            max_size = om max_size ; sigmas = m sigmas } } }
+  | Stateful { lifespan ; skip_nulls ;
+               operation = Past { what ; time ; max_age ; tumbling ;
+                                  sample_size } } ->
+      { e with text =
+          Stateful { lifespan ; skip_nulls ;
+                     operation = Past {
+            what = m what ; time = m time ; max_age = m max_age ; tumbling ;
+            sample_size = om sample_size } } }
 
   | Generator (Split (e1, e2)) ->
       { e with text = Generator (Split (m e1, m e2)) }) |>
@@ -682,31 +718,40 @@ let fold_subexpressions f s i e =
         ) i alts in
       om i else_
 
-  | Tuple es | Vector es -> fl i es
+  | Tuple es | Vector es ->
+      fl i es
 
   | Record kvs ->
       List.fold_left (fun i (_, e) -> f i e) i kvs
 
-  | Stateless (SL1 (_, e1)) | Stateful (_, _, SF1 (_, e1)) -> f i e1
+  | Stateless (SL1 (_, e1)) | Stateful { operation = SF1 (_, e1) ; _ } ->
+      f i e1
 
-  | Stateless (SL1s (_, e1s)) -> fl i e1s
+  | Stateless (SL1s (_, e1s)) ->
+      fl i e1s
 
   | Stateless (SL2 (_, e1, e2))
-  | Stateful (_, _, SF2 (_, e1, e2)) -> f (f i e1) e2
+  | Stateful { operation = SF2 (_, e1, e2) ; _ } ->
+      f (f i e1) e2
 
   | Stateless (SL3 (_, e1, e2, e3))
-  | Stateful (_, _, SF3 (_, e1, e2, e3)) -> f (f (f i e1) e2) e3
+  | Stateful { operation = SF3 (_, e1, e2, e3) ; _ } ->
+      f (f (f i e1) e2) e3
 
-  | Stateful (_, _, SF4 (_, e1, e2, e3, e4)) -> f (f (f (f i e1) e2) e3) e4
-  | Stateful (_, _, SF4s (_, e1, e2, e3, e4s)) ->
+  | Stateful { operation = SF4 (_, e1, e2, e3, e4) ; _ } ->
+      f (f (f (f i e1) e2) e3) e4
+
+  | Stateful { operation = SF4s (_, e1, e2, e3, e4s) ; _ } ->
       fl (f (f (f i e1) e2) e3) e4s
 
-  | Stateful (_, _, SF6 (_, e1, e2, e3, e4, e5, e6)) -> f (f (f (f (f (f i e1) e2) e3) e4) e5) e6
+  | Stateful { operation = SF6 (_, e1, e2, e3, e4, e5, e6) ; _ } ->
+      f (f (f (f (f (f i e1) e2) e3) e4) e5) e6
 
-  | Stateful (_, _, Top { size ; by ; top_time ; duration ; top_what ; max_size ; sigmas }) ->
+  | Stateful { operation = Top { size ; by ; top_time ; duration ; top_what ;
+                                 max_size ; sigmas } ; _ } ->
       om (fl i [ size ; by ; top_time ; duration ; sigmas ; top_what ]) max_size
 
-  | Stateful (_, _, Past { what ; time ; max_age ; sample_size }) ->
+  | Stateful { operation = Past { what ; time ; max_age ; sample_size } ; _ } ->
       om (f (f (f i what) time) max_age) sample_size
 
   | Generator (Split (e1, e2)) -> f (f i e1) e2
@@ -837,6 +882,12 @@ let and_partition p e =
             ~units:e.units And es in
   of_nary e1s, of_nary e2s
 
+let make_stateful lifespan skip_nulls operation =
+  make (Stateful { lifespan ; skip_nulls ; operation })
+
+let make_stateless ?units operation =
+  make ?units (Stateless operation)
+
 module Parser =
 struct
   type expr = t
@@ -845,7 +896,7 @@ struct
   open RamenParsing
 
   (* We can share default values: *)
-  let default_start = make (Stateless (SL0 EventStart))
+  let default_start = make_stateless (SL0 EventStart)
   let default_zero = zero ()
   let default_one = one ()
   let default_1hour = one_hour ()
@@ -863,7 +914,7 @@ struct
               Raql_value.VU32 (Uint32.of_float x)
             else
               Raql_value.VFloat x in
-          make ~units:Units.seconds (Stateless (SL0 (Const v)))
+          make_stateless ~units:Units.seconds (SL0 (Const v))
       ) |<| (
         (* Cannot use [T.Parser.p] because it would be ambiguous with the
          * compound values from expressions: *)
@@ -877,7 +928,7 @@ struct
             if T.(is_a_num (type_of_value c)) then
               Some Units.dimensionless
             else None in*)
-          make (Stateless (SL0 (Const c)))
+          make_stateless (SL0 (Const c))
       )
     ) m
 
@@ -902,13 +953,13 @@ struct
     (
       T.Parser.null >>:
       fun v ->
-        make (Stateless (SL0 (Const v))) (* Type of "NULL" is yet unknown *)
+        make_stateless (SL0 (Const v)) (* Type of "NULL" is yet unknown *)
     ) m
 
   let variable m =
     let m = "variable" :: m in
     (
-      Variable.parse >>: fun n -> make (Stateless (SL0 (Variable n)))
+      Variable.parse >>: fun n -> make_stateless (SL0 (Variable n))
     ) m
 
   let param_name m =
@@ -925,8 +976,8 @@ struct
   let param =
     param_name >>:
     fun n ->
-      make (Stateless (SL2 (
-        Get, const_of_string n, make (Stateless (SL0 (Variable Param))))))
+      make_stateless (SL2 (
+        Get, const_of_string n, make_stateless (SL0 (Variable Param))))
 
   (*$= param & ~printer:BatPervasives.identity
     "param.'glop'" \
@@ -954,10 +1005,9 @@ struct
       blanks +- worDs "null"
     ) m
 
-  let state_and_nulls ?(def_state=LocalState)
-                      ?(def_skipnulls=true) m =
+  let state_and_nulls ?(def_skipnulls=true) m =
     (
-      optional ~def:def_state (blanks -+ state_lifespan) ++
+      optional ~def:None (blanks -+ some state_lifespan) ++
       optional ~def:def_skipnulls (blanks -+ skip_nulls)
     ) m
 
@@ -978,14 +1028,14 @@ struct
   let rec lowestest_prec_left_assoc m =
     let m = "logical OR operator" :: m in
     let op = worD "or"
-    and reduce e1 _op e2 = make (Stateless (SL2 (Or, e1, e2))) in
+    and reduce e1 _op e2 = make_stateless (SL2 (Or, e1, e2)) in
     (* FIXME: we do not need a blanks if we had parentheses ("(x)OR(y)" is OK) *)
     binary_ops_reducer ~op ~term:lowest_prec_left_assoc ~sep:blanks ~reduce m
 
   and lowest_prec_left_assoc m =
     let m = "logical AND operator" :: m in
     let op = worD "and"
-    and reduce e1 _op e2 = make (Stateless (SL2 (And, e1, e2))) in
+    and reduce e1 _op e2 = make_stateless (SL2 (And, e1, e2)) in
     binary_ops_reducer ~op ~term:conditional ~sep:blanks ~reduce m
 
   and conditional m =
@@ -1004,33 +1054,33 @@ struct
       that_string "like" |<|
       ((that_string "starts" |<| that_string "ends") +- blanks +- worD "with")
     and reduce e1 op e2 = match op with
-      | ">" -> make (Stateless (SL2 (Gt, e1, e2)))
-      | "<" -> make (Stateless (SL2 (Gt, e2, e1)))
-      | ">=" -> make (Stateless (SL2 (Ge, e1, e2)))
-      | "<=" -> make (Stateless (SL2 (Ge, e2, e1)))
-      | "=" -> make (Stateless (SL2 (Eq, e1, e2)))
+      | ">" -> make_stateless (SL2 (Gt, e1, e2))
+      | "<" -> make_stateless (SL2 (Gt, e2, e1))
+      | ">=" -> make_stateless (SL2 (Ge, e1, e2))
+      | "<=" -> make_stateless (SL2 (Ge, e2, e1))
+      | "=" -> make_stateless (SL2 (Eq, e1, e2))
       | "!=" | "<>" ->
-          make (Stateless (SL1 (Not, make (Stateless (SL2 (Eq, e1, e2))))))
+          make_stateless (SL1 (Not, make_stateless (SL2 (Eq, e1, e2))))
       | "in" ->
           (* Turn 'in [x]' into '= x': *)
           (match e2.text with
           | Vector [ x ] ->
-              make (Stateless (SL2 (Eq, e1, x)))
+              make_stateless (SL2 (Eq, e1, x))
           | _ ->
-              make (Stateless (SL2 (In, e1, e2))))
+              make_stateless (SL2 (In, e1, e2)))
       | "not in" ->
           (* Turn 'not in [x]' into '<> x': *)
           (match e2.text with
           | Vector [ x ] ->
-              make (Stateless (SL1 (Not, make (Stateless (SL2 (Eq, e1, x))))))
+              make_stateless (SL1 (Not, make_stateless (SL2 (Eq, e1, x))))
           | _ ->
-              make (Stateless (SL1 (Not, make (Stateless (SL2 (In, e1, e2)))))))
+              make_stateless (SL1 (Not, make_stateless (SL2 (In, e1, e2)))))
       | "like" ->
           (match string_of_const e2 with
           | None -> raise (Reject "LIKE pattern must be a string constant")
-          | Some p -> make (Stateless (SL1 (Like p, e1))))
-      | "starts" -> make (Stateless (SL2 (StartsWith, e1, e2)))
-      | "ends" -> make (Stateless (SL2 (EndsWith, e1, e2)))
+          | Some p -> make_stateless (SL1 (Like p, e1)))
+      | "starts" -> make_stateless (SL2 (StartsWith, e1, e2))
+      | "ends" -> make_stateless (SL2 (EndsWith, e1, e2))
       | _ -> assert false in
     binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -1039,10 +1089,10 @@ struct
     let op = that_string "+" |<| that_string "-" |<| that_string "||" |<|
              that_string "|?"
     and reduce e1 op e2 = match op with
-      | "+" -> make (Stateless (SL2 (Add, e1, e2)))
-      | "-" -> make (Stateless (SL2 (Sub, e1, e2)))
-      | "||" -> make (Stateless (SL2 (Concat, e1, e2)))
-      | "|?" -> make (Stateless (SL1s (Coalesce, [ e1 ; e2 ])))
+      | "+" -> make_stateless (SL2 (Add, e1, e2))
+      | "-" -> make_stateless (SL2 (Sub, e1, e2))
+      | "||" -> make_stateless (SL2 (Concat, e1, e2))
+      | "|?" -> make_stateless (SL1s (Coalesce, [ e1 ; e2 ]))
       | _ -> assert false in
     binary_ops_reducer ~op ~term:high_prec_left_assoc ~sep:opt_blanks ~reduce m
 
@@ -1051,11 +1101,11 @@ struct
     let op = that_string "*" |<| that_string "//" |<| that_string "/" |<|
              that_string "%"
     and reduce e1 op e2 = match op with
-      | "*" -> make (Stateless (SL2 (Mul, e1, e2)))
+      | "*" -> make_stateless (SL2 (Mul, e1, e2))
       (* Note: We want the default division to output floats by default *)
       (* Note: We reject IP/INT because that's a CIDR *)
-      | "//" -> make (Stateless (SL2 (IDiv, e1, e2)))
-      | "%" -> make (Stateless (SL2 (Mod, e1, e2)))
+      | "//" -> make_stateless (SL2 (IDiv, e1, e2))
+      | "%" -> make_stateless (SL2 (Mod, e1, e2))
       | "/" ->
           (* "1.2.3.4/1" can be parsed both as a CIDR or a dubious division of
            * an IP by a number. Reject that one: *)
@@ -1065,7 +1115,7 @@ struct
             when is_ip c1 && is_integer c2 ->
               raise (Reject "That's a CIDR")
           | _ ->
-              make (Stateless (SL2 (Div, e1, e2))))
+              make_stateless (SL2 (Div, e1, e2)))
       | _ -> assert false
     in
     binary_ops_reducer ~op ~term:higher_prec_left_assoc ~sep:opt_blanks ~reduce m
@@ -1075,30 +1125,30 @@ struct
     let op = that_string "&" |<| that_string "|" |<| that_string "#" |<|
              that_string "<<" |<| that_string ">>"
     and reduce e1 op e2 = match op with
-      | "&" -> make (Stateless (SL2 (BitAnd, e1, e2)))
-      | "|" -> make (Stateless (SL2 (BitOr, e1, e2)))
-      | "#" -> make (Stateless (SL2 (BitXor, e1, e2)))
-      | "<<" -> make (Stateless (SL2 (BitShift, e1, e2)))
+      | "&" -> make_stateless (SL2 (BitAnd, e1, e2))
+      | "|" -> make_stateless (SL2 (BitOr, e1, e2))
+      | "#" -> make_stateless (SL2 (BitXor, e1, e2))
+      | "<<" -> make_stateless (SL2 (BitShift, e1, e2))
       | ">>" ->
-          let e2 = make (Stateless (SL1 (Minus, e2))) in
-          make (Stateless (SL2 (BitShift, e1, e2)))
+          let e2 = make_stateless (SL1 (Minus, e2)) in
+          make_stateless (SL2 (BitShift, e1, e2))
       | _ -> assert false in
     binary_ops_reducer ~op ~term:higher_prec_right_assoc ~sep:opt_blanks ~reduce m
 
   and higher_prec_right_assoc m =
     let m = "arithmetic operator" :: m in
     let op = char '^'
-    and reduce e1 _ e2 = make (Stateless (SL2 (Pow, e1, e2))) in
+    and reduce e1 _ e2 = make_stateless (SL2 (Pow, e1, e2)) in
     binary_ops_reducer ~op ~right_associative:true
                        ~term:highest_prec_left_assoc ~sep:opt_blanks ~reduce m
 
   and highest_prec_left_assoc m =
     (
       (afun1 "not" >>: fun e ->
-        make (Stateless (SL1 (Not, e)))) |<|
+        make_stateless (SL1 (Not, e))) |<|
       (strinG "-" -- opt_blanks --
         check (nay decimal_digit) -+ highestest_prec >>: fun e ->
-          make (Stateless (SL1 (Minus, e)))) |<|
+          make_stateless (SL1 (Minus, e))) |<|
       (highestest_prec ++
         optional ~def:None (
           blanks -- strinG "is" -- blanks -+
@@ -1107,14 +1157,13 @@ struct
           worD "null") >>: function
             | e, None -> e
             | e, Some false ->
-                make (Stateless (SL1 (Not,
-                  make (Stateless (SL1 (Defined, e))))))
+                make_stateless (SL1 (Not, make_stateless (SL1 (Defined, e))))
             | e, Some true ->
-                make (Stateless (SL1 (Defined, e)))) |<|
+                make_stateless (SL1 (Defined, e))) |<|
       (strinG "begin" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
-        fun e -> make (Stateless (SL1 (BeginOfRange, e)))) |<|
+        fun e -> make_stateless (SL1 (BeginOfRange, e))) |<|
       (strinG "end" -- blanks -- strinG "of" -- blanks -+ highestest_prec >>:
-        fun e -> make (Stateless (SL1 (EndOfRange, e))))
+        fun e -> make_stateless (SL1 (EndOfRange, e)))
     ) m
 
   and sugared_get m =
@@ -1124,7 +1173,7 @@ struct
       let m = "dotted path component" :: m in
       (
         char '.' -- nay Variable.parse -+ non_keyword >>: fun n ->
-          make (Stateless (SL0 (Const (VString n))))
+          make_stateless (SL0 (Const (VString n)))
       ) m
     and indexed_comp m =
       let m = "indexed path component" :: m in
@@ -1141,8 +1190,8 @@ struct
         nay Variable.parse -+ non_keyword ++
         repeat ~sep:none comp >>:
           fun (n, cs) ->
-            (make (Stateless (SL0 (Variable Unknown))),
-             make (Stateless (SL0 (Const (VString n))))), cs
+            (make_stateless (SL0 (Variable Unknown)),
+             make_stateless (SL0 (Const (VString n)))), cs
       )
     and indexed_first =
       (variable |<| parenthesized func |<| vector p) ++
@@ -1152,8 +1201,8 @@ struct
       (dotted_first |<| indexed_first) >>:
       fun ((e, n), ns) ->
         List.fold_left (fun e n ->
-          make (Stateless (SL2 (Get, n, e)))
-        ) (make (Stateless (SL2 (Get, n, e)))) ns
+          make_stateless (SL2 (Get, n, e))
+        ) (make_stateless (SL2 (Get, n, e))) ns
     ) m
 
   (*$= sugared_get & ~printer:BatPervasives.identity
@@ -1174,12 +1223,12 @@ struct
   *)
 
   (* "sf" stands for "stateful" *)
-  and afunv_sf ?def_state a n m =
+  and afunv_sf a n m =
     let sep = list_sep in
     let m = n :: m in
     (
       strinG n -+
-      state_and_nulls ?def_state +-
+      state_and_nulls +-
       opt_blanks +- char '(' +- opt_blanks ++ (
         if a > 0 then
           repeat ~what:"mandatory arguments" ~min:a ~max:a ~sep p ++
@@ -1190,43 +1239,42 @@ struct
       ) +- opt_blanks +- char ')'
     ) m
 
-  and afun_sf ?def_state a n =
-    afunv_sf ?def_state a n >>: fun (g, (a, r)) ->
+  and afun_sf a n =
+    afunv_sf a n >>: fun (g, (a, r)) ->
       if r = [] then g, a else
       raise (Reject "too many arguments")
 
-  and afun1_sf ?def_state n =
+  and afun1_sf n =
     let sep = check (char '(') |<| blanks in
-    (strinG n -+ state_and_nulls ?def_state +-
-     sep ++ highestest_prec)
+    (strinG n -+ state_and_nulls +- sep ++ highestest_prec)
 
-  and afun2_sf ?def_state n =
-    afun_sf ?def_state 2 n >>: function (g, [a;b]) -> g, a, b | _ -> assert false
+  and afun2_sf n =
+    afun_sf 2 n >>: function (g, [a;b]) -> g, a, b | _ -> assert false
 
-  and afun0v_sf ?def_state n =
+  and afun0v_sf n =
     (* afunv_sf takes parentheses but it's nicer to also accept non
      * parenthesized highestest_prec, but then there would be 2 ways to
      * parse "distinct (x)" as highestest_prec also accept parenthesized
      * lower precedence expressions. Thus the "highestest_prec_no_parenthesis": *)
-    (strinG n -+ state_and_nulls ?def_state +-
+    (strinG n -+ state_and_nulls +-
      blanks ++ highestest_prec_no_parenthesis >>: fun (f, e) -> f, [e]) |<|
-    (afunv_sf ?def_state 0 n >>:
+    (afunv_sf 0 n >>:
      function (g, ([], r)) -> g, r | _ -> assert false)
 
-  and afun2v_sf ?def_state n =
-    afunv_sf ?def_state 2 n >>: function (g, ([a;b], r)) -> g, a, b, r | _ -> assert false
+  and afun2v_sf n =
+    afunv_sf 2 n >>: function (g, ([a;b], r)) -> g, a, b, r | _ -> assert false
 
-  and afun3_sf ?def_state n =
-    afun_sf ?def_state 3 n >>: function (g, [a;b;c]) -> g, a, b, c | _ -> assert false
+  and afun3_sf n =
+    afun_sf 3 n >>: function (g, [a;b;c]) -> g, a, b, c | _ -> assert false
 
-  and afun3v_sf ?def_state n =
-    afunv_sf ?def_state 3 n >>: function (g, ([a;b;c], r)) -> g, a, b, c, r | _ -> assert false
+  and afun3v_sf n =
+    afunv_sf 3 n >>: function (g, ([a;b;c], r)) -> g, a, b, c, r | _ -> assert false
 
-  and afun4_sf ?def_state n =
-    afun_sf ?def_state 4 n >>: function (g, [a;b;c;d]) -> g, a, b, c, d | _ -> assert false
+  and afun4_sf n =
+    afun_sf 4 n >>: function (g, [a;b;c;d]) -> g, a, b, c, d | _ -> assert false
 
-  and afun6_sf ?def_state n =
-    afun_sf ?def_state 6 n >>: function (g, [a;b;c;d;e;f]) -> g, a, b, c, d, e, f | _ -> assert false
+  and afun6_sf n =
+    afun_sf 6 n >>: function (g, [a;b;c;d;e;f]) -> g, a, b, c, d, e, f | _ -> assert false
 
   and afunv a n m =
     let m = n :: m in
@@ -1277,70 +1325,70 @@ struct
     let m = "function" :: m in
     (* Note: min and max of nothing are NULL but sum of nothing is 0, etc *)
     (
-      (afun1 "age" >>: fun e -> make (Stateless (SL1 (Age, e)))) |<|
-      (afun1 "force" >>: fun e -> make (Stateless (SL1 (Force, e)))) |<|
-      (afun1 "abs" >>: fun e -> make (Stateless (SL1 (Abs, e)))) |<|
-      (afun1 "length" >>: fun e -> make (Stateless (SL1 (Length, e)))) |<|
-      (afun1 "lower" >>: fun e -> make (Stateless (SL1 (Lower, e)))) |<|
-      (afun1 "upper" >>: fun e -> make (Stateless (SL1 (Upper, e)))) |<|
-      (afun1 "uuid_of_u128" >>: fun e -> make (Stateless (SL1 (UuidOfU128, e)))) |<|
-      (worD "now" >>: fun () -> make (Stateless (SL0 Now))) |<|
-      (worD "random" >>: fun () -> make (Stateless (SL0 Random))) |<|
-      (worD "pi" >>: fun () -> make (Stateless (SL0 Pi))) |<|
-      (worD "#start" >>: fun () -> make (Stateless (SL0 EventStart))) |<|
-      (worD "#stop" >>: fun () -> make (Stateless (SL0 EventStop))) |<|
-      (afun1 "exp" >>: fun e -> make (Stateless (SL1 (Exp, e)))) |<|
-      (afun1 "log" >>: fun e -> make (Stateless (SL1 (Log, e)))) |<|
-      (afun1 "log10" >>: fun e -> make (Stateless (SL1 (Log10, e)))) |<|
-      (afun1 "sqrt" >>: fun e -> make (Stateless (SL1 (Sqrt, e)))) |<|
-      (afun1 "square" >>: fun e -> make (Stateless (SL1 (Sq, e)))) |<|
-      (afun1 "sq" >>: fun e -> make (Stateless (SL1 (Sq, e)))) |<|
-      (afun1 "ceil" >>: fun e -> make (Stateless (SL1 (Ceil, e)))) |<|
-      (afun1 "floor" >>: fun e -> make (Stateless (SL1 (Floor, e)))) |<|
-      (afun1 "round" >>: fun e -> make (Stateless (SL1 (Round, e)))) |<|
-      (afun1 "cos" >>: fun e -> make (Stateless (SL1 (Cos, e)))) |<|
-      (afun1 "sin" >>: fun e -> make (Stateless (SL1 (Sin, e)))) |<|
-      (afun1 "tan" >>: fun e -> make (Stateless (SL1 (Tan, e)))) |<|
-      (afun1 "acos" >>: fun e -> make (Stateless (SL1 (ACos, e)))) |<|
-      (afun1 "asin" >>: fun e -> make (Stateless (SL1 (ASin, e)))) |<|
-      (afun1 "atan" >>: fun e -> make (Stateless (SL1 (ATan, e)))) |<|
-      (afun1 "cosh" >>: fun e -> make (Stateless (SL1 (CosH, e)))) |<|
-      (afun1 "sinh" >>: fun e -> make (Stateless (SL1 (SinH, e)))) |<|
-      (afun1 "tanh" >>: fun e -> make (Stateless (SL1 (TanH, e)))) |<|
+      (afun1 "age" >>: fun e -> make_stateless (SL1 (Age, e))) |<|
+      (afun1 "force" >>: fun e -> make_stateless (SL1 (Force, e))) |<|
+      (afun1 "abs" >>: fun e -> make_stateless (SL1 (Abs, e))) |<|
+      (afun1 "length" >>: fun e -> make_stateless (SL1 (Length, e))) |<|
+      (afun1 "lower" >>: fun e -> make_stateless (SL1 (Lower, e))) |<|
+      (afun1 "upper" >>: fun e -> make_stateless (SL1 (Upper, e))) |<|
+      (afun1 "uuid_of_u128" >>: fun e -> make_stateless (SL1 (UuidOfU128, e))) |<|
+      (worD "now" >>: fun () -> make_stateless (SL0 Now)) |<|
+      (worD "random" >>: fun () -> make_stateless (SL0 Random)) |<|
+      (worD "pi" >>: fun () -> make_stateless (SL0 Pi)) |<|
+      (worD "#start" >>: fun () -> make_stateless (SL0 EventStart)) |<|
+      (worD "#stop" >>: fun () -> make_stateless (SL0 EventStop)) |<|
+      (afun1 "exp" >>: fun e -> make_stateless (SL1 (Exp, e))) |<|
+      (afun1 "log" >>: fun e -> make_stateless (SL1 (Log, e))) |<|
+      (afun1 "log10" >>: fun e -> make_stateless (SL1 (Log10, e))) |<|
+      (afun1 "sqrt" >>: fun e -> make_stateless (SL1 (Sqrt, e))) |<|
+      (afun1 "square" >>: fun e -> make_stateless (SL1 (Sq, e))) |<|
+      (afun1 "sq" >>: fun e -> make_stateless (SL1 (Sq, e))) |<|
+      (afun1 "ceil" >>: fun e -> make_stateless (SL1 (Ceil, e))) |<|
+      (afun1 "floor" >>: fun e -> make_stateless (SL1 (Floor, e))) |<|
+      (afun1 "round" >>: fun e -> make_stateless (SL1 (Round, e))) |<|
+      (afun1 "cos" >>: fun e -> make_stateless (SL1 (Cos, e))) |<|
+      (afun1 "sin" >>: fun e -> make_stateless (SL1 (Sin, e))) |<|
+      (afun1 "tan" >>: fun e -> make_stateless (SL1 (Tan, e))) |<|
+      (afun1 "acos" >>: fun e -> make_stateless (SL1 (ACos, e))) |<|
+      (afun1 "asin" >>: fun e -> make_stateless (SL1 (ASin, e))) |<|
+      (afun1 "atan" >>: fun e -> make_stateless (SL1 (ATan, e))) |<|
+      (afun1 "cosh" >>: fun e -> make_stateless (SL1 (CosH, e))) |<|
+      (afun1 "sinh" >>: fun e -> make_stateless (SL1 (SinH, e))) |<|
+      (afun1 "tanh" >>: fun e -> make_stateless (SL1 (TanH, e))) |<|
       (afun1 "truncate" >>: fun e ->
-         make (Stateless (SL2 (Trunc, e, of_float 1.)))) |<|
+         make_stateless (SL2 (Trunc, e, of_float 1.))) |<|
       (afun2 "truncate" >>: fun (e1, e2) ->
-         make (Stateless (SL2 (Trunc, e1, e2)))) |<|
-      (afun1 "hash" >>: fun e -> make (Stateless (SL1 (Hash, e)))) |<|
-      (afun1 "sparkline" >>: fun e -> make (Stateless (SL1 (Sparkline, e)))) |<|
+         make_stateless (SL2 (Trunc, e1, e2))) |<|
+      (afun1 "hash" >>: fun e -> make_stateless (SL1 (Hash, e))) |<|
+      (afun1 "sparkline" >>: fun e -> make_stateless (SL1 (Sparkline, e))) |<|
       (afun1_sf "min" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrMin, e)))) |<|
+         make_stateful g n (SF1 (AggrMin, e))) |<|
       (afun1_sf "max" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrMax, e)))) |<|
+         make_stateful g n (SF1 (AggrMax, e))) |<|
       (afun1_sf "sum" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrSum, e)))) |<|
+         make_stateful g n (SF1 (AggrSum, e))) |<|
       (afun1_sf "avg" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrAvg, e)))) |<|
+         make_stateful g n (SF1 (AggrAvg, e))) |<|
       (afun1_sf "and" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrAnd, e)))) |<|
+         make_stateful g n (SF1 (AggrAnd, e))) |<|
       (afun1_sf "or" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrOr, e)))) |<|
+         make_stateful g n (SF1 (AggrOr, e))) |<|
       (afun1_sf "bitand" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrBitAnd, e)))) |<|
+         make_stateful g n (SF1 (AggrBitAnd, e))) |<|
       (afun1_sf "bitor" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrBitOr, e)))) |<|
+         make_stateful g n (SF1 (AggrBitOr, e))) |<|
       (afun1_sf "bitxor" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrBitXor, e)))) |<|
+         make_stateful g n (SF1 (AggrBitXor, e))) |<|
       (afun1_sf "first" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrFirst, e)))) |<|
+         make_stateful g n (SF1 (AggrFirst, e))) |<|
       (afun1_sf "last" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (AggrLast, e)))) |<|
+         make_stateful g n (SF1 (AggrLast, e))) |<|
       (afun1_sf "group" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (Group, e)))) |<|
+         make_stateful g n (SF1 (Group, e))) |<|
       (afun1_sf "all" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (Group, e)))) |<|
+         make_stateful g n (SF1 (Group, e))) |<|
       (afun1_sf "count" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (Count, e)))) |<|
+         make_stateful g n (SF1 (Count, e))) |<|
       (
         let perc =
           immediate_or_param +-
@@ -1349,42 +1397,42 @@ struct
           (perc |<| vector perc) +- blanks ++
           afun1 "percentile" >>:
           fun (ps, e) ->
-            make (Stateless (SL2 (Percentile, e, ps))))
+            make_stateless (SL2 (Percentile, e, ps)))
       ) |<|
       (afun2_sf "lag" >>: fun ((g, n), e1, e2) ->
-         make (Stateful (g, n, SF2 (Lag, e1, e2)))) |<|
+         make_stateful g n (SF2 (Lag, e1, e2))) |<|
       (afun1_sf "lag" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF2 (Lag, one (), e)))) |<|
+         make_stateful g n (SF2 (Lag, one (), e))) |<|
 
       (afun3_sf "season_moveavg" >>: fun ((g, n), e1, e2, e3) ->
-         make (Stateful (g, n, SF3 (MovingAvg, e1, e2, e3)))) |<|
+         make_stateful g n (SF3 (MovingAvg, e1, e2, e3))) |<|
       (afun2_sf "moveavg" >>: fun ((g, n), e1, e2) ->
-         make (Stateful (g, n, SF3 (MovingAvg, one (), e1, e2)))) |<|
+         make_stateful g n (SF3 (MovingAvg, one (), e1, e2))) |<|
       (afun4_sf "smooth_damped_holt" >>: fun ((g, n), e1, e2, e3, e4) ->
-         make (Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)))) |<|
+         make_stateful g n (SF4 (DampedHolt, e1, e2, e3, e4))) |<|
       (afun6_sf "smooth_damped_holt_winter" >>: fun ((g, n), e1, e2, e3, e4, e5, e6) ->
-         make (Stateful (g, n, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)))) |<|
+         make_stateful g n (SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6))) |<|
       (afun3v_sf "season_fit_multi" >>: fun ((g, n), e1, e2, e3, e4s) ->
-         make (Stateful (g, n, SF4s (MultiLinReg, e1, e2, e3, e4s)))) |<|
+         make_stateful g n (SF4s (MultiLinReg, e1, e2, e3, e4s))) |<|
       (afun2v_sf "fit_multi" >>: fun ((g, n), e1, e2, e3s) ->
-         make (Stateful (g, n, SF4s (MultiLinReg, one (), e1, e2, e3s)))) |<|
+         make_stateful g n (SF4s (MultiLinReg, one (), e1, e2, e3s))) |<|
       (afun6_sf "smooth" >>: fun ((g, n), e1, e2, e3, e4, e5, e6) ->
-         make (Stateful (g, n, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)))) |<|
+         make_stateful g n (SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6))) |<|
       (afun4_sf "smooth" >>: fun ((g, n), e1, e2, e3, e4) ->
-         make (Stateful (g, n, SF4 (DampedHolt, e1, e2, e3, e4)))) |<|
+         make_stateful g n (SF4 (DampedHolt, e1, e2, e3, e4))) |<|
       (afun2_sf "smooth" >>: fun ((g, n), e1, e2) ->
-         make (Stateful (g, n, SF2 (ExpSmooth, e1, e2)))) |<|
+         make_stateful g n (SF2 (ExpSmooth, e1, e2))) |<|
       (afun1_sf "smooth" >>: fun ((g, n), e) ->
          let alpha = of_float 0.5 in
-         make (Stateful (g, n, SF2 (ExpSmooth, alpha, e)))) |<|
+         make_stateful g n (SF2 (ExpSmooth, alpha, e))) |<|
       (afun4_sf "remember" >>: fun ((g, n), fpr, tim, dur, e) ->
-         make (Stateful (g, n, SF4 (Remember true, fpr, tim, dur, e)))) |<|
+         make_stateful g n (SF4 (Remember true, fpr, tim, dur, e))) |<|
       (afun4_sf "recall" >>: fun ((g, n), fpr, tim, dur, e) ->
-         make (Stateful (g, n, SF4 (Remember false, fpr, tim, dur, e)))) |<|
+         make_stateful g n (SF4 (Remember false, fpr, tim, dur, e))) |<|
       (afun1_sf "distinct" >>: fun ((g, n), e) ->
-         make (Stateful (g, n, SF1 (Distinct, e)))) |<|
+         make_stateful g n (SF1 (Distinct, e))) |<|
       (afun3_sf "hysteresis" >>: fun ((g, n), value, accept, max) ->
-         make (Stateful (g, n, SF3 (Hysteresis, value, accept, max)))) |<|
+         make_stateful g n (SF3 (Hysteresis, value, accept, max))) |<|
       (afun4_sf "histogram" >>:
        fun ((g, n), what, min, max, num_buckets) ->
          match float_of_const min,
@@ -1393,53 +1441,54 @@ struct
          | Some min, Some max, Some num_buckets ->
              if num_buckets <= 0 then
                raise (Reject "Histogram size must be positive") ;
-             make (Stateful (g, n, SF1 (
-              AggrHistogram (min, max, Uint32.of_int num_buckets), what)))
-         | _ -> raise (Reject "histogram dimensions must be constants")) |<|
+             make_stateful g n (SF1 (
+              AggrHistogram (min, max, Uint32.of_int num_buckets), what))
+         | _ ->
+             raise (Reject "histogram dimensions must be constants")) |<|
       (afun2 "split" >>: fun (e1, e2) ->
          make (Generator (Split (e1, e2)))) |<|
       (afun2 "format_time" >>: fun (e1, e2) ->
-         make (Stateless (SL2 (Strftime, e1, e2)))) |<|
+         make_stateless (SL2 (Strftime, e1, e2))) |<|
       (afun1 "parse_time" >>: fun e ->
-         make (Stateless (SL1 (Strptime, e)))) |<|
+         make_stateless (SL1 (Strptime, e))) |<|
       (afun1 "chr" >>: fun e ->
          match int_of_const e with
          | Some v ->
               if v < 0 || v > 255 then
                 raise (Reject "const must be between 0 and 255") ;
-              make (Stateless (SL1 (Chr, e)))
-         | _ -> make (Stateless (SL1 (Chr, e)))) |<|
+              make_stateless (SL1 (Chr, e))
+         | _ -> make_stateless (SL1 (Chr, e))) |<|
       (afun1 "variant" >>: fun e ->
-         make (Stateless (SL1 (Variant, e)))) |<|
+         make_stateless (SL1 (Variant, e))) |<|
       (afun1 "fit" >>: fun e ->
-        make (Stateless (SL1 (Fit, e)))) |<|
+        make_stateless (SL1 (Fit, e))) |<|
       (afun1 "countrycode" >>: fun e ->
-        make (Stateless (SL1 (CountryCode, e)))) |<|
+        make_stateless (SL1 (CountryCode, e))) |<|
       (afun1 "ipfamily" >>: fun e ->
-        make (Stateless (SL1 (IpFamily, e)))) |<|
+        make_stateless (SL1 (IpFamily, e))) |<|
       (afun1 "basename" >>: fun e ->
-        make (Stateless (SL1 (Basename, e)))) |<|
+        make_stateless (SL1 (Basename, e))) |<|
       (* At least 2 args to distinguish from the aggregate functions: *)
       (afun2v "max" >>: fun (e1, e2, e3s) ->
-         make (Stateless (SL1s (Max, e1 :: e2 :: e3s)))) |<|
+         make_stateless (SL1s (Max, e1 :: e2 :: e3s))) |<|
       (afun1v "greatest" >>: fun (e, es) ->
-         make (Stateless (SL1s (Max, e :: es)))) |<|
+         make_stateless (SL1s (Max, e :: es))) |<|
       (afun2v "min" >>: fun (e1, e2, e3s) ->
-         make (Stateless (SL1s (Min, e1 :: e2 :: e3s)))) |<|
+         make_stateless (SL1s (Min, e1 :: e2 :: e3s))) |<|
       (afun1v "least" >>: fun (e, es) ->
-         make (Stateless (SL1s (Min, e :: es)))) |<|
+         make_stateless (SL1s (Min, e :: es))) |<|
       (afun1v "print" >>: fun (e, es) ->
-         make (Stateless (SL1s (Print, e :: es)))) |<|
+         make_stateless (SL1s (Print, e :: es))) |<|
       (afun2 "reldiff" >>: fun (e1, e2) ->
-        make (Stateless (SL2 (Reldiff, e1, e2)))) |<|
+        make_stateless (SL2 (Reldiff, e1, e2))) |<|
       (afun2_sf "sample" >>: fun ((g, n), c, e) ->
-        make (Stateful (g, n, SF2 (Sample, c, e)))) |<|
+        make_stateful g n (SF2 (Sample, c, e))) |<|
       (afun2 "index" >>: fun (s, a) ->
-        make (Stateless (SL2 (Index, s, a)))) |<|
+        make_stateless (SL2 (Index, s, a))) |<|
       (afun3 "substring" >>: fun (s, a, b) ->
-        make (Stateless (SL3 (SubString, s, a, b)))) |<|
+        make_stateless (SL3 (SubString, s, a, b))) |<|
       (afun3 "mapadd" >>: fun (m, k, v) ->
-        make (Stateless (SL3 (MapSet, m, k, v)))) |<|
+        make_stateless (SL3 (MapSet, m, k, v))) |<|
       dismiss_error_if (parsed_fewer_than 5) (
         k_moveavg |<| cast |<| top_expr |<| nth |<| largest |<| past |<| get |<|
         changed_field |<| peek |<| once_every |<| one_out_of)
@@ -1459,7 +1508,7 @@ struct
                 if string_of_const n = None then
                   raise (Reject "GET requires a numeric or string index"))
         | _ -> ()) ;
-        make (Stateless (SL2 (Get, n, v)))
+        make_stateless (SL2 (Get, n, v))
     ) m
 
   (* Syntactic sugar for `x <> previous.x` *)
@@ -1475,8 +1524,8 @@ struct
           if pref <> Variable.Out && pref <> Variable.Unknown then
             raise (Reject "Changed operator is only valid for \
                            fields of the output tuple") ;
-          make (Stateless (SL2 (Get, n,
-            make (Stateless (SL0 (Variable Variable.OutPrevious))))))
+          make_stateless (SL2 (Get, n,
+            make_stateless (SL0 (Variable Variable.OutPrevious))))
         in
         let prev_field =
           match f.text with
@@ -1487,7 +1536,7 @@ struct
               raise (Reject "Changed operator is only valid for fields")
         in
         let text =
-          Stateless (SL1 (Not, make (Stateless (SL2 (Eq, f, prev_field))))) in
+          Stateless (SL1 (Not, make_stateless (SL2 (Eq, f, prev_field)))) in
         make text
     ) m
 
@@ -1499,13 +1548,13 @@ struct
       fun (t, e) ->
         (* The nullability of [value] should propagate to [type(value)],
          * while [type?(value)] should be nullable no matter what. *)
-        make (Stateless (SL1 (Cast t, e))) in
+        make_stateless (SL1 (Cast t, e)) in
     let cast_a_la_sql =
       strinG "cast" -- opt_blanks -- char '(' -- opt_blanks -+
       highestest_prec +- blanks +- strinG "as" +- blanks ++
       T.Parser.typ +- opt_blanks +- char ')' >>:
       fun (e, t) ->
-        make (Stateless (SL1 (Cast t, e))) in
+        make_stateless (SL1 (Cast t, e)) in
     (cast_as_func |<| cast_a_la_sql) m
 
   and peek m =
@@ -1520,7 +1569,7 @@ struct
         ) +- blanks +- strinG "endian" +- blanks) ++
       highestest_prec >>:
       fun ((typ, endianness), e) ->
-        make (Stateless (SL1 (Peek ((DT.required typ), endianness), e)))
+        make_stateless (SL1 (Peek ((DT.required typ), endianness), e))
     ) m
 
   and one_out_of m =
@@ -1533,7 +1582,7 @@ struct
       state_and_nulls +-
       sep ++ highestest_prec >>:
       fun ((i, (g, n)), e) ->
-        make (Stateful (g, n, SF2 (OneOutOf, i, e)))
+        make_stateful g n (SF2 (OneOutOf, i, e))
     ) m
 
   and once_every m =
@@ -1549,7 +1598,7 @@ struct
         highestest_prec >>:
         fun (((d, tumbling), (g, n)), e) ->
           let op = OnceEvery tumbling in
-          make (Stateful (g, n, SF3 (op, d, default_start, e)))
+          make_stateful g n (SF3 (op, d, default_start, e))
       ) |<| (
         (* Functional syntax, default event-time *)
         afun3_sf "every" >>:
@@ -1559,7 +1608,7 @@ struct
               raise (Reject "tumbling must be a boolean")
           | Some tumbling ->
               let op = OnceEvery tumbling in
-              make (Stateful (g, n, SF3 (op, d, default_start, e)))
+              make_stateful g n (SF3 (op, d, default_start, e))
       ) |<| (
         (* Functional syntax, explicit event time *)
         afun4_sf "every" >>:
@@ -1569,7 +1618,7 @@ struct
               raise (Reject "tumbling must be a boolean")
           | Some tumbling ->
               let op = OnceEvery tumbling in
-              make (Stateful (g, n, SF3 (op, d, t, e)))
+              make_stateful g n (SF3 (op, d, t, e))
       ))
     ) m
 
@@ -1583,8 +1632,8 @@ struct
       sep ++ highestest_prec >>:
       fun ((k, (g, n)), e) ->
         if k = VNull then raise (Reject "Cannot use NULL here") ;
-        let k = make (Stateless (SL0 (Const k))) in
-        make (Stateful (g, n, SF3 (MovingAvg, one (), k, e)))
+        let k = make_stateless (SL0 (Const k)) in
+        make_stateful g n (SF3 (MovingAvg, one (), k, e))
     ) m
 
   and top_expr m =
@@ -1641,8 +1690,9 @@ struct
           | None, Some d -> default_start, d
           | Some t, Some d -> t, d
         in
-        make (Stateful (g, n, Top {
-          output ; size ; max_size ; top_what ; by ; duration ; top_time ; sigmas }))
+        make_stateful g n (Top {
+          output ; size ; max_size ; top_what ; by ; duration ; top_time ;
+          sigmas })
     ) m
 
   and largest m =
@@ -1668,19 +1718,19 @@ struct
           several_greedy ~sep:list_sep p) >>:
           fun (((((inv, but), (up_to, c)), (g, n)), e), es) ->
             (* The result is null when the number of input is less than c: *)
-            make (Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, es)))
+            make_stateful g n (SF4s (Largest { inv ; up_to }, c, but, e, es))
       ) |<| (
         (
           (strinG "latest" >>: fun () -> false) |<|
           (strinG "oldest" >>: fun () -> true)
         ) ++ but ++ up_to_c ++ state_and_nulls +- opt_blanks ++ p >>:
           fun ((((inv, but), (up_to, c)), (g, n)), e) ->
-            make (Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, [])))
+            make_stateful g n (SF4s (Largest { inv ; up_to }, c, but, e, []))
       ) |<| (
         strinG "earlier" -+ up_to_c ++ state_and_nulls +- opt_blanks ++ p >>:
           fun (((up_to, c), (g, n)), e) ->
             let inv = false and but = zero () in
-            make (Stateful (g, n, SF4s (Largest { inv ; up_to }, c, but, e, [])))
+            make_stateful g n (SF4s (Largest { inv ; up_to }, c, but, e, []))
       )
     ) m
 
@@ -1717,7 +1767,7 @@ struct
         (blanks -- strinG "at" -- blanks -- strinG "time" -- blanks -+ p) >>:
       fun ((((sample_size, (max_age, tumbling)), (g, n)), what), time) ->
         let e = Past { what ; time ; max_age ; tumbling ; sample_size } in
-        make (Stateful (g, n, e))
+        make_stateful g n e
     ) m
 
   and nth m =
@@ -1735,8 +1785,8 @@ struct
     (
       q +- sep ++ highestest_prec >>:
       fun (n, es) ->
-        let n = make (Stateless (SL0 (Const (T.scalar_of_int (n - 1))))) in
-        make (Stateless (SL2 (Get, n, es)))
+        let n = make_stateless (SL0 (Const (T.scalar_of_int (n - 1)))) in
+        make_stateless (SL2 (Get, n, es))
     ) m
 
   and case m =
@@ -1784,7 +1834,7 @@ struct
       afun0v "coalesce" >>: function
         | [] -> raise (Reject "empty COALESCE")
         | [_] -> raise (Reject "COALESCE must have at least 2 arguments")
-        | r -> make (Stateless (SL1s (Coalesce, r)))
+        | r -> make_stateless (SL1s (Coalesce, r))
     ) m
 
   and accept_units q =
@@ -1865,7 +1915,7 @@ struct
       (test_expr ~printer:(print false) p "(zone_src IS NULL or zone_src = z1) and \\
                  (zone_dst IS NULL or zone_dst = z2)")
 
-    "(SUM LOCALLY skip nulls(unknown.'bytes')) / (unknown.'avg_window')" \
+    "(SUM skip nulls(unknown.'bytes')) / (unknown.'avg_window')" \
       (test_expr ~printer:(print false) p "(sum bytes)/avg_window")
 
     "(unknown.'start') // ((1000000) * (unknown.'avg_window'))" \
@@ -1874,17 +1924,17 @@ struct
     "param.'p' PERCENTILE(unknown.'bytes_per_sec')" \
       (test_expr ~printer:(print false) p "p percentile bytes_per_sec")
 
-    "(MAX LOCALLY skip nulls(in.'start')) > ((out.'start') + (((unknown.'obs_window') * (1.15)) * (1000000)))" \
+    "(MAX skip nulls(in.'start')) > ((out.'start') + (((unknown.'obs_window') * (1.15)) * (1000000)))" \
       (test_expr ~printer:(print false) p \
         "max in.start > out.start + (obs_window * 1.15) * 1_000_000")
 
     "(unknown.'x') % (unknown.'y')" \
       (test_expr ~printer:(print false) p "x % y")
 
-    "ABS((unknown.'bps') - (LAG LOCALLY skip nulls(1, unknown.'bps')))" \
+    "ABS((unknown.'bps') - (LAG skip nulls(1, unknown.'bps')))" \
       (test_expr ~printer:(print false) p "abs(bps - lag(1,bps))")
 
-    "HYSTERESIS LOCALLY skip nulls(unknown.'value', 900, 1000)" \
+    "HYSTERESIS skip nulls(unknown.'value', 900, 1000)" \
       (test_expr ~printer:(print false) p "hysteresis(value, 900, 1000)")
 
     "((4) & (4)) * (2)" \
@@ -1924,11 +1974,12 @@ let check =
   in
   iter (fun _s e ->
     match e.text with
-    | Stateful (_, _, Past { max_age ; sample_size ; _ }) ->
+    | Stateful { operation = Past { max_age ; sample_size ; _ } ; _ } ->
         check_no_io "duration of function past" max_age ;
         Option.may (check_no_io "sample size of function past")
           sample_size
-    | _ -> ())
+    | _ ->
+        ())
 
 (* Return the expected units for a given expression.
  * Fail if the operation does not accept the arguments units.
@@ -2046,24 +2097,26 @@ let units_of_expr params units_of_input units_of_output =
           units_of_params n
         else None
     | Stateless (SL2 (Percentile,
-                      { text = Stateful (_, _, SF4s (Largest _,  _, _, e, _))
-                             | Stateful (_, _, SF2 (Sample, _, e))
-                             | Stateful (_, _, SF1 (Group, e)) ; _ }, _))
-    | Stateful (_, _, SF2 (OneOutOf, _, e))
+                      { text =
+                          Stateful { operation = SF4s (Largest _,  _, _, e, _) ; _ }
+                        | Stateful { operation = SF2 (Sample, _, e) ; _ }
+                        | Stateful { operation = SF1 (Group, e) ; } ; _ }, _))
+    | Stateful { operation = SF2 (OneOutOf, _, e) ; _ }
     | Stateless (SL1s (Print, e::_))
-    | Stateful (_, _, SF1 ((AggrMin|AggrMax|AggrAvg|AggrFirst|AggrLast), e))
-    | Stateful (_, _, SF2 ((Lag|ExpSmooth), _, e))
-    | Stateful (_, _, SF3 (MovingAvg, _, _, e)) ->
+    | Stateful { operation = SF1 ((AggrMin|AggrMax|AggrAvg|AggrFirst
+                                  |AggrLast), e) ; _ }
+    | Stateful { operation = SF2 ((Lag|ExpSmooth), _, e) ; _ }
+    | Stateful { operation = SF3 (MovingAvg, _, _, e) ; _ } ->
         uoe ~indent e
-    | Stateful (_, _, SF3 (OnceEvery _, _, time, x)) ->
+    | Stateful { operation = SF3 (OnceEvery _, _, time, x) ; _ } ->
         check_time ~indent "because it's the period of \
                             `once every` operator" time ;
         uoe ~indent x
-    | Stateful (_, _, Past { time }) ->
+    | Stateful { operation = Past { time } ; _ } ->
         check_time ~indent "because it's the duration of the past operator"
                    time ;
         None
-    | Stateful (_, _, Top { top_time ; sigmas ; size }) ->
+    | Stateful { operation = Top { top_time ; sigmas ; size } ; _ } ->
         check_time ~indent "because it's the duration of the top operator"
                    top_time ;
         check_no_units ~indent "because it is a number of items" size ;
@@ -2074,11 +2127,11 @@ let units_of_expr params units_of_input units_of_output =
         None
     | Stateless (SL1s ((Max|Min), es)) ->
         same_units ~indent "Min/Max alternatives" None es
-    | Stateful (_, _, SF1 (AggrSum, e)) ->
+    | Stateful { operation = SF1 (AggrSum, e) ; _ } ->
         let u = uoe ~indent e in
         check_not_rel e u ;
         u
-    | Stateful (_, _, SF1 (Count, _)) ->
+    | Stateful { operation = SF1 (Count, _) ; _ } ->
         (* Or "tuples" if we had such a unit. *)
         Some Units.dimensionless
     | Generator (Split (e1, e2)) ->

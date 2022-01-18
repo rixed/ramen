@@ -24,7 +24,8 @@ let expr_needs_tuple_from lst e =
 let expr_needs_group e =
   expr_needs_tuple_from [ GroupState ] e ||
   (match e.E.text with
-  | Stateful (LocalState, _, _) -> true
+  | Stateful { lifespan = Some LocalState ; _ } ->
+      true
   | Stateless (SL0 (EventStart|EventStop)) ->
       (* This depends on the definition of the event time really.
        * TODO: pass the event time down here and actually check. *)
@@ -67,7 +68,7 @@ let rec defined_order = function
       and no_local_state e =
         try
           E.unpure_iter (fun _ -> function
-            | E.{ text = Stateful (LocalState, _, _) } ->
+            | E.{ text = Stateful { lifespan = Some LocalState ; _ } } ->
                 raise Exit
             | _ -> ()) e ;
           true
@@ -202,9 +203,9 @@ let minimal_type func_op =
 let stateful_expressions op =
   O.fold_expr ([], []) (fun _c _s (glo, loc as prev) e ->
     match e.E.text with
-    | Stateful (E.GlobalState, _, _) ->
+    | Stateful E.{ lifespan = Some GlobalState ; _ } ->
         e :: glo, loc
-    | Stateful (E.LocalState, _, _) ->
+    | Stateful E.{ lifespan = Some LocalState; _ } ->
         glo, e :: loc
     | _ ->
         prev

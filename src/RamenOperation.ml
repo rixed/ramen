@@ -872,13 +872,13 @@ let checked ?(unit_tests=false) params globals op =
   and warn_no_group clause =
     E.unpure_iter (fun s e ->
       match e.E.text with
-      | Stateful (LocalState, skip, stateful) ->
+      | Stateful { lifespan = Some LocalState ; skip_nulls ; operation } ->
           !logger.warning
             "In %s: Locally stateful function without aggregation. \
              Do you mean %a%s?"
             clause
             (E.print_text ~max_depth:1 false)
-              (Stateful (GlobalState, skip, stateful))
+              (Stateful { lifespan = Some GlobalState ; skip_nulls ; operation })
             (* TODO: Would be nicer if we were able to tell for sure but reaching
              * out to that info from here is complicated: *)
             (if s = [] (* top level expr, likely a field *) then
@@ -951,7 +951,8 @@ let checked ?(unit_tests=false) params globals op =
                 N.field_print n |>
               failwith
         | _ -> ()) op ;
-      (* Now check what tuple prefixes are used: *)
+      (* Now check what tuple prefixes are used, and resolve default prefixes
+       * and default lifespans: *)
       let have_field alias =
         List.exists (fun sf' -> sf'.alias = alias) in
       let aggregate_fields =
@@ -1089,7 +1090,16 @@ let checked ?(unit_tests=false) params globals op =
         Printf.sprintf2 "Too many fields (configured maximum is %d)"
           num_all_fields |>
         failwith ;
-      Aggregate { aggregate with aggregate_fields ; aggregate_event_time }
+      let op =
+        Aggregate { aggregate with aggregate_fields ; aggregate_event_time } in
+      (* Set default lifespan: *)
+      let default_lifespan = E.LocalState in (* TODO: according to keys *)
+      map_expr (fun _s -> function
+        | E.({ text = Stateful ({ lifespan = None ; _ } as sf) ; _ } as e)->
+            { e with text = Stateful { sf with
+              lifespan = Some default_lifespan } }
+        | e -> e
+      ) op
 
     | ListenFor { proto ; factors ; _ } ->
       let tup_typ = RamenProtocols.tuple_typ_of_proto proto in
@@ -1135,15 +1145,23 @@ struct
       when not (N.is_virtual (N.field n)) ->
         strip_leading_underscore n
     (* Provide some default name for common aggregate functions: *)
-    | Stateful (_, _, SF1 (AggrMin, e)) -> "min_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrMax, e)) -> "max_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrSum, e)) -> "sum_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrAvg, e)) -> "avg_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrAnd, e)) -> "and_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrOr, e)) -> "or_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrFirst, e)) -> "first_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrLast, e)) -> "last_"^ default_alias e
-    | Stateful (_, _, SF1 (AggrHistogram _, e)) ->
+    | Stateful { operation = SF1 (AggrMin, e) ; _ } ->
+        "min_"^ default_alias e
+    | Stateful { operation = SF1 (AggrMax, e) ; _ } ->
+        "max_"^ default_alias e
+    | Stateful { operation = SF1 (AggrSum, e) ; _ } ->
+        "sum_"^ default_alias e
+    | Stateful { operation = SF1 (AggrAvg, e) ; _ } ->
+        "avg_"^ default_alias e
+    | Stateful { operation = SF1 (AggrAnd, e) ; _ } ->
+        "and_"^ default_alias e
+    | Stateful { operation = SF1 (AggrOr, e) ; _ } ->
+        "or_"^ default_alias e
+    | Stateful { operation = SF1 (AggrFirst, e) ; _ } ->
+        "first_"^ default_alias e
+    | Stateful { operation = SF1 (AggrLast, e) ; _ } ->
+        "last_"^ default_alias e
+    | Stateful { operation = SF1 (AggrHistogram _, e) ; _ } ->
         default_alias e ^"_histogram"
     | Stateless (SL2 (Percentile, e,
         { text = (Stateless (SL0 (Const p)) |
@@ -1152,9 +1170,12 @@ struct
       when T.is_round_integer p ->
         Printf.sprintf2 "%s_%ath" (default_alias e) T.print p
     (* Some functions better leave no traces: *)
-    | Stateless (SL1s (Print, es)) when es <> [] -> default_alias (List.last es)
-    | Stateless (SL1 ((Cast _|UuidOfU128), e)) -> default_alias e
-    | Stateful (_, _, SF1 (Group, e)) -> default_alias e
+    | Stateless (SL1s (Print, es)) when es <>
+        [] -> default_alias (List.last es)
+    | Stateless (SL1 ((Cast _|UuidOfU128), e)) ->
+        default_alias e
+    | Stateful { operation = SF1 (Group, e) ; _ } ->
+        default_alias e
     | _ -> raise (Reject "must set alias")
 
   (* Either `expr` or `expr AS alias` or `expr AS alias "doc"`, or
@@ -1803,7 +1824,8 @@ struct
                    group by start / (1_000_000 * avg_window) \\
                    commit after out.start < (max in.start) + 3600")
 
-    "FROM 'foo' SELECT 1 AS 'one' GROUP BY true COMMIT BEFORE (SUM LOCALLY skip nulls(1)) >= (5)" \
+    "FROM 'foo' SELECT 1 AS 'one' GROUP BY true \\
+     COMMIT BEFORE (SUM LOCALLY skip nulls(1)) >= (5)" \
         (test_op "select 1 as one from foo commit before sum 1 >= 5 group by true")
 
     "FROM 'foo/bar' SELECT in.'n', LAG GLOBALLY skip nulls(2, out.'n') AS 'l'" \

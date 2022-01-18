@@ -900,9 +900,10 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
       emit_assert_not_nullable oc e
 
-  | Stateful (_, _, SF1 ((AggrSum|AggrMin|AggrMax|AggrFirst
-                         |AggrLast|AggrAnd|AggrOr
-                         |AggrBitAnd|AggrBitOr|AggrBitXor as aggr), x)) ->
+  | Stateful { operation =
+      SF1 ((AggrSum|AggrMin|AggrMax|AggrFirst
+           |AggrLast|AggrAnd|AggrOr
+           |AggrBitAnd|AggrBitOr|AggrBitXor as aggr), x) ; _ } ->
       (* - if x is a list/vector then the result has the type of its elements;
        * - if x is a list/vector then the result is as nullable as its
        *   elements or the list itself;
@@ -943,7 +944,7 @@ let emit_constraints tuple_sizes records field_names
         ()
       | _ -> ())
 
-  | Stateful (_, n, SF1 (AggrAvg, x)) ->
+  | Stateful { skip_nulls = n ; operation = SF1 (AggrAvg, x) } ->
       (* - x must be numeric or a list/vector of numerics;
        * - The result is a float;
        * - The result is nullable if x or its elements are, or if skip_null. *)
@@ -1639,7 +1640,7 @@ let emit_constraints tuple_sizes records field_names
         Printf.fprintf oc "(= %s (or %s %s))"
           nid (n_of_expr m) (n_of_expr v))
 
-  | Stateful (_, _, SF2 (Lag, e1, e2)) ->
+  | Stateful { operation = SF2 (Lag, e1, e2) ; _ } ->
       (* Typing rules:
        * - e1 must be an unsigned;
        * - e2 has same type as the result;
@@ -1649,7 +1650,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_eq (t_of_expr e2) oc eid ;
       emit_assert_true oc nid
 
-  | Stateful (_, _, SF3 (MovingAvg, e1, e2, e3)) ->
+  | Stateful { operation = SF3 (MovingAvg, e1, e2, e3) ; _ } ->
       (* Typing rules:
        * - e1 must be an unsigned (the period);
        * - e2 must also be an unsigned (the number of values to average);
@@ -1665,7 +1666,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_numeric oc e3 ;
       assert_imply (n_of_expr e3) oc nid
 
-  | Stateful (_, _, SF4 (DampedHolt, e1, e2, e3, e4)) ->
+  | Stateful { operation = SF4 (DampedHolt, e1, e2, e3, e4) ; _ } ->
       (* Typing rules:
        * - Parameters are not nullable
        * - e1 must be a float;
@@ -1686,7 +1687,7 @@ let emit_constraints tuple_sizes records field_names
           (n_of_expr e1) (n_of_expr e2) (n_of_expr e3) (n_of_expr e4))
         (emit_eq nid)
 
-  | Stateful (_, _, SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6)) ->
+  | Stateful { operation = SF6 (DampedHoltWinter, e1, e2, e3, e4, e5, e6) ; _ } ->
       (* Typing rules:
        * - Parameters are not nullable
        * - e1 must be a float;
@@ -1715,7 +1716,7 @@ let emit_constraints tuple_sizes records field_names
           (n_of_expr e4) (n_of_expr e5) (n_of_expr e6))
         (emit_eq nid)
 
-  | Stateful (_, _, SF4s (MultiLinReg, e1, e2, e3, e4s)) ->
+  | Stateful { operation = SF4s (MultiLinReg, e1, e2, e3, e4s) ; _ } ->
       (* As above, with the addition of predictors that must also be
        * numeric and non null. Why non null? See comment in check_variadic
        * and probably get rid of this limitation. *)
@@ -1731,7 +1732,7 @@ let emit_constraints tuple_sizes records field_names
         emit_assert_not_nullable oc e ;
       ) e4s
 
-  | Stateful (_, _, SF2 (ExpSmooth, e1, e2)) ->
+  | Stateful { operation = SF2 (ExpSmooth, e1, e2) ; _ } ->
       (* Typing rules:
        * - e1 must be a non-null float (and ideally, between 0 and 1), but
        *   we just ask for a numeric in order to also accept immediate
@@ -1810,7 +1811,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TString ;
       emit_assert_eq (n_of_expr x) oc nid
 
-  | Stateful (_, _, SF4 (Remember _, fpr, tim, dur, e)) ->
+  | Stateful { operation = SF4 (Remember _, fpr, tim, dur, e) ; _ } ->
       (* Typing rules:
        * - fpr must be a non null (positive) float, so we take any numeric
        *   for now;
@@ -1831,14 +1832,14 @@ let emit_constraints tuple_sizes records field_names
         (Printf.sprintf2 "(or %s %s)" (n_of_expr tim) (n_of_expr e))
         (emit_eq nid)
 
-  | Stateful (_, _, SF1 (Distinct, e)) ->
+  | Stateful { operation = SF1 (Distinct, e) ; _ } ->
       (* - e can be anything;
        * - The result is a boolean;
        * - The result is nullable if e is nullable. *)
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
       emit_assert_eq nid oc (n_of_expr e)
 
-  | Stateful (_, _, SF3 (Hysteresis, meas, accept, max)) ->
+  | Stateful { operation = SF3 (Hysteresis, meas, accept, max) ; _ } ->
       (* - meas, accept and max must be numeric;
        * - The result is a boolean;
        * - The result is nullable if and only if any of meas, accept and
@@ -1852,8 +1853,9 @@ let emit_constraints tuple_sizes records field_names
           (n_of_expr meas) (n_of_expr accept) (n_of_expr max))
         (emit_eq nid)
 
-  | Stateful (_, n, Top { output ; size ; max_size ; top_what ; by ; duration ;
-                          top_time ; sigmas }) ->
+  | Stateful { skip_nulls = n ; operation =
+        Top { output ; size ; max_size ; top_what ; by ; duration ;
+              top_time ; sigmas } ; _ } ->
       (* Typing rules:
        * - size must be numeric and not null;
        * - max_size, if set, must be numeric and not null ;
@@ -1919,7 +1921,7 @@ let emit_constraints tuple_sizes records field_names
               (n_of_expr by))
             (emit_eq nid))
 
-  | Stateful (_, n, SF4s (Largest _, c, but, x, es)) ->
+  | Stateful { skip_nulls = n ; operation = SF4s (Largest _, c, but, x, es) } ->
       (* - c must be a constant (ensured by parser) strictly (TODO) positive
        *   integer;
        * - b must be a constant (also ensured by parser) and non-negative;
@@ -1948,7 +1950,7 @@ let emit_constraints tuple_sizes records field_names
       List.iter (emit_assert_not_nullable oc) es ;
       emit_assert_nullable oc e
 
-  | Stateful (_, n, SF2 (Sample, c, x)) ->
+  | Stateful { skip_nulls = n ; operation = SF2 (Sample, c, x) } ->
       (* - c must be a constant (TODO) strictly (TODO) positive integer;
        * - c must not be nullable;
        * - The type of the result is a list of items of the same type than x;
@@ -1966,7 +1968,7 @@ let emit_constraints tuple_sizes records field_names
         (emit_eq eid) ;
       emit_assert_eq nid oc (n_of_expr x)
 
-  | Stateful (_, _, SF2 (OneOutOf, i, x)) ->
+  | Stateful { operation = SF2 (OneOutOf, i, x) ; _ } ->
       (* - i must be a constant (TODO) strictly (TODO) positive integer;
        * - i must not be nullable;
        * - the type of the result is the same as x;
@@ -1976,7 +1978,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_eq eid oc (t_of_expr x) ;
       emit_assert_true oc nid
 
-  | Stateful (_, _, SF3 (OnceEvery _, d, t, x)) ->
+  | Stateful { operation = SF3 (OnceEvery _, d, t, x) ; _ } ->
       (* - d must be a constant (TODO) strictly (TODO) positive (TODO) numeric;
        * - d must not be nullable;
        * - t must be a numeric (event-time);
@@ -1990,7 +1992,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_eq eid oc (t_of_expr x) ;
       emit_assert_true oc nid
 
-  | Stateful (_, n, Past { what ; time ; max_age ; sample_size ; _ }) ->
+  | Stateful { skip_nulls = n ; operation = Past { what ; time ; max_age ; sample_size ; _ } } ->
       (* - max_age must be a constant (TODO) numeric, greater than 0 (TODO);
        * - max_age must not be nullable;
        * - time must be a time (numeric);
@@ -2018,7 +2020,7 @@ let emit_constraints tuple_sizes records field_names
         (emit_eq eid) ;
       emit_assert_nullable oc e
 
-  | Stateful (_, n, SF1 (Group, g)) ->
+  | Stateful { skip_nulls = n ; operation = SF1 (Group, g) } ->
       (* - The result is a list which elements have the exact same type as g;
        * - If we skip nulls then the elements are not nullable, otherwise they
        *   are as nullable as g;
@@ -2036,7 +2038,7 @@ let emit_constraints tuple_sizes records field_names
         (emit_eq eid) ;
       emit_assert_eq (n_of_expr g) oc nid
 
-  | Stateful (_, n, SF1 (Count, x)) ->
+  | Stateful { skip_nulls = n ; operation = SF1 (Count, x) } ->
       (* - The result is always an u32;
        * - The result is only nullable if nulls are not skipped and x is a
        *   nullable boolean, in which case we couldn't tell how many times
@@ -2052,7 +2054,7 @@ let emit_constraints tuple_sizes records field_names
             (t_of_expr x))
           (emit_eq nid)
 
-  | Stateful (_, _, SF1 (AggrHistogram (_, _, n), x)) ->
+  | Stateful { operation = SF1 (AggrHistogram (_, _, n), x) ; _ } ->
       (* - x must be numeric;
        * - The result is a vector of size n+2, of non nullable U32;
        * - The result itself is as nullable as x. *)
