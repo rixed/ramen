@@ -17,16 +17,6 @@ WARNS    = -w -40-58+27
 OCAMLOPTFLAGS = @OCAMLOPTFLAGS@ -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -annot -bin-annot
 OCAMLCFLAGS = @OCAMLCFLAGS@ -thread -I src -I $(BUNDLE_DIR)/lib $(WARNS) -annot
 
-ifneq (@QMAKE@,)
-ifneq (@CONVERT@,)
-BUILD_RMADMIN = 1
-else
-BUILD_RMADMIN =
-endif
-else
-BUILD_RMADMIN =
-endif
-
 CFLAGS   += -std=gnu11   -Wall -W -Wno-parentheses -fPIC
 CXXFLAGS += -std=gnu++17 -Wall -W -Wno-parentheses -fPIC
 CPPFLAGS += -D_GNU_SOURCE \
@@ -117,12 +107,9 @@ PACKAGES += inotify
 endif
 
 # `make` should compile and install everything, yet to build the deb or
-# tarball RmAdmin is not needed:
+# tarball is not needed:
 PACKAGED_BIN = src/ramen
 INSTALLED_BIN = $(PACKAGED_BIN)
-ifeq ($(BUILD_RMADMIN),1)
-INSTALLED_BIN += rmadmin/RmAdmin
-endif
 
 INSTALLED_LIB = \
 	src/codegen.cmxa src/codegen.a \
@@ -555,8 +542,7 @@ RMADMIN_SOURCES = \
 	src/RamenSync.ml \
 	src/RamenAuthn.ml \
 	src/RamenTcpSocket.ml \
-	src/RamenSyncZMQClient.ml \
-	rmadmin/GuiHelper.ml
+	src/RamenSyncZMQClient.ml
 
 LIBRINGBUF_SOURCES = \
 	src/config.h \
@@ -963,135 +949,6 @@ src/codegen.cma: \
 	$(OCAMLC) $(OCAMLCFLAGS) -a $(MOREFLAGS) $(filter %.cmo, $^) -o $@
 
 src/codegen.a: src/codegen.cmxa
-
-
-# RmAdmin
-
-RMADMIN_FLAGS = \
-	-package batteries,stdint,syslog,cmdliner,sodium \
-	-package ppp,ppp.ppx,ppp.unix,binocle,parsercombinator
-
-rmadmin/GuiHelper.o: \
-		$(patsubst %.mli,%.cmi,$(filter %.mli, $(RMADMIN_SOURCES))) \
-		$(patsubst %.ml,%.cmx,$(filter-out rmadmin/GuiHelper.ml,$(filter %.ml, $(RMADMIN_SOURCES)))) \
-		rmadmin/GuiHelper.ml
-	@echo 'Generating OCaml GUI helper $@'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(RMADMIN_FLAGS) -package dessser,pfds $(filter %.cmx, $^) $(filter %.ml, $^) -output-obj -o rmadmin/GuiHelper_tmp.o
-	mv rmadmin/GuiHelper_tmp.o $@
-	@# Also helps `qmake Makefile` to notice the dependency:
-	touch rmadmin/main.cpp
-
-rmadmin/qcustomplot.cpp:
-	@echo 'Downloading qcustomplot'
-	$(WGET) https://www.qcustomplot.com/release/2.0.1/QCustomPlot-source.tar.gz -O - | \
-	  tar xz -C rmadmin -U --strip-components=1 \
-	    qcustomplot-source/qcustomplot.h qcustomplot-source/qcustomplot.cpp
-
-ifeq ($(shell uname),Darwin)
-EXTRA_ICON_FILES = rmadmin/rmadmin.icns
-else
-EXTRA_ICON_FILES =
-endif
-
-rmadmin/RmAdmin: \
-		rmadmin/GuiHelper.o \
-		rmadmin/rmadmin.ico \
-		$(EXTRA_ICON_FILES) \
-		rmadmin/rmadmin.pro \
-		rmadmin/qcustomplot.cpp \
-		$(wildcard rmadmin/*.cpp) \
-		$(wildcard rmadmin/*.h)
-	@echo 'Generating RmAdmin $@'
-	cd rmadmin && @QMAKE@ $(QMAKE_EXTRA)
-	$(MAKE) -C rmadmin
-	@if ! test -e $@ && test -e rmadmin/RmAdmin.app ; then \
-	  echo '#!/bin/sh' > $@ ;\
-	  echo 'exec ./rmadmin/RmAdmin.app/Contents/MacOS/RmAdmin' >> $@ ;\
-	  chmod a+x $@ ;\
-	fi
-
-# This ico file is used for Windows app icon and internally by RmAdmin (in the about window):
-rmadmin/rmadmin.ico: site/icon.png
-	@echo 'Generating $@'
-	@CONVERT@ $< $@
-
-rmadmin/rmadmin.icns: site/icon.png
-	@echo 'Generating $@'
-	$(RM) -r icon.iconset
-	mkdir icon.iconset
-	@CONVERT@ $< -resize 16x16 icon.iconset/icon_16x16.png
-	@CONVERT@ $< -resize 32x32 icon.iconset/icon_16x16@2x.png
-	@CONVERT@ $< -resize 32x32 icon.iconset/icon_32x32.png
-	@CONVERT@ $< -resize 64x64 icon.iconset/icon_32x32@2x.png
-	@CONVERT@ $< -resize 128x128 icon.iconset/icon_128x128@.png
-	@CONVERT@ $< -resize 256x256 icon.iconset/icon_128x128@2x.png
-	@CONVERT@ $< -resize 256x256 icon.iconset/icon_256x256.png
-	@CONVERT@ $< -resize 512x512 icon.iconset/icon_256x256@2x.png
-	@CONVERT@ $< -resize 512x512 icon.iconset/icon_512x512.png
-	@CONVERT@ $< -resize 1024x1024 icon.iconset/icon_512x512@2x.png
-	iconutil --convert icns --output $@ icon.iconset
-
-# macdeployqt sulks SVG icons, doesn't include svg libs and therefore no icons
-# are visible in the app, unless it is fixed by hand.
-# See https://forum.qt.io/topic/87518/macdeployqt-strips-resources-from-deployed-binary/13
-QTDIR ?= /usr/local/Cellar/qt/5.14.1
-rmadmin/RmAdmin.dmg: rmadmin/rmadmin.icns rmadmin/RmAdmin rmadmin/rmadmin.ico
-	@echo 'Generating MacOS disk image $@'
-	@cd rmadmin &&\
-	 mkdir -p RmAdmin.app/Contents/Frameworks &&\
-	 cp @OCAMLLIB@/libasmrun_shared.so RmAdmin.app/Contents/Frameworks &&\
-	 install_name_tool -change libasmrun_shared.so @executable_path/../Frameworks/libasmrun_shared.so RmAdmin.app/Contents/MacOS/RmAdmin &&\
-	 $(RM) RmAdmin.dmg
-	@echo 'Fixing SVG framework...'
-	@mkdir -p rmadmin/RmAdmin.app/Contents/PlugIns/imageformats &&\
-	 cd rmadmin/RmAdmin.app/Contents/PlugIns/imageformats &&\
-	 cp $(QTDIR)/plugins/imageformats/libqsvg.dylib . &&\
-	 install_name_tool -change $(QTDIR)/lib/QtGui.framework/Versions/5/QtGui @executable_path/../Frameworks/QtGui.framework/Versions/5/QtGui libqsvg.dylib &&\
-	 install_name_tool -change $(QTDIR)/lib/QtWidgets.framework/Versions/5/QtWidgets @executable_path/../Frameworks/QtWidgets.framework/Versions/5/QtWidgets libqsvg.dylib &&\
-	 install_name_tool -change $(QTDIR)/lib/QtSvg.framework/Versions/5/QtSvg @executable_path/../Frameworks/QtSvg.framework/Versions/5/QtSvg libqsvg.dylib &&\
-	 install_name_tool -change $(QTDIR)/lib/QtCore.framework/Versions/5/QtCore @executable_path/../Frameworks/QtCore.framework/Versions/5/QtCore libqsvg.dylib
-	@echo 'Build DMG'
-	@cd rmadmin &&\
-	 macdeployqt RmAdmin.app -libpath=/usr/local/lib -dmg
-
-# Better not relying on linuxdeploy for anything but gathering the libs
-rmadmin/AppDir/usr/share/applications/RmAdmin.desktop: rmadmin/RmAdmin.desktop
-	mkdir -p $(dir $@)
-	cp -f $< $@
-
-rmadmin/AppDir/usr/bin/RmAdmin: rmadmin/RmAdmin
-	mkdir -p $(dir $@)
-	cp -f $< $@
-
-rmadmin/AppDir/usr/share/icons/hicolor/128x128/apps/RmAdmin.png: site/icon.png
-	mkdir -p $(dir $@)
-	cp -f $< $@
-
-appimage: rmadmin/RmAdmin.$(VERSION).AppImage
-
-rmadmin/RmAdmin.$(VERSION).AppImage: \
-		rmadmin/AppDir/usr/share/applications/RmAdmin.desktop \
-		rmadmin/AppDir/usr/bin/RmAdmin \
-		rmadmin/AppDir/usr/share/icons/hicolor/128x128/apps/RmAdmin.png
-	@echo 'Generating Linux AppImage into $@'
-	LD_LIBRARY_PATH=@OCAMLLIB@ OUTPUT=$@ $(LINUXDEPLOY) --appdir=rmadmin/AppDir --plugin qt --output appimage
-
-coverity:
-	@echo 'Building and uploading coverity analysis'
-	@test `whoami` = rixed
-	@test -r .coverity_token
-	@$(MAKE) -C rmadmin clean
-	@cd rmadmin && \
-	 cov-build --dir cov-int make && \
-	 tar czvf ramen.tgz cov-int
-	@curl \
-	   --form token=`cat .coverity_token` \
-	   --form email=rixed@free.fr \
-	   --form file=rmadmin/ramen.tgz \
-	   --form version="$(VERSION)" \
-	   --form description="$(shell git rev-parse --short HEAD)" \
-	   https://scan.coverity.com/builds?project=rixed%2Framen
-
 
 # Bundle directory
 
@@ -1884,8 +1741,6 @@ clean-dist: clean clean-temp
 	$(RM) -r tmp
 	$(RM) -r submodules/orc
 	$(RM) ramen.*.deb ramen.*.tgz
-	$(RM) rmadmin/RmAdmin rmadmin/rmadmin.ico rmadmin/rmadmin.icns
-	$(RM) -r rmadmin/RmAdmin.app
 	$(RM) $(PAGES)
 	$(RM) META
 	$(RM) src/country_of_ip/db_v4.c src/country_of_ip/db_v6.c
@@ -1905,11 +1760,6 @@ clean: clean-dessserc-gen
 	$(RM) src/ramen src/codegen.cmxa src/libringbuf.a src/liborchelp.a
 	$(RM) tools/*.opt tools/*.s tools/*.annot tools/*.cmt tools/*.cmti
 	$(RM) tools/*.o tools/*.cmx tools/*.cmi
-ifeq ($(BUILD_RMADMIN),1)
-	if test -e rmadmin/Makefile; then $(MAKE) -C rmadmin clean; fi
-endif
-	$(RM) rmadmin/*.o rmadmin/*.s rmadmin/*.annot rmadmin/*.cmx rmadmin/*.cmi
-	$(RM) rmadmin/Makefile rmadmin/moc_* rmadmin/*.dmg
 	$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a
 	$(RM) src/libcountry.a IpToCountry.csv IpToCountry.6R.csv
 	$(RM) tests/func/generated.type tests/func/fixtures/generated.csv tests/func/generated.ramen
