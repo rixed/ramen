@@ -869,7 +869,7 @@ let checked ?(unit_tests=false) params globals op =
   let check_pure clause =
     E.unpure_iter (fun _ _ ->
       failwith ("Stateful functions not allowed in "^ clause))
-  and warn_no_group clause =
+  and warn_local_state clause =
     E.unpure_iter (fun s e ->
       match e.E.text with
       | Stateful { lifespan = Some LocalState ; skip_nulls ; operation } ->
@@ -1077,12 +1077,16 @@ let checked ?(unit_tests=false) params globals op =
             failwith
         | _ -> ()
       ) op ;
-      (* Check that if there is no aggregation then no LocalState is used
-       * anywhere: *)
-      if commit_cond == default_commit_cond &&
-         flush_how = Reset &&
-         key = [] then
-        iter_top_level_expr warn_no_group op ;
+      (* There is a meaningful local state whenever group-by is used or if
+       * incoming data is hold and aggregated before commit.
+       * If there is no meaningful local state then using it is an error.
+       * Otherwise, local is the default. *)
+      let has_local_lifespan =
+        not (commit_cond == default_commit_cond &&
+             flush_how = Reset &&
+             key = []) in
+      if not has_local_lifespan then
+        iter_top_level_expr warn_local_state op ;
       (* Check that the resulting list of fields is not longer than the
        * (arbitrary) maximum number, to produce a better error message than
        * the assertions in the worker executable: *)
@@ -1093,7 +1097,8 @@ let checked ?(unit_tests=false) params globals op =
       let op =
         Aggregate { aggregate with aggregate_fields ; aggregate_event_time } in
       (* Set default lifespan: *)
-      let default_lifespan = E.LocalState in (* TODO: according to keys *)
+      let default_lifespan =
+        if has_local_lifespan then E.LocalState else E.GlobalState in
       map_expr (fun _s -> function
         | E.({ text = Stateful ({ lifespan = None ; _ } as sf) ; _ } as e)->
             { e with text = Stateful { sf with
