@@ -224,14 +224,19 @@ let precompile conf get_parent src_file src_path =
   let program_name = N.program (src_path : N.src_path :> string) in
   let program_code = Files.read_whole_file src_file in
   let keep = conf.C.keep_temp_files in
+  let warnings = ref [] in
+  let warn ?line ?column message =
+    !logger.warning "%s" message ;
+    warnings := RamenRaqlWarning.make ?line ?column message :: !warnings in
   Files.clean_temporary ~keep (fun add_single_temp_file _add_temp_file ->
     (*
      * First thing is to parse that program,
      * turning the program_code into a list of RamenProgram.fun:
      *)
     !logger.info "Parsing source %a" N.src_path_print src_path ;
-    let parsed_params, condition, globals, parsed_funcs =
+    let parsed_params, condition, globals, parsed_funcs, prog_warnings =
       RamenProgram.parse get_parent program_name program_code in
+    warnings := List.rev_append prog_warnings !warnings ;
     (*
      * Now we have to type all of these.
      * Here we mainly construct the data required by the typer: it needs
@@ -328,9 +333,10 @@ let precompile conf get_parent src_file src_path =
               f.RamenFieldMaskLib.path = [ Name field ]
             ) typ with
       | exception Not_found ->
-          !logger.warning "Cannot find field %a in %a"
+          Printf.sprintf2 "Cannot find field %a in %a"
             N.field_print field
-            RamenFieldMaskLib.print_in_type typ
+            RamenFieldMaskLib.print_in_type typ |>
+          warn
       | ft ->
           if ft.units = None then (
             !logger.debug "Set type of field %a to %a"
@@ -440,8 +446,7 @@ let precompile conf get_parent src_file src_path =
               (N.func_color func.VSI.name) in
           !logger.debug "Set units of operation expression %s" what ;
           try set_expr_units uoi uoo what e || changed
-          with Failure msg ->
-            !logger.warning "%s" msg ; changed
+          with Failure msg -> warn msg ; changed
         ) func.VSI.operation in
       (* TODO: check that various operations supposed to accept times or
        * durations come with either no units or the expected ones. *)
@@ -566,13 +571,25 @@ let precompile conf get_parent src_file src_path =
     loop (Hashtbl.keys compiler_funcs |> List.of_enum) ;
     (* Also check that the running condition have been typed: *)
     E.iter (check_typed "Running condition") condition ;
+    (* Warn if it uses envvars: *)
+    let cond_envvars = E.vars_of_expr Env condition in
+    let num_cond_envvars = N.SetOfFields.cardinal cond_envvars in
+    if num_cond_envvars <> 0 then
+      Printf.sprintf2
+        "Using the environment in the running condition is dangerous, \
+         make sure all sites have the same environment for variable%s %a."
+        (if num_cond_envvars > 1 then "s" else "")
+        (N.SetOfFields.print N.field_print) cond_envvars |>
+      warn ;
+    (* Final result: *)
     VSI.{
       default_params = parsed_params ;
       condition ;
       globals ;
       funcs =
         Hashtbl.values compiler_funcs |>
-        List.of_enum }
+        List.of_enum ;
+      warnings = !warnings }
   ) () (* and finally, delete temp files! *)
 
 (* Takes an operation and convert all its Path expressions for the
@@ -634,28 +651,14 @@ let compile conf info ~exec_file base_file src_path =
      * may not match that of the supervisor (a bit dangerous, so worth
      * a warning, but can be very useful): *)
     let keep_temp_files = conf.C.keep_temp_files in
-    let envvars =
-      E.fold (fun _ lst -> function
-        | E.{ text = Stateless (SL2 (
-              Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
-                   { text = Stateless (SL0 (Variable Env)) ; _ })) ; _ } ->
-            (N.field n) :: lst
-        | _ ->
-            lst
-      ) [] info.VSI.condition in
-    if envvars <> [] then
-      !logger.warning
-        "Using the environment in the running condition is dangerous, \
-         make sure all sites have the same environment for variable%s %a."
-        (if List.length envvars > 1 then "s" else "")
-        (pretty_list_print N.field_print) envvars ;
+    let envvars = E.vars_of_expr Env info.VSI.condition in
     let envvars =
       List.fold_left (fun envvars func ->
-        List.rev_append
+        N.SetOfFields.union
           (O.envvars_of_operation func.VSI.operation)
           envvars
       ) envvars info.VSI.funcs in
-    let envvars = List.sort_uniq N.compare envvars in
+    let envvars = N.SetOfFields.to_sorted_list envvars in
     Files.mkdir_all ~is_file:true params_obj_name ;
     let params_src_file =
       RamenOCamlCompiler.with_code_file_for
@@ -924,15 +927,8 @@ let compile conf info ~exec_file base_file src_path =
          * embed this under the shape of the typed operation, as it makes it
          * possible to also analyze the program. For simplicity, all those
          * info are also computed from the operation when we load a program. *)
-        let runconf =
-          VSI.{
-            funcs = info.VSI.funcs ;
-            default_params = info.VSI.default_params ;
-            condition = info.VSI.condition ;
-            globals = info.VSI.globals
-          } in
         Printf.fprintf oc "let rc_marsh_ = %S\n"
-          (Marshal.(to_string runconf [])) ;
+          (Marshal.(to_string info [])) ;
         (* Then call CodeGenLib_Casing.run with all this: *)
         Printf.fprintf oc
           "let () = CodeGenLib_Casing.run %S rc_marsh_ run_condition_\n"

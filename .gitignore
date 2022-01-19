@@ -132,6 +132,8 @@ src/retention.ml
 src/runtime_stats.ml
 src/simple_filter.ml
 src/site_name_wire.ml
+src/raql_error.ml
+src/raql_warning.ml
 src/source_info.ml
 src/rc_entry.ml
 src/time_range.ml

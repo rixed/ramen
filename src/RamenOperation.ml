@@ -549,11 +549,7 @@ let vars_of_operation tup_type op =
     N.SetOfFields.union s (E.vars_of_expr tup_type e)
   ) op
 
-let to_sorted_list s =
-  N.SetOfFields.to_list s |> List.fast_sort N.compare
-
-let envvars_of_operation = to_sorted_list % vars_of_operation Env
-let params_of_operation = to_sorted_list % vars_of_operation Param
+let envvars_of_operation = vars_of_operation Env
 
 let notifications_of_operation = function
   | Aggregate { notifications ; _ } -> notifications

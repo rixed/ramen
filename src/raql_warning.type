@@ -1,0 +1,7 @@
+// vim: expandtab
+// Similar to $raql_error for now but will diverge as soon as proper enums are implemented
+{
+  line: u32?;
+  column: u32?;
+  message: string;
+}

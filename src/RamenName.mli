@@ -161,7 +161,12 @@ val expr_color : string -> string
 
 val md5 : string -> string (* used internally but others might want this *)
 
-module SetOfFields : BatSet.S with type elt = field
+module SetOfFields : sig
+  include BatSet.S with type elt = field
+  val pretty_print : 'a BatIO.output -> t -> unit
+  val to_sorted_list : t -> field list
+end
+
 module SetOfPaths : BatSet.S with type elt = path
 
 (* TODO: workers signature (= instance), notif names, signatures... *)

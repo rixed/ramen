@@ -23,9 +23,10 @@
           // name:
           in_signature: string;
         })[[]];
+        warnings: $raql_warning[[]]; // TODO
       }
     | Failed {
-        err_msg: string;
+        errors: $raql_error[[]]; // TODO
         depends_on: $src_path?;
       } ];
 }

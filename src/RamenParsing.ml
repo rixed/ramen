@@ -1,5 +1,6 @@
 (* Modules and helpers related to parsing *)
 open Batteries
+open Stdint
 
 module N = RamenName
 module P = Parsers.Make (DessserParser.PConfig)
@@ -32,6 +33,16 @@ let opt_blanks =
 let allow_surrounding_blanks p =
   opt_blanks -+ p +- opt_blanks +- eof
 
+exception RaqlParseError of Raql_error.DessserGen.t
+
+let () =
+  Printexc.register_printer (function
+    | RaqlParseError error ->
+        Some (
+          Printf.sprintf2 "Parse error: %a" RamenRaqlError.print error)
+    | _ ->
+        None)
+
 let string_parser ?what ~print p =
   let what =
     match what with None -> [] | Some w -> [w] in
@@ -42,9 +53,24 @@ let string_parser ?what ~print p =
       let c = ParsersBoundedSet.make e in
       p what None c stream |> to_result in
     let err_out e =
-      Printf.sprintf2 "Parse error: %a"
-        (print_bad_result print) e |>
-      failwith
+      let line, column, message =
+        match e with
+        | NoSolution None ->
+            None,
+            None,
+            "No solution"
+        | NoSolution (Some { what ; where }) ->
+            Some (Uint32.of_int where.line),
+            Some (Uint32.of_int where.column),
+            IO.to_string print_error_context what
+        | e ->
+            None,
+            None,
+            Printf.sprintf2 "Parse error: %a"
+              (print_bad_result print) e |>
+            failwith in
+      let err = RamenRaqlError.make ?line ?column message in
+      raise (RaqlParseError err)
     in
     match parse_with_err_budget 0 with
     | Error e ->

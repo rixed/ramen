@@ -310,11 +310,11 @@ let do_run ~while_ session program_name report_period on_site debug
                     failwith in
                   ZMQClient.send_cmd session (SetKey (Key.TargetConfig, rcs))
                                      ~on_done ~on_ko)
-          | Value.SourceInfo { detail = Failed failed ; _ } ->
+          | Value.SourceInfo { detail = Failed { errors ; _ } ; _ } ->
               fin () ;
-              Printf.sprintf2 "Cannot start %a: Compilation had failed with: %s"
+              Printf.sprintf2 "Cannot start %a: Compilation had failed with: %a"
                 N.src_path_print src_path
-                failed.Value.SourceInfo.err_msg |>
+                (pretty_list_print RamenRaqlError.print) errors |>
               failwith
           | v ->
               fin () ;

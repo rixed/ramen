@@ -686,9 +686,9 @@ let get_precompiled clt src_path =
                 ({ detail = Compiled compiled ; _ } as info) ; _ } ->
       info, compiled
   | { value = Value.SourceInfo
-                { detail = Failed { err_msg } } ; _ } ->
-      Printf.sprintf2 "Compilation failed: %s"
-        err_msg |>
+                { detail = Failed { errors } } ; _ } ->
+      Printf.sprintf2 "Compilation failed: %a"
+        (pretty_list_print RamenRaqlError.print) errors |>
       failwith
   | hv ->
       invalid_sync_type source_k hv.value "a source info"

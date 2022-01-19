@@ -387,10 +387,18 @@ let lchop = String.lchop
 let starts_with = String.starts_with
 let sub = String.sub
 
-module SetOfFields = Set.Make (struct
-  type t = field
-  let compare = compare
-end)
+module SetOfFields = struct
+  include Set.Make (struct
+    type t = field
+    let compare = compare
+  end)
+
+  let pretty_print oc s =
+    pretty_enum_print field_print oc (enum s)
+
+  let to_sorted_list s =
+    to_list s |> List.fast_sort String.compare
+end
 
 module SetOfPaths = Set.Make (struct
   type t = path

@@ -237,6 +237,8 @@ TYPE_SOURCES = \
 	src/raql_flush_method.type \
 	src/raql_operation.type \
 	src/retention.type \
+	src/raql_error.type \
+	src/raql_warning.type \
 	src/source_info.type \
 	src/simple_filter.type \
 	src/alert.type \
@@ -301,6 +303,8 @@ RAMEN_SOURCES = \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
+	src/RamenRaqlError.ml \
+	src/RamenRaqlWarning.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
@@ -426,6 +430,8 @@ CODEGENLIB_SOURCES = \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
+	src/RamenRaqlError.ml \
+	src/RamenRaqlWarning.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
@@ -540,6 +546,8 @@ ORCWRITER_SOURCES = \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
+	src/RamenRaqlError.ml \
+	src/RamenRaqlWarning.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
@@ -1148,6 +1156,8 @@ LINKED_FOR_TESTS = \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
+	src/RamenRaqlError.ml \
+	src/RamenRaqlWarning.ml \
 	src/RamenParsing.ml \
 	src/RamenEthAddr.ml \
 	src/RamenIpv4.ml \
@@ -1268,6 +1278,8 @@ ringbuf_test.opt: \
 		src/RamenHelpers.cmx \
 		src/RamenFiles.cmx \
 		src/RamenExperiments.cmx \
+		src/RamenRaqlError.cmx \
+		src/RamenRaqlWarning.cmx \
 		src/RamenParsing.cmx \
 		src/RamenEthAddr.cmx \
 		src/RamenIpv4.cmx \
@@ -1498,6 +1510,8 @@ LINKED_FOR_BENCH = \
 	src/RamenVersions.ml \
 	src/RamenFiles.ml \
 	src/RamenExperiments.ml \
+	src/RamenRaqlError.ml \
+	src/RamenRaqlWarning.ml \
 	src/RamenParsing.ml \
 	src/RamenIpv4.ml \
 	src/RamenIpv6.ml \

@@ -458,16 +458,16 @@ let compile_sync conf replace src_file src_path_opt =
               md5
           )
         ) (* else wait that we wrote again the (same) source *)
-    | Value.(SourceInfo ({ md5s ; detail = Failed _ ; _ } as s))
+    | Value.SourceInfo { md5s ; detail = Failed { errors ; _ } ; _ }
       when list_starts_with md5s md5 ->
         (* Do not accept past failures for that md5 but wait for either a new
          * success or a new failure: *)
         if !source_mtime > 0. && mtime >= !source_mtime then (
           (* Recent failure *)
           Processes.quit := Some 1 ;
-          !logger.error "Cannot compile %a: %s"
+          !logger.error "Cannot compile %a: %a"
             N.src_path_print src_path
-            (Value.SourceInfo.compilation_error s)
+            (pretty_list_print RamenRaqlError.print) errors
         )
     | _ ->
       () in
@@ -878,10 +878,10 @@ let ps_ profile conf pretty with_header sort_col top sites pattern all () =
                       expected_fqs := Set.add (site, fq) !expected_fqs
                   ) all_sites
                 ) prog.funcs
-            | Value.SourceInfo { detail = Failed failure ; _ } ->
-                !logger.warning "Program %a could not be compiled: %s"
+            | Value.SourceInfo { detail = Failed { errors ; _ } ; _ } ->
+                !logger.warning "Program %a could not be compiled: %a"
                   N.program_print rce.program
-                  failure.VSI.err_msg
+                  (pretty_list_print RamenRaqlError.print) errors
             | v ->
                 err_sync_type info_key v "a SourceInfo"
           ) rc

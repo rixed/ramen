@@ -533,14 +533,9 @@ struct
       | Compiled _ -> true
       | _ -> false
 
-    let compilation_error i =
-      match i.detail with
-      | Failed { err_msg ; _ } -> err_msg
-      | _ -> invalid_arg "compilation_error"
-
     let print_failed oc i =
-      Printf.fprintf oc "err:%S%s"
-        i.err_msg
+      Printf.fprintf oc "err:%a%s"
+        (pretty_list_print RamenRaqlError.print) i.errors
         (match i.depends_on with
         | None -> ""
         | Some s -> " (depends_on: "^ (s :> string) ^")")

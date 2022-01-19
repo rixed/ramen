@@ -1,0 +1,8 @@
+// vim: expandtab
+// As a first version we could have only a message and a line and column number.
+// Later we should have more structure than a text message
+{
+  line: u32?;
+  column: u32?;
+  message: string;
+}

@@ -27,6 +27,7 @@
 
 open Batteries
 open RamenHelpers
+open RamenHelpersNoLog
 open RamenLog
 open RamenSync
 module C = RamenConf
@@ -159,8 +160,11 @@ let bin_rule =
       | Compiled comp ->
           let base_file = Files.remove_ext src_file in
           Compiler.compile conf comp ~exec_file base_file program_name
-      | Failed { err_msg } ->
-          failwith err_msg)
+      | Failed { errors } ->
+          Printf.sprintf2
+            "Cannot compile to binary: pre-compilation failed with: %a"
+          (pretty_list_print RamenRaqlError.print) errors |>
+          failwith)
 
 (* Return the list of builders, brute force (N is small, loops are rare): *)
 let find_path src dst =
@@ -200,29 +204,33 @@ let write_value_into_file fname value mtime =
 let build_next conf session ?(force=false) get_parent src_path from_ext =
   let clt = option_get "build_next" __LOC__ session.ZMQClient.clt in
   let src_ext = ref "" and md5s = ref [] in
+  let send_error ?depends_on err =
+    let v = Value.SourceInfo {
+      src_ext = !src_ext ; md5s = List.rev !md5s ;
+      detail = Failed { errors = [ err ] ; depends_on } } in
+    let info_key = Key.Sources (src_path, "info") in
+    ZMQClient.send_cmd session (SetKey (info_key, v)) in
   let save_errors f x =
-    try f x
-    with exn ->
-      (* Any error along the way also result in an info file: *)
-      let depends_on =
-        match exn with
-        | RamenProgram.MissingParent fq
-        | RamenTyping.MissingFieldInParent (fq, _) -> Some fq
-        | _ -> None in
-      if depends_on = None then ( (* This was unexpected: *)
-        let what = Printf.sprintf2 "Building %a" N.src_path_print src_path in
-        print_exception ~what exn
-      ) else (
-        !logger.info "While Building %a: %s"
-          N.src_path_print src_path
-          (Printexc.to_string exn)
-      ) ;
-      let info_key = Key.Sources (src_path, "info") in
-      let v = Value.SourceInfo {
-        src_ext = !src_ext ; md5s = List.rev !md5s ;
-        detail = Failed { err_msg = Printexc.to_string exn ;
-                          depends_on } } in
-      ZMQClient.send_cmd session (SetKey (info_key, v)) in
+    (* Any error along the way also result in an info file: *)
+    try f x with
+    | RamenParsing.RaqlParseError err ->
+        send_error err
+    | exn ->
+        let depends_on =
+          match exn with
+          | RamenProgram.MissingParent fq
+          | RamenTyping.MissingFieldInParent (fq, _) -> Some fq
+          | _ -> None in
+        if depends_on = None then ( (* This was unexpected: *)
+          let what = Printf.sprintf2 "Building %a" N.src_path_print src_path in
+          print_exception ~what exn
+        ) else (
+          !logger.info "While Building %a: %s"
+            N.src_path_print src_path
+            (Printexc.to_string exn)
+        ) ;
+        let err = RamenRaqlError.make (Printexc.to_string exn) in
+        send_error ?depends_on err in
   let cached_file ext =
     Paths.precompserver_cache_file conf.C.persist_dir src_path ext in
   let write_path_into_file fname ext cont =

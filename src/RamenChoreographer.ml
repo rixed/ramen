@@ -478,6 +478,7 @@ let update_conf_server conf session sites rc_entries =
       Array.of_list in
     let envvars =
       O.envvars_of_operation func.VSI.operation |>
+      N.SetOfFields.to_sorted_list |>
       Array.of_list in
     let worker_signature = worker_signature func params rce in
     let parents = Option.map Array.of_list parents in
@@ -540,6 +541,7 @@ let update_conf_server conf session sites rc_entries =
     let role = Value.Worker.TopHalf (Array.of_list tunnelds) in
     let envvars =
       O.envvars_of_operation func.VSI.operation |>
+      N.SetOfFields.to_sorted_list |>
       Array.of_list in
     let worker : Value.Worker.t =
       { enabled = rce.Value.TargetConfig.enabled ;

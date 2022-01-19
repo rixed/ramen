@@ -99,7 +99,7 @@ let print_func oc n =
         (name :> string)
         (O.print with_types) n.operation
 
-let print oc (params, run_cond, globals, funcs) =
+let print oc (params, run_cond, globals, funcs, _warnings) =
   List.print ~first:"" ~last:"" ~sep:"" print_param oc params ;
   if not (E.is_true run_cond) then
     Printf.fprintf oc "RUN IF %a;\n" (E.print false) run_cond ;
@@ -114,7 +114,11 @@ let has_star = function
  * Returns a new programs with unknown variables replaced by actual ones
  * and unused params and globals removed. *)
 
-let checked (params, run_cond, globals, funcs) =
+let checked (params, run_cond, globals, funcs, warnings) =
+  let warnings = ref warnings in
+  let warn ?line ?column message =
+    !logger.warning "%s" message ;
+    warnings := RamenRaqlWarning.make ?line ?column message :: !warnings in
   let run_cond =
     (* No globals are accessible to the running condition *)
     O.prefix_def params [] Env run_cond in
@@ -154,9 +158,10 @@ let checked (params, run_cond, globals, funcs) =
           failwith in
       (* Check that lazy functions do not emit notifications: *)
       if n.is_lazy && O.notifications_of_operation n.operation <> [] then
-        !logger.warning
-          "Function %s defined as LAZY but emits notifications"
-          (N.func_color (n.name |? anonymous)) ;
+        Printf.sprintf2
+          "Function %a defined as LAZY but emits notifications"
+          N.func_print (n.name |? anonymous) |>
+        warn ;
       (* Check that the name is valid and unique: *)
       let names =
         match n.name with
@@ -178,9 +183,10 @@ let checked (params, run_cond, globals, funcs) =
                                     _ })) when v = var ->
             (match E.string_of_const n with
             | None ->
-                !logger.warning
+                Printf.sprintf2
                   "Cannot determine the name of variable in expression %a"
-                  (E.print false) e ;
+                  (E.print false) e |>
+                warn ;
                 used
             | Some name ->
                 Set.add (N.field name) used)
@@ -200,7 +206,8 @@ let checked (params, run_cond, globals, funcs) =
       let is_used =
         Set.mem p.PParam.name used_params in
       if not is_used then
-        !logger.warning "Parameter %s is unused" (N.field_color p.name) ;
+        Printf.sprintf2 "Parameter %a is unused" N.field_print p.name |>
+        warn ;
       is_used
     ) params in
   (* Similarly, for the same reason, remove unused globals: *)
@@ -208,10 +215,11 @@ let checked (params, run_cond, globals, funcs) =
     List.filter (fun g ->
       let is_used = Set.mem g.Globals.name used_globals in
       if not is_used then
-        !logger.warning "Global variable %s is unused" (N.field_color g.name) ;
+        Printf.sprintf2 "Global variable %a is unused" N.field_print g.name |>
+        warn ;
       is_used
     ) globals in
-  params, run_cond, globals, funcs
+  params, run_cond, globals, funcs, !warnings
 
 module Parser =
 struct
@@ -383,7 +391,8 @@ struct
                     (params >>: fun lst -> DefParams lst) |<|
                     (globals >>: fun lst -> DefGlobals lst) |<|
                     (run_cond >>: fun e -> DefRunCond e)) +-
-      optional ~def:() (opt_blanks -- char ';') >>: fun defs ->
+      optional ~def:() (opt_blanks -- char ';') >>:
+      fun defs ->
         let params, run_cond_opt, globals, funcs =
           List.fold_left (fun (params, run_cond_opt, globals, funcs) -> function
             | DefFunc func ->
@@ -399,7 +408,8 @@ struct
                 params, run_cond_opt, List.rev_append lst globals, funcs
           ) ([], None, [], []) defs in
         let run_cond = run_cond_opt |? default_run_cond in
-        RamenTuple.params_sort params, run_cond, globals, funcs
+        let warnings : Raql_warning.DessserGen.t list = [] in
+        RamenTuple.params_sort params, run_cond, globals, funcs, warnings
     ) m
 
   (*$inject
@@ -639,10 +649,10 @@ let reify_star_fields get_program program_name funcs =
 let parse =
   let p = RamenParsing.string_parser ~print Parser.p in
   fun get_program program_name program ->
-    let params, run_cond, globals, funcs = p program in
+    let params, run_cond, globals, funcs, warnings = p program in
     check_globals params globals ;
     let funcs = name_unnamed funcs in
     let funcs = reify_subqueries funcs in
     let funcs = reify_star_fields get_program program_name funcs in
-    let t = params, run_cond, globals, funcs in
+    let t = params, run_cond, globals, funcs, warnings in
     checked t
