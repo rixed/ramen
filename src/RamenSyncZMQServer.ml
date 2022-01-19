@@ -175,7 +175,7 @@ struct
     N.path_cat [ conf.C.persist_dir ; N.path "confserver/snapshots" ;
                  N.path Versions.sync_conf ]
 
-  let load conf srv =
+  let load conf srv no_source_examples =
     let fname = file_name conf in
     try
       let fd = Files.safe_open fname [ O_RDONLY ] 0o640 in
@@ -221,11 +221,11 @@ struct
                     !logger.debug "Skipping key %a"
                       Key.print k
                 | Key.Sources (n, "info") as k, _
-                  when skip_infos || is_example n ->
+                  when skip_infos || (no_source_examples && is_example n) ->
                     !logger.debug "Skipping key %a"
                       Key.print k
                 | Key.Sources (n, "ramen") as k, _
-                  when is_example n ->
+                  when no_source_examples && is_example n ->
                     !logger.debug "Removing example program %a"
                       Key.print k
                 | Key.PerSite (site, PerWorker (fq,
@@ -794,7 +794,7 @@ let start
     (fun () ->
       (* Not so easy: some values must be overwritten (such as server
        * versions, startup time...) *)
-      if Snapshot.load conf srv then
+      if Snapshot.load conf srv no_source_examples then
         clean_old conf srv oldest_site
       else
         populate_init conf srv no_source_examples archive_total_size
