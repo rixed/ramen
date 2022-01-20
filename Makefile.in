@@ -492,58 +492,6 @@ CODEGENLIB_SOURCES = \
 	src/RamenCopyClt.ml \
 	src/CodeGenLib_Skeletons.ml
 
-RMADMIN_SOURCES = \
-	src/RamenVersions.ml \
-	src/RamenAtomic.ml \
-	src/RamenHelpersNoLog.ml \
-	src/RamenLog.ml \
-	src/RamenName.mli \
-	src/RamenName.ml \
-	src/RamenConsts.ml \
-	src/RamenConstsExitCodes.ml \
-	src/RamenConstsMetric.ml \
-	src/RamenConstsFieldDocs.ml \
-	src/RamenConstsDefault.ml \
-	src/RamenHelpers.ml \
-	src/RamenFiles.ml \
-	src/RamenExperiments.ml \
-	src/RamenParsing.ml \
-	src/RamenEthAddr.ml \
-	src/RamenIpv4.ml \
-	src/RamenIpv6.ml \
-	src/RamenIp.ml \
-	$(filter %.ml, $(TYPE_SOURCES:.type=.ml)) \
-	src/RamenTimeRange.ml \
-	src/Globs.ml \
-	src/RamenTypes.ml \
-	src/RamenGlobalVariables.ml \
-	src/RamenParams.ml \
-	src/RamenEventTime.ml \
-	src/RamenUnits.ml \
-	src/RamenVariable.ml \
-	src/RamenLang.ml \
-	src/RamenExpr.ml \
-	src/RamenRetention.ml \
-	src/RamenTypeConverters.ml \
-	src/RamenChannel.ml \
-	src/RamenTuple.ml \
-	src/RamenFieldOrder.ml \
-	src/RamenCollectd.ml \
-	src/RamenGraphiteSink.ml \
-	src/RamenNetflow.ml \
-	src/RamenProtocols.ml \
-	src/RamenEventTime.ml \
-	src/RamenOperation.ml \
-	src/RamenFieldMask.ml \
-	src/RamenSyncTree.ml \
-	src/RamenSyncIntf.ml \
-	src/RamenSyncClient.ml \
-	src/RamenSyncUser.ml \
-	src/RamenSync.ml \
-	src/RamenAuthn.ml \
-	src/RamenTcpSocket.ml \
-	src/RamenSyncZMQClient.ml
-
 LIBRINGBUF_SOURCES = \
 	src/config.h \
 	src/ringbuf/archive.h \
@@ -669,7 +617,6 @@ TOOLS_SOURCES = \
 SOURCES = $(sort \
 	$(RAMEN_SOURCES) \
 	$(CODEGENLIB_SOURCES) \
-	$(RMADMIN_SOURCES) \
 	$(LIBRINGBUF_SOURCES) \
 	$(LIBRINGBUF_OCAML_SOURCES) \
 	$(LIBCOLLECTD_SOURCES) \
