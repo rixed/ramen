@@ -688,13 +688,14 @@ depend: \
 		$(patsubst %.type, %.ml, $(filter %.type, $(TYPE_SOURCES))) \
 		src/country_of_ip/db_v4.h src/country_of_ip/db_v6.h \
 		src/RamenFileNotify.ml
-	$(RM) depend
 	$(OCAMLDEP) -I src -package "$(PACKAGES)" $(filter %.ml, $(SOURCES)) $(filter %.mli, $(SOURCES)) > depend
 	@for f in $(filter %.c, $(SOURCES)); do \
 	  $(CC) $(CFLAGS) $(CPPFLAGS) -MM -MT "$$(dirname $$f)/$$(basename $$f .c).o" $$f >> depend ;\
 	done
 
-dep: depend
+dep:
+	$(RM) depend
+	$(MAKE) depend
 
 include depend
 
