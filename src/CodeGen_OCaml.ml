@@ -4349,7 +4349,7 @@ let emit_string_of_value indent typ val_var oc =
 let emit_get_notifications name out_typ ~opc notifications =
   let env =
     add_tuple_environment Out out_typ [] in
-  Printf.fprintf opc.code "let %s %a ="
+  Printf.fprintf opc.code "let %s %a out_previous_ ="
     name
     (emit_tuple ~with_alias:true Out) out_typ ;
   if notifications = [] then

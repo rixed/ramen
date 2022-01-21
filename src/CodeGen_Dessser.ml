@@ -1150,7 +1150,7 @@ let get_notifications ~r_env out_type es =
   let open DE.Ops in
   let cmt = "List of notifications" in
   let string_pair_t = DT.(required (TExt "string_pair")) in
-  func1 out_type (fun v_out ->
+  func2 out_type (DT.to_nullable out_type) (fun v_out _prev_out ->
     let r_env = (RecordValue Out, v_out) :: r_env in
     if es = [] then
       make_pair (make_arr DT.string []) (make_arr string_pair_t [])
