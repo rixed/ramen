@@ -287,7 +287,6 @@ let start_worker
     "name="^ (func.VSI.name :> string) ;
     "fq_name="^ fq_str ;
     "instance="^ worker_instance ;
-    "report_ringbuf="^ (Paths.report_ringbuf conf.C.persist_dir :> string) ;
     "report_period="^ string_of_float report_period ;
     "test_notifs_every="^ string_of_float !test_notifs_every ;
     "rand_seed="^ (match !rand_seed with None -> ""

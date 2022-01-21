@@ -68,15 +68,6 @@ let factors_of_function persist_dir pname func =
       (* extension for the GC. *)
       N.path (sign ^".factors") ]
 
-(* Finally, operations have one additional output stream for legacy
- * instrumentation statistics. FIXME: get rid of it. *)
-let report_ringbuf persist_dir =
-  N.path_cat
-    [ persist_dir ; N.path "instrumentation_ringbuf" ;
-      N.path (RamenVersions.instrumentation_tuple ^"_"^
-              RamenVersions.ringbuf) ;
-      N.path "ringbuf.r" ]
-
 let precompserver_cache_file persist_dir src_path ext =
   N.path_cat [ persist_dir ; N.path "precompserver/cache" ;
                N.path Versions.codegen ;

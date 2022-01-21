@@ -640,8 +640,6 @@ let run conf server_url api graphite use_external_compiler max_simult_compils
   !logger.info "Using temp dir %a" N.path_print conf.persist_dir ;
   Files.mkdir_all conf.persist_dir ;
   RamenProcesses.prepare_signal_handlers conf ;
-  let report_rb = RamenProcesses.prepare_reports conf in
-  RingBuf.unload report_rb ;
   (* Parse tests so that we won't have to clean anything if it's bogus *)
   !logger.debug "Parsing test specification in %a..."
     N.path_print_quoted test_file ;

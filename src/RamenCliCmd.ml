@@ -189,13 +189,6 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
   fail_for_good := fail_for_good_ ;
   RamenSupervisor.test_notifs_every := test_notifs_every ;
   RamenSupervisor.lmdb_max_readers := lmdb_max_readers ;
-  (* Also attempt to repair the report/notifs ringbufs.
-   * This is OK because there can be no writer right now, and the report
-   * ringbuf being a non-wrapping buffer then reader part cannot be damaged
-   * anyway. For notifications we could have the alerter reading though,
-   * so FIXME: smarter ringbuf_repair that spins before repairing. *)
-  let reports_rb = Processes.prepare_reports conf in
-  RingBuf.unload reports_rb ;
   (* The main job of this process is to make what's actually running
    * in accordance to the running program list: *)
   restart_on_failure ~while_ "synchronize_running"
