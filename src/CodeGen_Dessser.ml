@@ -1146,11 +1146,11 @@ let scalar_extractors out_type =
  * notification names to send, along with all output values as strings: *)
 (* TODO: shouldn't CodeGenLib pass this func the global and also maybe
  * the group states? *)
-let get_notifications ~r_env out_type es =
+let get_notifications ~r_env out_type minimal_type es =
   let open DE.Ops in
   let cmt = "List of notifications" in
   let string_pair_t = DT.(required (TExt "string_pair")) in
-  func2 out_type (DT.to_nullable out_type) (fun v_out _prev_out ->
+  func2 out_type minimal_type (fun v_out _prev_out ->
     let r_env = (RecordValue Out, v_out) :: r_env in
     if es = [] then
       make_pair (make_arr DT.string []) (make_arr string_pair_t [])
@@ -1478,7 +1478,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
       add_expr compunit "sort_by_") in
   let compunit =
     fail_with_context "coding for notification extraction function" (fun () ->
-      get_notifications ~r_env out_type notifications |>
+      get_notifications ~r_env out_type minimal_type notifications |>
       add_expr compunit "get_notifications_") in
   let compunit =
     fail_with_context "coding for default input tuples" (fun () ->

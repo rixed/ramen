@@ -263,7 +263,7 @@ type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
     mutable last_in : 'tuple_in ; (* last in-tuple of this aggregate. *)
     mutable size : int ; (* number of tuples aggregated in that group *)
     (* minimal_out is a subset of the 'generator_out tuple, with only
-     * those fields required for commit_cond and update_states.
+     * those fields required for commit_cond, notify_cond and update_states.
      * Alternatively, we could have merely the (non-required) stateful
      * function blanked out, so that building the generator_out would only
      * require the group states and this minimal_out, but then what to do of
@@ -279,9 +279,8 @@ type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
 
 (* WARNING: increase RamenVersions.worker_state whenever this record is
  * changed. *)
-type ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'tuple_out, 'global_state, 'sort_key, 'group_order) aggr_persist_state =
-  { mutable last_out_generator : 'generator_out option ; (* last committed tuple generator *)
-    mutable last_out_tuple : 'tuple_out option ; (* last committed tuple *)
+type ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'global_state, 'sort_key, 'group_order) aggr_persist_state =
+  { mutable last_out_tuple : 'generator_out option ; (* last committed tuple generator *)
     global_state : 'global_state ;
     (* The hash of all groups: *)
     mutable groups :
@@ -324,7 +323,9 @@ let may_test_alert conf default_out get_notifications time_of_tuple =
     then (
       try
         last_test_notifs := now ;
-        let notifications, params = get_notifications default_out None in
+        (* Assuming we have no groups nor states whenever this is used, thus
+         * the units in lieu of current_out, local and global states: *)
+        let notifications, params = get_notifications default_out () () () in
         if Array.length notifications > 0 then (
           let event_time = time_of_tuple default_out |> Option.map fst in
           Array.iter
@@ -517,7 +518,7 @@ let aggregate
       (global_state : unit -> 'global_state)
       (group_init : 'global_state -> 'local_state)
       (get_notifications :
-        'tuple_out -> 'tuple_out option ->
+        'tuple_out -> 'minimal_out -> 'local_state -> 'global_state ->
         string array * (string * string) array)
       (every : float)
       (* Used to generate test notifications: *)
@@ -537,25 +538,23 @@ let aggregate
     let rb_in_fname =
       try Some (Sys.getenv "input_ringbuf" |> N.path)
       with Not_found -> None in
-    let outputer channel_id in_tuple s out_tuple =
+    let outputer channel_id in_tuple current_out local_state global_state out_tuple =
       generate_tuples (fun gen_tuple ->
         if channel_id = Channel.live then (
           let notifications, parameters =
-            get_notifications gen_tuple s.last_out_tuple in
+            get_notifications gen_tuple current_out local_state global_state in
           if Array.length notifications > 0 then (
             let event_time =
               time_of_tuple gen_tuple |> Option.map fst in
             Array.iter
               (Publish.notify conf.C.site conf.fq event_time parameters)
               notifications)) ;
-        msg_outputer (RingBufLib.DataTuple channel_id) (Some gen_tuple) ;
-        s.last_out_tuple <- Some gen_tuple
+        msg_outputer (RingBufLib.DataTuple channel_id) (Some gen_tuple)
       ) in_tuple out_tuple in
     let with_state =
       let open State.Persistent in
       let init_state () =
-        { last_out_generator = None ;
-          last_out_tuple = None ;
+        { last_out_tuple = None ;
           global_state = global_state () ;
           groups =
             (* Try to make the state as small as possible: *)
@@ -616,11 +615,11 @@ let aggregate
         else
           true
         ) &&
-        commit_cond in_tuple s.last_out_generator g.local_state
+        commit_cond in_tuple s.last_out_tuple g.local_state
                     s.global_state g.current_out in
       let may_relocate_group_in_heap g =
         if has_commit_cond0 then
-          let g0 = cond0_right_op g.current_out s.last_out_generator g.local_state
+          let g0 = cond0_right_op g.current_out s.last_out_tuple g.local_state
                                   s.global_state in
           if g.g0 <> Some g0 then (
             (* Relocate that group in the heap: *)
@@ -641,17 +640,17 @@ let aggregate
         | false, _ ->
             let out =
               out_tuple_of_minimal_tuple
-                g.last_in s.last_out_generator g.local_state s.global_state
+                g.last_in s.last_out_tuple g.local_state s.global_state
                 g.current_out in
-            s.last_out_generator <- Some out ;
+            s.last_out_tuple <- Some out ;
             Some out
         | true, None -> None
         | true, Some previous_out ->
             let out =
               out_tuple_of_minimal_tuple
-                g.last_in s.last_out_generator g.local_state s.global_state
+                g.last_in s.last_out_tuple g.local_state s.global_state
                 previous_out in
-            s.last_out_generator <- Some out ;
+            s.last_out_tuple <- Some out ;
             Some out
       and flush g =
         g.size <- 0 ;
@@ -688,7 +687,7 @@ let aggregate
       let perf = ref (Perf.start ()) in
       let aggr_opt =
         (* maybe the key and group that has been updated: *)
-        if where_fast s.global_state in_tuple s.last_out_generator
+        if where_fast s.global_state in_tuple s.last_out_tuple
         then (
           perf := Perf.add_and_transfer Stats.perf_where_fast !perf ;
           (* 2. Retrieve the group *)
@@ -702,13 +701,13 @@ let aggregate
             let local_state = group_init s.global_state in
             perf := Perf.add_and_transfer Stats.perf_find_group !perf ;
             (* 3. Filtering (slow path) - for new group *)
-            if where_slow s.global_state in_tuple s.last_out_generator local_state
+            if where_slow s.global_state in_tuple s.last_out_tuple local_state
             then (
               perf := Perf.add_and_transfer Stats.perf_where_slow !perf ;
               (* 4. Compute new minimal_out (and new group) *)
               let current_out =
                 minimal_tuple_of_aggr
-                  in_tuple s.last_out_generator local_state s.global_state in
+                  in_tuple s.last_out_tuple local_state s.global_state in
               let g = {
                 key = k ;
                 first_in = in_tuple ;
@@ -736,7 +735,7 @@ let aggregate
             (* The group already exists. *)
             perf := Perf.add_and_transfer Stats.perf_find_group !perf ;
             (* 3. Filtering (slow path) - for existing group *)
-            if where_slow s.global_state in_tuple s.last_out_generator g.local_state
+            if where_slow s.global_state in_tuple s.last_out_tuple g.local_state
             then (
               (* 4. Compute new current_out (and update the group) *)
               perf := Perf.add_and_transfer Stats.perf_where_slow !perf ;
@@ -747,7 +746,7 @@ let aggregate
               g.size <- g.size + 1 ;
               g.current_out <-
                 minimal_tuple_of_aggr
-                  g.last_in s.last_out_generator g.local_state s.global_state ;
+                  g.last_in s.last_out_tuple g.local_state s.global_state ;
               may_relocate_group_in_heap g ;
               perf := Perf.add_and_transfer Stats.perf_update_group !perf ;
               Some g
@@ -765,11 +764,13 @@ let aggregate
         if channel_id = Channel.live then
           IntCounter.inc Stats.selected_tuple_count ;
         if not commit_before then
-          update_states g.last_in s.last_out_generator
+          update_states g.last_in s.last_out_tuple
                         g.local_state s.global_state g.current_out ;
         if must_commit g then (
           already_output_aggr := Some g ;
-          Option.may (outputer channel_id in_tuple s)
+          Option.may
+            (outputer channel_id in_tuple g.current_out g.local_state
+              s.global_state)
             (finalize_out g) ;
           Histogram.add Stats.group_sizes (float_of_int g.size) ;
           if do_flush then (
@@ -779,7 +780,7 @@ let aggregate
           )
         ) ;
         if commit_before then
-          update_states g.last_in s.last_out_generator
+          update_states g.last_in s.last_out_tuple
                         g.local_state s.global_state g.current_out
       | None -> () (* in_tuple failed filtering *)) ;
       perf := Perf.add_and_transfer Stats.perf_commit_incoming !perf ;
@@ -800,7 +801,7 @@ let aggregate
                 if c > 0 || c = 0 && cond0_true_when_eq then (
                   (* Or it's been removed from the heap already: *)
                   assert (not (already_output g)) ;
-                  if commit_cond in_tuple s.last_out_generator g.local_state
+                  if commit_cond in_tuple s.last_out_tuple g.local_state
                                  s.global_state g.current_out
                   then Heap.Collect
                   else Heap.Keep
@@ -813,7 +814,7 @@ let aggregate
           else
             Hashtbl.fold (fun _ g to_commit ->
               if not (already_output g) &&
-                 commit_cond in_tuple s.last_out_generator g.local_state
+                 commit_cond in_tuple s.last_out_tuple g.local_state
                              s.global_state g.current_out
               then g :: to_commit else to_commit
             ) s.groups [] in
@@ -821,7 +822,10 @@ let aggregate
         perf := Perf.add_and_transfer Stats.perf_select_others !perf ;
         let outs = List.filter_map finalize_out to_commit in
         perf := Perf.add_and_transfer Stats.perf_finalize_others !perf ;
-        List.iter (outputer channel_id in_tuple s) outs ;
+        List.iter
+          (outputer channel_id in_tuple g.current_out g.local_state
+            s.global_state)
+          outs ;
         perf := Perf.add_and_transfer Stats.perf_commit_others !perf ;
         if do_flush then List.iter flush to_commit ;
         Perf.add Stats.perf_flush_others (Perf.stop !perf)

@@ -4346,7 +4346,7 @@ let emit_string_of_value indent typ val_var oc =
  * of notification names to send, along with all output values as strings: *)
 (* TODO: shouldn't CodeGenLib pass this func the global and also maybe
  * the group states? *)
-let emit_get_notifications name out_typ ~opc notifications =
+let emit_get_notifications name out_typ _minimal_typ ~opc notifications =
   let env =
     add_tuple_environment Out out_typ [] in
   Printf.fprintf opc.code "let %s %a out_previous_ ="
@@ -4542,7 +4542,8 @@ let emit_aggregate opc global_state_env group_state_env
     emit_sort_expr "sort_by_" in_typ ~opc
                    (match sort with Some (_, _, b) -> b | None -> [])) ;
   fail_with_context "notification extraction function" (fun () ->
-    emit_get_notifications "get_notifications_" opc.typ ~opc
+    emit_get_notifications ~env:(group_state_env @ global_state_env @ base_env)
+                           "get_notifications_" opc.typ minimal_typ ~opc
                            notifications) ;
   fail_with_context "default in/out tuples" (fun () ->
     let in_rtyp = RamenTuple.to_record in_typ in

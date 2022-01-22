@@ -79,13 +79,22 @@ let archive_in_orc =
 
 let parse_error_correction =
   make [|
-    Variant.make "off" "No attempt at error correction\n" ;
-    Variant.make ~share:0. "on" "Look for likely typo on parse errors\n" |]
+    Variant.make "off" "No attempt at error correction.\n" ;
+    Variant.make ~share:0. "on" "Look for likely typo on parse errors.\n" |]
+
+let auto_notify =
+  make [|
+    Variant.make "off"
+      "You need an explicit NOTIFY to fire a notification.\n" ;
+    Variant.make ~share:0. "on"
+      "Automatically fire a notification whenever the value of any boolean \
+       field named \"ok\" changes.\n" |]
 
 let all_internal_experiments =
   [ "TheBigOne", the_big_one ;
     "ArchiveInORC", archive_in_orc ;
-    "ParseErrorCorrection", parse_error_correction ]
+    "ParseErrorCorrection", parse_error_correction ;
+    "AutoNotify", auto_notify ]
 
 (*
  * Initialization
