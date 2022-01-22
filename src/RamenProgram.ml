@@ -330,7 +330,7 @@ struct
     (O.Parser.p >>: make_func) m
 
   type func_flag =
-    Lazy | Persist of E.t | Querying of float | Ignore
+    Name of N.func | Lazy | Persist of E.t | Querying of float | Ignore
 
   let named_func m =
     let m = "named function" :: m in
@@ -348,18 +348,26 @@ struct
             strinG "every" -- blanks -+ duration >>: fun d -> Querying d
           ) |<| (
             strinG "while" >>: fun () -> Ignore
+          ) |<| (
+            function_name >>: fun fname -> Name fname
           )
         ) +- blanks) ++
-      function_name ++
-      optional ~def:"" (blanks -+ quoted_string) +-
-      blanks +- strinG "as" +- blanks ++
+      optional ~def:"" (quoted_string +- blanks) +-
+      strinG "as" +- blanks ++
       O.Parser.p >>:
-      fun (((flags, name), doc), op) ->
-        let duration =
-          list_find_map_opt (function Persist r -> Some r | _ -> None) flags
+      fun ((attrs, doc), op) ->
+        let name =
+          list_find_map_opt (function Name n -> Some n | _ -> None) attrs
+        and duration =
+          list_find_map_opt (function Persist r -> Some r | _ -> None) attrs
         and period =
-          list_find_map_opt (function Querying d -> Some d | _ -> None) flags
-        and is_lazy = List.mem Lazy flags in
+          list_find_map_opt (function Querying d -> Some d | _ -> None) attrs
+        and is_lazy = List.mem Lazy attrs in
+        let name =
+          match name with
+          | None ->
+              raise (Reject "cannot find function name")
+          | Some n -> n in
         let retention =
           match duration, period with
           | Some duration, Some period ->
