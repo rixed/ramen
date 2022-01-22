@@ -2,7 +2,7 @@
 
 DEFINE f AS
   FROM fixtures/n123/csv
-  SELECT SUM globally n
+  SELECT SUM GLOBALLY n
   COMMIT BEFORE sum_n > 4;
 
 -- Note: we won't have "Volvo" at the end since it will never be committed:
@@ -10,6 +10,6 @@ DEFINE count_cars AS
   FROM fixtures/cars/csv
   SELECT
     manufacturer,
-    lag globally manufacturer AS prev_manufacturer,
+    LAG GLOBALLY manufacturer AS prev_manufacturer,
     SUM 1 AS num_models
   COMMIT BEFORE COALESCE(out.manufacturer != out.prev_manufacturer, false);
