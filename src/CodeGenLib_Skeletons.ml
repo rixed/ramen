@@ -1064,7 +1064,9 @@ let replay
                              orc_make_handler orc_write orc_close in
   let dir = RingBufLib.arc_dir_of_bname rb_archive in
   let files = RingBufLib.arc_files_of dir in
-  let time_overlap t1 t2 = since < t2 && until > t1 in
+  let time_overlap t1 t2 =
+    (* Non-strict on both ends because of when t1=t2: *)
+    since <= t2 && until >= t1 in
   let at_exit () =
     (* TODO: it would be nice to send an error code with the EndOfReplay
      * so that the client would know if everything was alright. *)

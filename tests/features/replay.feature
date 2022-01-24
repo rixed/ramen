@@ -63,10 +63,21 @@ Feature: test ramen replay in a simple setting
 
   Scenario: Check we can replay s0 (peace of cake).
     And I run ramen with arguments replay test/s0 --since 10 --until 15
-    Then ramen must print between 3 and 5 lines on stdout
+    Then ramen must print between 3 and 6 lines on stdout
     And ramen must exit gracefully.
 
   Scenario: Check we can also replay r0.
     When I run ramen with arguments replay test/r0 --since 10 --until 15
-    Then ramen must print between 5 and 10 lines on stdout
+    Then ramen must print between 5 and 12 lines on stdout
     And ramen must exit gracefully.
+
+  Scenario: Check we can reconstruct a new function's past.
+    Given a file test2.ramen with content
+    """
+    define r1 best after 1s as select start, lag(1, x) as delayed_x from test/s0;
+    """
+    And test2.ramen is compiled
+    And program test2 is running.
+    When I run ramen with arguments replay test2/r1 --since 10 --until 15
+    Then ramen must print between 5 and 10 lines on stdout
+    And ramen must not mention "<NULL>" on stdout.

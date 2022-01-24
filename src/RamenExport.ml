@@ -147,7 +147,8 @@ let replay conf ~while_ session worker field_names where since until
                   if chan = replay.channel then (
                     if filter tuple then (
                       let t1, t2 = event_time_of_tuple tuple in
-                      if t2 > since && t1 <= until then (
+                      (* Non-strict on both ends because of when t1=t2: *)
+                      if t2 >= since && t1 <= until then (
                         let cols =
                           Array.map (fun idx ->
                             match idx with
@@ -247,7 +248,8 @@ let replay_via_confserver
                 | VTup tuple ->
                     if filter tuple then (
                       let t1, t2 = event_time_of_tuple tuple in
-                      if t2 > since && t1 <= until then (
+                      (* Non-strict on both ends because of when t1=t2: *)
+                      if t2 >= since && t1 <= until then (
                         let cols =
                           Array.map (fun idx ->
                             match idx with

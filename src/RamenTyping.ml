@@ -2322,26 +2322,31 @@ let emit_program declare tuple_sizes records field_names
      * be used: *)
     let in_type = List.assoc_opt fq in_types
     and out_type = List.assoc_opt fq out_types in
-    (* Start with the retention: *)
-    (match func.VSI.retention with
-    | Some Retention.{ duration = e ; _ } ->
-        E.iter (fun _ -> declare) e ;
-        emit_constraints tuple_sizes records field_names
-                         None None param_type env_type None oc
-                         "retention clause" [] e ;
-        (* Also make sure that the retention duration is numeric: *)
-        let name =
-          func_err fi Err.(Clause ("persist", ActualType DT.TFloat)) in
-        emit_assert ~name oc (fun oc -> emit_numeric oc (t_of_expr e)) ;
-        let name =
-          func_err fi Err.(Clause ("persist", Nullability false)) in
-        emit_assert_false ~name oc (n_of_expr e)
-    | _ ->
-        ()) ;
+    (* Start with the retention and best-after expressions (which are both
+     * durations): *)
+    let emit_duration what e =
+      E.iter (fun _ -> declare) e ;
+      emit_constraints tuple_sizes records field_names
+                       None None param_type env_type None oc
+                       (what ^ " clause") [] e ;
+      (* Also make sure that the duration is numeric: *)
+      let name =
+        func_err fi Err.(Clause (what, ActualType DT.TFloat)) in
+      emit_assert ~name oc (fun oc -> emit_numeric oc (t_of_expr e)) ;
+      let name =
+        func_err fi Err.(Clause (what, Nullability false)) in
+      emit_assert_false ~name oc (n_of_expr e)
+    in
+    Option.may (fun retention ->
+      emit_duration "retention" retention.Retention.duration
+    ) func.VSI.retention ;
+    Option.may (fun best_after ->
+      emit_duration "best-after" best_after
+    ) func.best_after ;
     (* FIXME: filter the records to pass only those accessible from this op *)
     emit_operation declare tuple_sizes records field_names
                    in_type out_type param_type env_type global_type
-                   func.VSI.name fi oc func.VSI.operation
+                   func.name fi oc func.operation
   ) funcs
 
 let emit_minimize oc condition funcs =
@@ -2507,7 +2512,8 @@ let emit_in_types decls oc tuple_sizes records field_names parents params
         Printf.sprintf2 "Function %a" N.func_print func.VSI.name in
       O.iter_expr (f ?func:(Some func) what) func.operation |> ignore ;
       Retention.fold_expr
-        () (fun () -> f ?func:(Some func) what "" []) func.VSI.retention
+        () (fun () -> f ?func:(Some func) what "" []) func.retention ;
+      Option.may (f ?func:(Some func) what "" []) func.best_after
     ) funcs
   in
   let register_io ?func what e prefix path =
@@ -3115,7 +3121,11 @@ let used_tuples_records condition funcs parents =
       let lst =
         match func.VSI.retention with
         | Some Retention.{ duration = e ; _ } -> e :: lst
-        | _ -> lst in
+        | None -> lst in
+      let lst =
+        match func.best_after with
+        | Some e -> e :: lst
+        | None -> lst in
       O.fold_expr lst (fun _ _ lst e -> e :: lst) func.VSI.operation
     ) all_exprs funcs
   in

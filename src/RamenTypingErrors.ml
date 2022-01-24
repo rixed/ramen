@@ -75,7 +75,8 @@ let expr_of_id funcs condition i =
           raise (ReturnExpr (loc_name, clause, stack, e)) in
       O.iter_expr print_expr func.VSI.operation ;
       Retention.fold_expr () (fun () -> print_expr "persist clause" [])
-                          func.VSI.retention
+                          func.VSI.retention ;
+      Option.may (print_expr "best-after clause" []) func.best_after
     ) funcs ;
     E.iter (fun stack e ->
       if e.E.uniq_num = i then

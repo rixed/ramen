@@ -671,7 +671,8 @@ let prog_info prog opt_func_name with_types =
       (List.print N.field_print) (O.factors_of_operation func.operation) ;
     TermTable.print_head (i+1) "Operation" ;
     TermTable.print (i+2) "%a" (O.print with_types) func.operation ;
-    if func.VSI.retention <> None || func.VSI.is_lazy then (
+    if func.VSI.retention <> None || func.best_after <> None ||
+       func.is_lazy then (
       let lst = [] in
       let lst =
         match func.VSI.retention with
@@ -679,6 +680,12 @@ let prog_info prog opt_func_name with_types =
             IO.to_string (RamenProgram.print_retention ~with_types) r :: lst
         | None ->
           lst in
+      let lst =
+        match func.best_after with
+        | Some e ->
+            IO.to_string (RamenProgram.print_best_after ~with_types) e :: lst
+        | None ->
+            lst in
       let lst =
         if func.VSI.is_lazy then "lazy"::lst else lst in
       TermTable.print_head (i+1) "Misc" ;

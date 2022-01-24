@@ -254,6 +254,7 @@ let precompile conf get_parent src_file src_path =
         VSI.{ name ;
               retention = parsed_func.retention ;
               is_lazy = parsed_func.is_lazy ;
+              best_after = parsed_func.best_after ;
               doc = parsed_func.doc ;
               operation = op ;
               (* Those two are set later by finalize_func: *)

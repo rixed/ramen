@@ -46,7 +46,8 @@ type func =
     doc : string ;
     operation : O.t ;
     retention : Retention.t option ;
-    is_lazy : bool }
+    is_lazy : bool ;
+    best_after : E.t option }
 
 type t = RamenTuple.param list * func list
 
@@ -59,9 +60,9 @@ let make_name =
     incr seq ;
     N.func ("f"^ string_of_int !seq)
 
-let make_func ?retention ?(is_lazy=false) ?name ?(doc="")
+let make_func ?retention ?best_after ?(is_lazy=false) ?name ?(doc="")
               operation =
-  { name ; doc ; operation ; retention ; is_lazy }
+  { name ; doc ; operation ; retention ; is_lazy ; best_after }
 
 (* Pretty-print a parsed program back to string: *)
 
@@ -82,6 +83,11 @@ let print_retention ?(with_types=false) oc r =
     (E.print with_types) r.Retention.duration
     print_as_duration r.period
 
+let print_best_after ?(with_types=false) oc e =
+  Printf.fprintf oc
+    "BEST AFTER %a"
+    (E.print with_types) e
+
 let print_func oc n =
   let with_types = false in (* TODO: a parameter *)
   match n.name with
@@ -89,13 +95,18 @@ let print_func oc n =
       Printf.fprintf oc "%a;"
         (O.print with_types ) n.operation
   | Some name ->
-      Printf.fprintf oc "DEFINE%s%a '%s' AS %a;"
+      Printf.fprintf oc "DEFINE%s%a%a '%s' AS %a;"
         (if n.is_lazy then " LAZY" else "")
         (fun oc -> function
           | None -> ()
           | Some r ->
               Printf.fprintf oc " %a"
                 (print_retention ~with_types) r) n.retention
+        (fun oc -> function
+          | None -> ()
+          | Some e ->
+              Printf.fprintf oc " %a"
+                (print_best_after ~with_types) e) n.best_after
         (name :> string)
         (O.print with_types) n.operation
 
@@ -330,7 +341,12 @@ struct
     (O.Parser.p >>: make_func) m
 
   type func_flag =
-    Name of N.func | Lazy | Persist of E.t | Querying of float | Ignore
+    | Name of N.func
+    | Lazy
+    | Persist of E.t
+    | Querying of float
+    | Ignore
+    | BestAfter of E.t
 
   let named_func m =
     let m = "named function" :: m in
@@ -349,6 +365,9 @@ struct
           ) |<| (
             strinG "while" >>: fun () -> Ignore
           ) |<| (
+            strinG "best" -- blanks -- strinG "after" -- blanks -+
+            E.Parser.immediate_or_param >>: fun e -> BestAfter e
+          ) |<| (
             function_name >>: fun fname -> Name fname
           )
         ) +- blanks) ++
@@ -362,7 +381,10 @@ struct
           list_find_map_opt (function Persist r -> Some r | _ -> None) attrs
         and period =
           list_find_map_opt (function Querying d -> Some d | _ -> None) attrs
-        and is_lazy = List.mem Lazy attrs in
+        and is_lazy = List.mem Lazy attrs
+        and best_after =
+          list_find_map_opt (function BestAfter d -> Some d | _ -> None) attrs
+        in
         let name =
           match name with
           | None ->
@@ -378,7 +400,7 @@ struct
               Some VSI.{ duration ; period = Default.query_period }
           | None, Some _ ->
               raise (Reject "incomplete retention definition") in
-        make_func ?retention ~is_lazy ~name ~doc op
+        make_func ?retention ?best_after ~is_lazy ~name ~doc op
     ) m
 
   let func m =

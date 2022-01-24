@@ -24,6 +24,7 @@ let apply_types parents condition funcs h =
       Option.may (fun retention ->
         E.iter (f "retention") retention.RamenRetention.duration
       ) func.VSI.retention ;
+      Option.may (E.iter (f "best-after")) func.best_after ;
       O.iter_expr f func.operation
     ) funcs
   in
