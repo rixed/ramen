@@ -652,12 +652,16 @@ struct
       | SyncKey k -> Printf.fprintf oc "resp#%a" Key.print k
 
     let print oc t =
+      let since_ref = ref (IO.to_string print_as_date t.since) in
       Printf.fprintf oc
-        "Replay { channel=%a; target=%a; recipient=%a; sources=%a; ... }"
+        "Replay { channel=%a; target=%a; recipient=%a; \
+                  sources=%a; since=%s; until=%a ... }"
         Channel.print t.channel
         site_fq_print t.target
         print_recipient t.recipient
         (Array.print site_fq_print) t.sources
+        !since_ref
+        (print_as_date_rel ~rel:since_ref ~right_justified:false) t.until
 
     (* Simple replay requests can be written to the config tree and are turned
      * into actual replays by the choreographer. Result will always be written

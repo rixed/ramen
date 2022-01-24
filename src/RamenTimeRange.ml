@@ -144,6 +144,7 @@ let approx_eq l1 l2 =
   i >= 0.7 *. span l1 &&
   i >= 0.7 *. span l2
 
+(* Returns the ends of the TimeRange, ignoring open-endedness: *)
 let bounds r =
   if array_is_empty r then
     invalid_arg "Range.bounds" ;

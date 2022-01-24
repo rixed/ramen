@@ -290,9 +290,12 @@ type 'a out_rb =
 let write_to_rb ~while_ out_rb file_spec
                 serialize_tuple sersize_of_tuple
                 dest_channel start_stop head tuple_opt =
+  let print_event_time =
+    Option.print (Tuple2.print print_as_date print_as_date) in
   if dest_channel <> Channel.live && out_rb.rate_limit_log_writes () then
     !logger.debug "Write a %s to channel %a"
-      (if tuple_opt = None then "message" else "tuple")
+      (if tuple_opt = None then "message"
+       else ("tuple of etime="^ IO.to_string print_event_time start_stop))
       Channel.print dest_channel ;
   (* Note: we retry only on NoMoreRoom so that's OK to keep trying; in
    * case the ringbuf disappear altogether because the child is
@@ -344,9 +347,6 @@ let write_to_rb ~while_ out_rb file_spec
                   out_rb.rb serialize_tuple sersize_of_tuple
                   file_spec.DO.fieldmask start_stop head tuple_opt ;
                 out_rb.last_successful_output <- !CodeGenLib.now ;
-                !logger.debug "Wrote a tuple to %a for channel %a"
-                  N.path_print out_rb.fname
-                  Channel.print dest_channel ;
                 if out_rb.quarantine_delay > 0. then (
                   !logger.info "Resuming output to %a"
                     N.path_print out_rb.fname ;

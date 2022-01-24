@@ -21,12 +21,10 @@ let apply_types parents condition funcs h =
   let iter_all f =
     E.iter (f "condition") condition ;
     Hashtbl.iter (fun _ func ->
-      (match func.VSI.retention with
-      | Some Retention. { duration = e ; _ } ->
-          E.iter (f "retention") e
-      | None ->
-          ()) ;
-      O.iter_expr f func.VSI.operation
+      Option.may (fun retention ->
+        E.iter (f "retention") retention.RamenRetention.duration
+      ) func.VSI.retention ;
+      O.iter_expr f func.operation
     ) funcs
   in
   (*
