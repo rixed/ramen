@@ -76,7 +76,7 @@ let bucket_count b =
 (* TODO: (consolidation * data_field) list instead of a single consolidation
  * for all fields *)
 type bucket_time = Begin | Middle | End
-(* Assumes the confclient has RamenExport.replay_topics in sync: *)
+(* Assumes the confclient has RamenReplay.topics in sync: *)
 let get conf session num_points since until where factors
         ?consolidation ?(bucket_time=Middle) worker data_fields
         ~while_ =

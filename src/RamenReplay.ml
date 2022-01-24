@@ -72,9 +72,36 @@ type 'a set = 'a Set.t
 exception NotInStats of (N.site * N.fq)
 exception NoData
 
-type replay_stats =
-  { parents : (N.site * N.fq) array ;
-    archives : TimeRange.t [@ppp_default []] }
+(* We need the worker and precompiled infos of the target,
+ * as well as the parents and archives of all workers (parents we
+ * find in workers): *)
+let topics =
+  [ "sites/*/workers/*/worker" ;
+    "sites/*/workers/*/archives/times" ;
+    "sources/*/info" ]
+
+(* Find parents and archives for a specific function, or raise Not_found: *)
+let get_stats clt (site, fq) =
+  let stats_key = Key.PerSite (site, PerWorker (fq, Worker)) in
+  !logger.debug "Looking for runtime stats in %a" Key.print stats_key ;
+  match (Client.find clt stats_key).value with
+  | Value.Worker worker ->
+      let archives_k = Key.PerSite (site, PerWorker (fq, ArchivedTimes)) in
+      let archives =
+        match (Client.find clt archives_k).value with
+        | exception Not_found -> [||]
+        | Value.TimeRange archives -> archives
+        | v -> err_sync_type archives_k v "a TimeRange" ; [||] in
+      let parents =
+        Array.map (fun r ->
+          r.Func_ref.DessserGen.site,
+          N.fq_of_program r.program r.func
+        ) (worker.Value.Worker.parents |? [||]) in
+      parents, archives
+  | v ->
+      err_sync_type stats_key v "a Worker" ;
+      raise Not_found
+
 
 let link_print oc (psite_fq, site_fq) =
   Printf.fprintf oc "%a=>%a"
@@ -92,26 +119,23 @@ let link_print oc (psite_fq, site_fq) =
  * But the shortest path form fq to its archiving parents that have the
  * required data is always the best. So start from fq and progress
  * through parents until we have found all required sources with the whole
- * archived content, recording the all the functions on the way up there
- * in a set.
- * Return all the possible ways to get some data in that range, with the
- * sources, their distance, and the list of covered ranges. Caller
- * will pick what it likes best (or compose a mix).
+ * archived content, recording all the functions (and required replay ranges)
+ * on the way up there in a set.
+ * Take into account that functions may requires extra history to work
+ * properly.
  *
  * Note regarding distributed mode:
  * We keep assuming for now that fq is unique and runs locally.
  * But its sources might not. In particular, for each parent we have to
  * take into account the optional host identifier and follow there. During
  * recursion we will have to keep track of the current local site. *)
-let find_sources
-      (stats : (N.site_fq, replay_stats) Hashtbl.t) local_site fq since until =
+let find_sources clt local_site fq since until =
   let since, until =
     if since <= until then since, until
     else until, since in
   let find_fq_stats site_fq =
-    try Hashtbl.find stats site_fq
-    with Not_found -> raise (NotInStats site_fq)
-  in
+    try get_stats clt site_fq
+    with Not_found -> raise (NotInStats site_fq) in
   let cost (sources, links) =
     Set.cardinal sources + Set.cardinal links in
   let merge_ways ways =
@@ -122,11 +146,15 @@ let find_sources
       TimeRange.merge range range',
       (Set.union sources sources', Set.union links links')
     ) (TimeRange.empty, (Set.empty, Set.empty)) ways in
+  (* Find all ways to obtain this time range of data from a set of functions
+   * [fqs] (that are all parents of some function but this fact doesn't
+   * matter here) *)
   let rec find_parent_ways since until links fqs =
     (* When asked for several parent fqs, all the possible ways to retrieve
-     * any range of data is the cartesian product. But we are not going to
-     * return the full product, only the best alternative for any distinct
-     * time range. *)
+     * any range of data is the cartesian product (if there are 2 ways to get
+     * data from first parent and 3 ways to get data from the second parent,
+     * then there are 6 ways total). But we are not going to return the full
+     * product, only the best alternative for any distinct time range. *)
     let per_parent_ways =
       Array.map (find_ways since until links) fqs |>
       Array.to_list in
@@ -150,26 +178,28 @@ let find_sources
     ) per_parent_ways ;
     Hashtbl.enum h |> List.of_enum
   (* Find all ways up to some data sources required for [fq] in the time
-   * range [since]..[until]. Returns a list of pairs composed of the
-   * TimeRange.t and a pair of the set of fqs and the set of links, a link
-   * being a pair of parent and child fq. So for instance, this is a
-   * possible result:
+   * range [since]..[until]. Returns a list of possibilities, each consisting
+   * of a pair: first the covered TimeRange.t and then a pair of the set of fqs
+   * (each with its time interval) and the set of links, a link being a pair
+   * of parent and child fqs.
+   * So for instance, this is a possible result, with just one possibility:
    * [
    *   [ (123.456, 125.789) ], (* the range *)
    *   (
-   *     { source1; source2; ... }, (* The set of data sources *)
+   *     { source1 ; source2 ; ... }, (* The set of data sources *)
    *     { (source1, fq2); (fq2, fq3); ... } (* The set of links *)
    *   )
    * ]
    *
    * Note regarding distributed mode:
-   * Everywhere we have a fq in that return type, what we actually have is a
-   * site * fq.
+   * Everywhere we have a fq above, what we actually have is a site * fq.
    *)
   and find_ways since until links (local_site, fq as site_fq) =
     (* When given a single function, the possible ways are the one from
      * the archives of this node, plus all possible ways from its parents: *)
-    let s = find_fq_stats site_fq in
+    let parents, archives = find_fq_stats site_fq in
+    (* Build the part of the requested time span that's already present in
+     * this function archives, as a TimeRange: *)
     let local_range =
       Array.fold (fun range i ->
         if i.TimeRange.since > until ||
@@ -180,27 +210,37 @@ let find_sources
                          ((if i.growing then max else min) i.until until)
                          i.growing |>
           TimeRange.merge range
-      ) TimeRange.empty s.archives in
+      ) TimeRange.empty archives in
     !logger.debug "From %a:%a, range from archives = %a"
       N.site_print local_site
       N.fq_print fq
       TimeRange.print local_range ;
-    (* Take what we can from here and the rest from the parents: *)
+    (* Take what we can from here and the rest (extended with this function
+     * extra-history requirements) from the parents: *)
     (* Note: we are going to ask all the parents to export the replay
-     * channel to this function. Although maybe some of those we are
+     * channel to this function. Although maybe for some of those we are
      * going to spawn a replayer. That's normal, the replayer is reusing
      * the out_ref of the function it substitutes to. Which will never
      * receive this channel (unless loops but then we actually want
      * the worker to process the looping tuples!) *)
     let from_parents =
-      let plinks =
+      let plinks =  (* Add the links from parents to this function: *)
         Array.fold_left (fun links pfq ->
           Set.add (pfq, (local_site, fq)) links
-        ) links s.parents in
-      find_parent_ways since until plinks s.parents in
+        ) links parents in
+      find_parent_ways since until plinks parents in
+    (* [from_parents] has all ways to get data from parents.
+     * Add the local archives on top of that as another possibility.
+     * Note: we do not consider a way that combines replaying local archives
+     * for some time range and spawning replayers for parents for some other
+     * time range because it would be tricky to reproduce the same time
+     * ordering. The client could easily request again the missing bits and
+     * reproduce the whole time range. *)
     if TimeRange.is_empty local_range then from_parents else
       let local_way = local_range, (Set.singleton (local_site, fq), links) in
       local_way :: from_parents
+  (* This function selects among several ways the one with best coverage
+   * and smallest number of links: *)
   and pick_best_way ways =
     let tot_range = until -. since in
     assert (tot_range >= 0.) ;
@@ -228,7 +268,7 @@ let find_sources
    * RC for just that channel. *)
   match find_ways since until Set.empty (local_site, fq) with
   | exception NotInStats _ ->
-      Printf.sprintf2 "Cannot find %a in the stats"
+      Printf.sprintf2 "Cannot find runtime stats for %a"
         N.fq_print fq |>
       failwith
   | [] ->
@@ -251,9 +291,8 @@ let find_sources
  * this complex selection in ramen language directly.
  * So, here [func] is supposed to mean the local instance of it only. *)
 let create
-      conf (stats : (N.site_fq, replay_stats) Hashtbl.t)
-      ?(timeout=Default.replay_timeout) ?resp_key site_name prog_name func
-      since until =
+      ?(timeout=Default.replay_timeout) ?resp_key
+      conf clt site_name prog_name func since until =
   let timeout_date = Unix.gettimeofday () +. timeout in
   let fq = VSI.fq_name prog_name func in
   (* Ask to export only the fields we want. From now on we'd better
@@ -266,8 +305,7 @@ let create
    * but beware of with_event_type! *)
   let target_fieldmask = RamenFieldMaskLib.all_public func.VSI.operation in
   let site = site_name |? conf.C.site in
-  let range, (sources, links) =
-    find_sources stats site fq since until in
+  let range, (sources, links) = find_sources clt site fq since until in
   let site_fq_to_dessser (site, fq) =
     let prog, func = N.fq_parse fq in
     Fq_function_name.DessserGen.{ site ; program = prog ; function_ = func } in

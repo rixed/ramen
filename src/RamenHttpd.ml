@@ -20,7 +20,7 @@ let http_topics api graphite =
       "sources/*/alert" ] |>
     Set.of_list
   and graphite_topics =
-    RamenExport.replay_topics |>
+    RamenReplay.topics |>
     Set.of_list in
   let topics =
     Set.union

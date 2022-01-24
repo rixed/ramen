@@ -1271,7 +1271,7 @@ let replay_ conf worker field_names with_header with_units sep null raw
         Array.mapi (fun i -> formatter head.(i).units) tuple in
       print vals),
     (fun () -> print [||]) in
-  let topics = RamenExport.replay_topics in
+  let topics = RamenReplay.topics in
   start_sync conf ~topics ~while_ ~recvtimeo:1. (fun session ->
     (RamenExport.(if via_confserver then replay_via_confserver else replay)
       conf session ~while_ worker field_names where since until
@@ -1308,7 +1308,7 @@ let timeseries_ conf worker data_fields
   let num_points, since, until =
     RamenTimeseries.compute_num_points time_step num_points since until in
   let columns, timeseries =
-    let topics = RamenExport.replay_topics in
+    let topics = RamenReplay.topics in
     start_sync conf ~topics ~while_ ~recvtimeo:1. (fun session ->
       (RamenTimeseries.get conf session num_points since until where factors
         ~consolidation ~bucket_time worker data_fields ~while_))

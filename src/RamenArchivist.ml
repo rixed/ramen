@@ -186,18 +186,18 @@ let compute_archives conf prog_name func =
  * persistent functions in proportion to their query frequency, while still
  * remaining within the bounds allocated to storage.
  *
- * The cost to retrieve length L at frequency H of any function output is
- * either:
+ * The cost to retrieve length L at frequency H of the output of any function,
+ * is either:
  *
  * - the IO cost of reading it: L * H * storage cost
- * - or the CPU (+ RAM?) cost of recomputing it: L * H * cpu cost
+ * - or the CPU (+ RAM?) cost of recomputing it: L * H * CPU cost
  *
  * ...depending on whether the output is archived or not.
- * Notice that here L is coming from the persistent function that's a child of
- * that one (or that very one).
+ * Notice that on the later case, L has to be obtained from that function
+ * parents recursively.
  *
  * We know each cost individually, and how to relate storage and computing
- * cost thanks to user configuration.
+ * costs thanks to user configuration.
  * We want to make the sum of all those costs as small as possible.
  *
  * Notice that we want the total storage to be below the provided limits but
@@ -226,16 +226,30 @@ let compute_archives conf prog_name func =
  *     its read cost * L
  *   - otherwise:
  *     the query cost of each of its parent for duration L +
- *     its own cpu cost * L.
+ *     its own CPU cost * L.
  *
- * - Note that for functions with no parent, the cpu cost is infinite, as
- *   there are actually no way to recompute it. If a function with no parent
+ * - Note that for functions with no parents, the CPU cost is infinite, as
+ *   there are actually no way to recompute it. If a function with no parents
  *   is queried directly there is no way around archival.
  *
  * - The cost of the solution it the sum of all query costs for each function
  *   with a retention, that we want to minimize.
  *
- * TODO: Make it costly to radically change one's mind!
+ * - Notes:
+ *   - The user configuration for a particular function only states the
+ *     lifespan of the data and frequency of queries, but does not says that
+ *     those queries will necessarily require the full history, yet this is
+ *     what we optimise for here.
+ *   - Functions might require an additional amount of history before they can
+ *     output meaningful data, which should be added to the recomputed length
+ *     and added to the duration requested from parents, recursively. This is
+ *     not taken into account in this approximation.
+ *   - Ideally, the query frequency and actual time span would be taken from
+ *     stats on actual queries, which would solve all the above concerns, as
+ *     we could optimise for actual usage, while independently enforcing
+ *     storage limitations.
+ *
+ * TODO: Make it costly to radically change archiving settings!
  *)
 
 let hashkeys_print p =
@@ -248,8 +262,8 @@ let const pref ((site_id : N.site), (fq : N.fq)) =
  * worker: *)
 let perc = const "perc_"
 
-(* (variable name of the) cost of archiving this worker for the duration
- * [i]: *)
+(* (variable name of the) cost of archiving/recomputing this worker for the
+ * [i]th duration: *)
 let cost i site_fq =
   (const "cost_" site_fq) ^"_"^ string_of_int i
 
@@ -295,8 +309,8 @@ let recall_size fq s =
         N.fq_print fq ;
       Default.recall_size
 
-(* For each function, declare the boolean perc_f, that must be between 0
- * and 100, and as many cost_f as there are defined durations.
+(* For each function, declare the variable perc_$ID, that must be between 0
+ * and 100, and as many cost_$ID as there are defined durations.
  * From now on, [per_func_stats] is keyed by site*fq and has all functions
  * running everywhere. Obviously this is intended for the master instance to
  * compute the disk allocations. *)
@@ -307,10 +321,10 @@ let emit_all_vars durations oc per_func_stats =
        (declare-const %s Int)\n\
        (assert (>= %s 0))\n\
        (assert (<= %s 100)) ; should not be required but helps\n"
-      N.site_print site
-      N.fq_print fq
-      (compute_cost fq s) (recall_size fq s)
-      (perc site_fq) (perc site_fq) (perc site_fq) ;
+      N.site_print site N.fq_print fq (compute_cost fq s) (recall_size fq s)
+      (perc site_fq)
+      (perc site_fq)
+      (perc site_fq) ;
     List.iteri (fun i _ ->
       Printf.fprintf oc "(declare-const %s Int)\n"
         (cost i site_fq)

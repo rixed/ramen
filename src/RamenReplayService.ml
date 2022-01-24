@@ -20,8 +20,7 @@ let create_replay conf session resp_key target since until explain =
                     target.function_ in
   let clt = option_get "create_replay" __LOC__ session.ZMQClient.clt in
   let _prog, prog_name, func = function_of_fq clt fq in
-  let stats = Export.replay_stats clt in
-  match Replay.create conf stats ~resp_key
+  match Replay.create conf clt ~resp_key
                       (Some target.Fq_function_name.DessserGen.site)
                       prog_name func since until with
   | exception Replay.NoData ->
@@ -44,7 +43,7 @@ let create_replay conf session resp_key target since until explain =
 
 let start conf ~while_ =
   let topics =
-    "replay_requests" :: Export.replay_topics in
+    "replay_requests" :: Replay.topics in
   let on_set session k v _uid _mtime =
     match k, v with
     | Key.ReplayRequests,
