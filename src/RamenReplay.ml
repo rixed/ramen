@@ -105,13 +105,14 @@ let get_stats clt (site, fq) =
 let get_best_after clt fq =
   let prog_name, func_name = N.fq_parse fq in
   let info_key = Key.Sources (N.src_path_of_program prog_name, "info") in
+  let default = Default.best_after in
   !logger.debug "Looking for best-after in %a" Key.print info_key ;
   match (Client.find clt info_key).value with
   | exception Not_found ->
       !logger.warning
         "Cannot find info_key of %a for its best-after, assuming none"
         Key.print info_key ;
-      None
+      default
   | Value.SourceInfo { detail = Compiled { funcs ; _ } ; _ } ->
       (match List.find (fun func ->
           func.Source_info.DessserGen.name = func_name) funcs with
@@ -119,28 +120,29 @@ let get_best_after clt fq =
           !logger.warning
             "Cannot find best-after for non existing function %a, assuming none"
             N.fq_print fq ;
-          None
+          default
       | func ->
           (match func.best_after with
-          | None -> None
+          | None ->
+              default
           | Some e ->
               (match E.float_of_const e with
-              | Some _ as v -> v
+              | Some v -> v
               | None ->
                   !logger.error
                     "Cannot use non-constant best-after for function %a: \
                     %a, assuming none"
                     N.fq_print fq
                     (E.print ~max_depth:3 false) e ;
-                  None)))
+                  default)))
   | Value.SourceInfo { detail = Failed _ } ->
       !logger.warning
         "Cannot find best-after for non compiled %a, assuming none"
         N.fq_print fq ;
-      None
+      default
   | v ->
       err_sync_type info_key v "a SourceInfo" ;
-      None
+      default
 
 let link_print oc (psite_fq, site_fq) =
   Printf.fprintf oc "%a=>%a"
@@ -267,7 +269,7 @@ let find_sources clt local_site fq since until =
         Array.fold_left (fun links pfq ->
           Set.add (pfq, (local_site, fq)) links
         ) links parents in
-      let since = since -. (get_best_after clt fq |? 0.) in
+      let since = since -. get_best_after clt fq in
       find_parent_ways since until plinks parents in
     (* [from_parents] has all ways to get data from parents.
      * Add the local archives on top of that as another possibility.

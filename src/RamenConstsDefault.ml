@@ -150,3 +150,6 @@ let incidents_history_length = 500
 (* How long must execompserer wait before retrying to compile a program after
  * a compilation error: *)
 let execomp_quarantine = 300.
+
+(* How many seconds of extra history should be replayed if unspecified: *)
+let best_after = 0.
