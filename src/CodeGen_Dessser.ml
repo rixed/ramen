@@ -34,7 +34,7 @@ module RowBinary2Value = DessserHeapValue.Materialize (DessserRowBinary.Des)
 
 let rowbinary_to_value ?config mn compunit =
   let open DE.Ops in
-  let compunit, e, _ = RowBinary2Value.make ?config "t" mn compunit in
+  let compunit, e, _ = RowBinary2Value.make ?config mn compunit in
   compunit,
   comment "Function deserializing the rowbinary into a heap value:" e
 
@@ -44,7 +44,7 @@ open Raql_binding_key.DessserGen
 
 let csv_to_value ?config mn compunit =
   let open DE.Ops in
-  let compunit, e, _ = Csv2Value.make ?config "t" mn compunit in
+  let compunit, e, _ = Csv2Value.make ?config mn compunit in
   compunit,
   comment "Function deserializing the CSV into a heap value:" e
 
@@ -55,7 +55,7 @@ let sersize_of_type mn compunit =
     Printf.sprintf2 "Compute the serialized size of values of type %a"
       DT.print_mn mn in
   let open DE.Ops in
-  let compunit, e, _ = Value2RingBuf.sersize "t" mn compunit in
+  let compunit, e, _ = Value2RingBuf.sersize mn compunit in
   compunit,
   comment cmt e
 
@@ -73,7 +73,7 @@ let serialize mn compunit =
       DT.print_mn mn in
   let open DE.Ops in
   let tx_t = DT.(required (TExt "tx")) in
-  let compunit, ser, _ = Value2RingBuf.serialize "t" mn compunit in
+  let compunit, ser, _ = Value2RingBuf.serialize mn compunit in
   compunit,
   func4 DT.mask tx_t DT.size mn
     (fun ma tx start_offs v ->
@@ -393,7 +393,7 @@ let deserialize_tuple type_name mn compunit =
       DT.print_mn mn in
   let open DE.Ops in
   let tx_t = DT.(required (TExt "tx")) in
-  let compunit, des, _ = RingBuf2Value.make type_name mn compunit in
+  let compunit, des, _ = RingBuf2Value.make ~type_name mn compunit in
   compunit,
   func2 tx_t DT.size (fun tx start_offs ->
     if DT.eq mn.DT.typ TVoid then (
