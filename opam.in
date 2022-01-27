@@ -17,10 +17,10 @@ install: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "install"]
 remove: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "uninstall"]
 depends: [
   "batteries" {= "3.3.0"}
-  "binocle" {>= "0.13.0"}
+  "binocle" {= "0.13.0"}
   "cmdliner" {build & >= "1.0.4"}
   "csv" {build & = "2.4"}
-  "dessser" {>= "28.4.0"}
+  "dessser" {= "28.4.0"}
   "ipaddr" {build & >= "5.2.0"}
   "kafka" {= "0.5"}
   "lacaml" {= "9.3.2"}
@@ -33,7 +33,7 @@ depends: [
   "ppp" {= "2.8.5"}
   "qcheck" {build & >= "0.17"}
   "qtest" {with-test}
-  "smt2" {>= "0.2.0"}
+  "smt2" {= "0.2.0"}
   "sodium" {= "0.6.0"}
   "sqlite3" {build & >= "5.0.2"}
   "stdint" {= "0.7.0fix3"}
