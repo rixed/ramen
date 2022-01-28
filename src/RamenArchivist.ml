@@ -118,8 +118,10 @@ let compute_archives conf prog_name func =
   let bname =
     Paths.archive_buf_name ~file_type:OWD.RingBuf conf prog_name func in
   let arc_dir = RingBufLib.arc_dir_of_bname bname in
-  !logger.debug "Computing archive size of function %a, from dir %a"
-    N.fq_print fq N.path_print arc_dir ;
+  !logger.debug "Computing archive size of function %a, from %a and dir %a"
+    N.fq_print fq
+    N.path_print bname
+    N.path_print arc_dir ;
   let lst =
     RingBufLib.arc_files_of arc_dir //@
     (fun (_seq_mi, _seq_ma, t1, t2, _typ, fname) ->
@@ -133,7 +135,11 @@ let compute_archives conf prog_name func =
   let lst =
     if Files.exists bname then
       match RingBuf.load bname with
-      | exception _ -> lst (* nope *)
+      | exception e ->
+          !logger.error "Cannot load %a: %s"
+            N.path_print bname
+            (Printexc.to_string e) ;
+          lst (* nope *)
       | rb ->
           finally (fun () -> RingBuf.unload rb) (fun () ->
             let st = RingBuf.stats rb in
