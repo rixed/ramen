@@ -90,6 +90,7 @@ let sql_quote s =
 
 let ramen_quote = sql_quote
 
+(* Quote a JSON string *)
 let json_quote s =
   let q sub by str = String.nreplace ~str ~sub ~by in
   "\""^ (s |> q "\\" "\\\\" |> q "\"" "\\\"" |> q "/" "\\/" |> q "\b" "\\b" |>

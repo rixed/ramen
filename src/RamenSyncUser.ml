@@ -64,12 +64,19 @@ struct
       clt_pub_key : string }
     [@@ppp PPP_JSON]
 
+  let print_user oc u =
+    Printf.fprintf oc "{ roles = %a; clt_pub_key = %S }"
+      (List.print Role.print) u.roles
+      u.clt_pub_key
+
   let file_name users_dir username  =
     assert (username <> "") ;
     N.path_cat [ users_dir ; N.path username ]
 
   (* Lookup a user by name and return its conf if found: *)
   let lookup users_dir username =
+    !logger.debug "Looking up user %S in user DB at %a"
+      username N.path_print users_dir ;
     if username = "" then raise Not_found ;
     let fname = file_name users_dir username in
     try Files.ppp_of_file ~errors_ok:true user_ppp_json fname
@@ -180,6 +187,8 @@ let authenticate users_dir u username clt_pub_key =
                   ) else
                     failwith ("No such user: "^ username)
               | registered_user ->
+                  !logger.debug "Got registered used: %a"
+                    Db.print_user registered_user ;
                   (* Check user is who he pretends to be: *)
                   if clt_pub_key = "" then (
                     !logger.warning "No public key set for user %s \
