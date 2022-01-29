@@ -327,8 +327,11 @@ let stats_key_count =
   IntGauge.make Metric.Names.sync_key_count
     "Current number of keys stored in the configuration tree."
 
-(* Stores, per worker instance, the last max_last_tuples sequence numbers,
- * used to delete the oldest one when new ones are received. *)
+(* Stores, per worker, the last max_last_tuples sequence numbers, used to
+ * delete the oldest one when new one is received.
+ * Notice the instance identifier of that worker does not matter: if the
+ * worker is modified we still want to delete whatever tuple formed its
+ * previous tail. *)
 let last_tuples = Hashtbl.create 100
 
 let update_last_tuples srv site fq instance seq =
@@ -399,7 +402,8 @@ let update_incidents_history srv new_uuid =
   done
 
 let purge_old_keys srv = function
-  | CltCmd.NewKey (Key.(Tails (site, fq, instance, LastTuple seq)), _, _, _) ->
+  | CltCmd.NewKey (Key.(Tails (site, fq, instance, LastTuple seq)), _, _, _)
+  | SetKey (Key.(Tails (site, fq, instance, LastTuple seq)), _) ->
       update_last_tuples srv site fq instance seq
   | NewKey (Key.(Incidents (uuid, LastStateChangeNotif)), _, _, _)
   | SetKey (Key.(Incidents (uuid, LastStateChangeNotif)), _) ->
