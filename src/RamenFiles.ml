@@ -106,7 +106,8 @@ let exists ?has_perms fname =
   check ?has_perms fname = FileOk
 
 let is_executable fname =
-  check ~executable:true fname = FileOk
+  (* Empty files are too common to be ignored: *)
+  check ~executable:true ~min_size:100 fname = FileOk
 
 let size fname =
   let s = safe_stat fname in

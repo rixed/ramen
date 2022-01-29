@@ -29,17 +29,12 @@ let stats_compilations_count =
 
 let execomp_quarantine = ref Default.execomp_quarantine
 
-let compile_one conf session prog_name info_value info_sign info_mtime =
+let compile_one conf session prog_name info_value info_file bin_file info_mtime =
   let clt = option_get "compile_one" __LOC__ session.ZMQClient.clt in
   let get_parent =
     Compiler.program_from_confserver clt in
-  let info_file =
-    Paths.execompserver_cache_file conf.C.persist_dir (N.path info_sign) "info" in
-  let bin_file =
-    Paths.execompserver_cache_bin conf.C.persist_dir info_sign in
   Make.write_value_into_file info_file info_value info_mtime ;
-  Make.(apply_rule conf get_parent prog_name info_file bin_file bin_rule) ;
-  bin_file
+  Make.(apply_rule conf get_parent prog_name info_file bin_file bin_rule)
 
 let quarantined = Hashtbl.create 10
 
@@ -48,9 +43,23 @@ let compile_info conf ~while_ session src_path info comp mtime =
     !logger.info "Compiling binary for %a"
       N.src_path_print src_path ;
     let info_sign = Value.SourceInfo.signature_of_compiled comp in
+    let info_file =
+      Paths.execompserver_cache_file
+        conf.C.persist_dir (N.path info_sign) "info" in
+    let bin_file =
+      Paths.execompserver_cache_bin conf.C.persist_dir info_sign in
     try
       if not (while_ ()) then raise Exit ;
-      let bin_file = compile_one conf session src_path info info_sign mtime in
+      (* Do not compile if the binary file is already there and looks legit,
+       * since the info signature encodes for everything that matters
+       * (starting with the codegen version) and supervisor will delete it
+       * if the worker starts crashlooping. *)
+      if Files.is_executable bin_file then
+        !logger.info "Executable in %a looks fresh, keeping it."
+          N.path_print bin_file
+        (* Might still need to be rewritten in the config though *)
+      else
+        compile_one conf session src_path info info_file bin_file mtime ;
       let exe_key =
         Key.PerSite (conf.C.site, PerProgram (info_sign, Executable)) in
       let exe_path = Value.(of_string (bin_file :> string)) in
