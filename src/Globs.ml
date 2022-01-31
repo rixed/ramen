@@ -89,8 +89,7 @@ let compile ?(star='*') ?(placeholder='?') ?(escape='\\') =
           spec :: String (unescape (sub s 0 o)) :: prev in
         split prev' (lchop ~n s)) in
   fun s ->
-    let rec aux prev rest =
-      match rest with
+    let rec aux prev = function
       | [] ->
           prev
       | String "" :: rest ->

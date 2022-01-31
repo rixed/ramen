@@ -385,6 +385,10 @@ let update_conf_server conf session sites rc_entries =
       N.program_print rce.program
       rce.on_site
       (SetOfSites.print N.site_print_quoted) where_running ;
+    if SetOfSites.is_empty where_running then
+      !logger.info "No site match program %a site constraint (%S)"
+        N.program_print rce.program
+        rce.on_site ;
     (*
      * Update all_used, all_parents and cached_params:
      *)
