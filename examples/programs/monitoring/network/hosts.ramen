@@ -4,7 +4,7 @@
 DEFINE collectd AS
   LISTEN FOR COLLECTD;
 
-DEFINE memory AS
+DEFINE memory PERSIST FOR 1d AS
   SELECT
     truncate(start, 30s) AS start,
     out.start + 30s AS stop,
@@ -21,7 +21,7 @@ DEFINE memory AS
   COMMIT AFTER in.start > out.start + 30s
   FACTORS host;
 
-DEFINE cpu AS
+DEFINE cpu PERSIST FOR 1d AS
   SELECT
     truncate(start, 30s) AS start,
     out.start + 30s AS stop,
