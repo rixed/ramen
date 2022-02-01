@@ -1104,6 +1104,7 @@ TESTABLE_SOURCES = \
 	src/RamenConstsExitCodes.ml \
 	src/RamenHelpers.ml \
 	src/RamenFiles.ml \
+	src/RamenHttpHelpers.ml \
 	src/RamenBloomFilter.ml \
 	src/CodeGen_OCaml.ml \
 	src/CodeGen_RaQL2DIL.ml \

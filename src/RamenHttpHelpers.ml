@@ -30,7 +30,7 @@ let () =
         Printf.sprintf "HttpError (%d, %S)" code text)
     | BadPrefix prefix -> Some (
         Printf.sprintf2 "Bad HTTP URL prefix: %a"
-          (List.print ~first:"" ~last:"" ~sep:"/" String.print) prefix)
+          (List.print ~first:"" ~last:"" ~sep:"/" String.print_quoted) prefix)
     | _ ->
         None)
 
@@ -47,6 +47,11 @@ let rec chop_prefix pfx path =
   | [], path' -> path'
   | p1::pfx', p2::path' when p1 = p2 -> chop_prefix pfx' path'
   | _ -> raise (BadPrefix path)
+
+(*$= chop_prefix & ~printer:(BatIO.to_string (BatList.print BatString.print_quoted))
+  [""] (chop_prefix (list_of_prefix "/") [""])
+  [""] (chop_prefix (list_of_prefix "/") [])
+*)
 
 (* Case is significant for multipart boundaries *)
 let get_content_type headers =
