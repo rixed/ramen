@@ -1650,7 +1650,7 @@ docker-push:
 	docker push rixed/ramen:v$(VERSION)
 
 DISTRIB_TAGS = \
-	debian:11.1-slim,bullseye \
+	debian:11.2-slim,bullseye \
 	debian:10.11-slim,buster
 
 docker-dev: docker/Dockerfile-dev
