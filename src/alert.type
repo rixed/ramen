@@ -16,6 +16,8 @@
         smooth_factor: float default 0.5;
         max_distance: [ Absolute float | Relative float ];
       } ]);
+  // recovery = threshold + hysteresis
+  // Thus if hysteresis is < 0 then the threshold is a maximum, otherwise a minimum
   hysteresis: float default 0;
   duration: float default 0;
   ratio: float default 1;
