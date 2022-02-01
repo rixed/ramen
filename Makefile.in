@@ -1636,7 +1636,7 @@ endif
 # - docker-dev builds the docker-dev image.
 
 docker: docker/Dockerfile
-	@echo 'Building docker image for testing DEB version'
+	@echo 'Building docker image'
 	$(DOCKER_BUILD) --squash -t rixed/ramen:latest -f $< docker/
 	@echo 'Pushing to local hub as localhost:5000/ramen'
 	docker tag rixed/ramen localhost:5000/ramen
