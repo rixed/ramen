@@ -44,7 +44,7 @@ let list_of_prefix pfx =
 
 let rec chop_prefix pfx path =
   match pfx, path with
-  | [], path' -> path'
+  | [], path' -> if path' = [] then [""] else path'
   | p1::pfx', p2::path' when p1 = p2 -> chop_prefix pfx' path'
   | _ -> raise (BadPrefix path)
 
