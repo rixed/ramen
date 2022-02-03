@@ -1,7 +1,0 @@
-Package: ramen
-Version: @PACKAGE_VERSION@
-Architecture: amd64
-Maintainer: rixed-github@happyleptic.org
-Depends: g++, gcc, libblas-dev, liblapack-dev, libsasl2-dev, libssl-dev, libsqlite3-0
-Conflicts: libopenblas-base
-Description: Event processor tailored for human-scale monitoring

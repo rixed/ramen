@@ -63,7 +63,6 @@ AC_CONFIG_FILES([
   Makefile
   opam
   src/RamenVersions.ml
-  debian.control
   tests/features/api.feature
   docker/Dockerfile
   docker/Dockerfile-dev

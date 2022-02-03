@@ -1612,6 +1612,16 @@ endif
 	mv debtmp.deb $@
 	$(RM) -r debtmp
 
+debian.control: Makefile
+	@echo 'Building $@'
+	@echo 'Package: @PACKAGE_NAME@' > $@
+	@echo 'Version: @PACKAGE_VERSION@' >> $@
+	@echo 'Architecture: $(shell dpkg-architecture -qDEB_BUILD_ARCH)' >> $@
+	@echo 'Maintainer: rixed-github@happyleptic.org' >> $@
+	@echo 'Depends: g++, gcc, libblas-dev, liblapack-dev, libsasl2-dev, libssl-dev, libsqlite3-0' >> $@
+	@echo 'Conflicts: libopenblas-base' >> $@
+	@echo 'Description: Event processor tailored for human-scale monitoring' >> $@
+
 ramen.$(VERSION).tgz: \
 		$(PACKAGED_BIN) \
 		$(BUNDLE_DIR)/ramen/codegen.a \
@@ -1726,6 +1736,7 @@ clean: clean-dessserc-gen
 	$(RM) src/libcollectd.a src/libnetflow.a src/codegen.a
 	$(RM) src/libcountry.a IpToCountry.csv IpToCountry.6R.csv
 	$(RM) tests/func/generated.type tests/func/fixtures/generated.csv tests/func/generated.ramen
+	$(RM) debian.control
 
 clean-dessserc-gen:
 	# Do not delete raql_type.ml*!

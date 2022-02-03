@@ -21,6 +21,7 @@ RUN echo 'APT::Install-Recommends "0";' > \
         coreutils \
         cucumber \
         curl \
+        dpkg-dev \
         fakeroot \
         fuse \
         g++ \
