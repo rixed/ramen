@@ -66,10 +66,11 @@
     this per_dash_key)
 // The following keys relate to alerting:
 | Notifications
-| Teams (
-    $team_name;  // team_name
-    [ Contacts string
-    | Inhibition string ])
+| Teams
+    { name: $team_name;
+      info: (team_key_info as
+              [ Contacts string
+              | Inhibition string ]) }
 // That string is a Uuidm.t but Uuidm needlessly adds/removes the dashes
 // when converting to strings.
 // Note: only the last [incidents_history_length] incidents are kept.

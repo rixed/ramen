@@ -43,7 +43,7 @@ let value_of_string key str =
   | Storage TotalSize
     ->
       Value.of_int64 (Int64.of_string str)
-  | Teams (_, Contacts _) ->
+  | Teams { info = Contacts _ ; _ } ->
       Value.AlertingContact (
         dessser_of_string Alerting_contact.DessserGen.wrap_of_json str)
   | Notifications ->
@@ -59,7 +59,7 @@ let value_of_string key str =
   | ReplayRequests
   | PerClient _
   | Dashboards _
-  | Teams (_, Inhibition _)
+  | Teams { info = Inhibition _ ; _ }
   | Incidents _
     ->
       failwith ("No parser for key "^ Key.to_string key)

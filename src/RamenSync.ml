@@ -197,10 +197,10 @@ struct
           print_per_dash_key per_dash_key
     | Notifications ->
         String.print oc "alerting/notifications"
-    | Teams (n, per_team_key) ->
+    | Teams { name ; info } ->
         Printf.fprintf oc "alerting/teams/%a/%a"
-          N.team_print n
-          print_per_team_key per_team_key
+          N.team_print name
+          print_per_team_key info
     | Incidents (uuid, per_incident_key) ->
         Printf.fprintf oc "alerting/incidents/%s/%a"
           uuid
@@ -340,8 +340,10 @@ struct
                 (match cut s with
                 | name, s ->
                     (match cut s with
-                    | "contacts", c -> Teams (N.team name, Contacts c)
-                    | "inhibition", id -> Teams (N.team name, Inhibition id)))
+                    | "contacts", c ->
+                        Teams { name = N.team name ; info = Contacts c }
+                    | "inhibition", id ->
+                        Teams { name = N.team name ; info = Inhibition id }))
             | "incidents", s ->
                 (match cut s with
                 | id, s ->
@@ -380,7 +382,7 @@ struct
       (of_string "sites/siteB/workers/prog/func/worker")
     (Dashboards ("test/glop", Widgets (Uint32.of_int 42))) \
       (of_string "dashboards/test/glop/widgets/42")
-    (Teams (N.team "test", Contacts "ctc")) \
+    (Teams { name = N.team "test" ; info = Contacts "ctc" }) \
       (of_string "alerting/teams/test/contacts/ctc")
   *)
   (*$= to_string & ~printer:Batteries.identity
@@ -389,7 +391,7 @@ struct
     "sources/glop/ramen" \
       (to_string (Sources (N.src_path  "glop", "ramen")))
     "alerting/teams/test/contacts/ctc" \
-      (to_string (Teams (N.team "test", Contacts "ctc")))
+      (to_string (Teams { name = N.team "test" ; info = Contacts "ctc" }))
    *)
 
   (* Returns if a user can read/write/del a key: *)

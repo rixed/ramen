@@ -186,7 +186,7 @@ let find_in_charge conf session name =
   let clt = option_get "find_in_charge" __LOC__ session.ZMQClient.clt in
   Client.iter clt ~prefix (fun k _hv ->
     match k with
-    | Teams (t, _) ->
+    | Teams { name = t ; _ } ->
         if t = default_team_name ||
            !def_team = None then def_team := Some t ;
         (* Consider any team name if it prefixes the alert name, the longer the
@@ -314,7 +314,7 @@ let create_new_incident conf session notif _now =
     let prefix = "alerting/teams/"^ (team_name :> string) ^"/contacts/" in
     Client.fold clt ~prefix (fun k hv lst ->
       match k, hv.Client.value with
-      | Key.Teams (_, Contacts dialog_id), Value.AlertingContact _ ->
+      | Key.Teams { info = Contacts dialog_id ; _ }, Value.AlertingContact _ ->
           dialog_id :: lst
       | _ ->
           lst
@@ -779,7 +779,7 @@ let contact_of_incident session incident_id dialog_id =
     match get_key session k with
     | Value.RamenValue (VString n) -> N.team n
     | v -> invalid_sync_type k v "a string" in
-  let k = Key.Teams (team_name, Contacts dialog_id) in
+  let k = Key.Teams { name = team_name ; info = Contacts dialog_id } in
   match get_key session k with
   | Value.AlertingContact c -> c
   | v -> invalid_sync_type k v "a contact"
@@ -981,10 +981,10 @@ let ensure_minimal_conf session =
   let prefix = "alerting/teams/" in
   if not (Client.exists clt ~prefix (fun k _hv ->
             match k with
-            | Key.Teams (_, Contacts _) -> true
+            | Key.Teams { info = Contacts _ ; _ } -> true
             | _ -> false))
   then
-    let k = Key.Teams (default_team_name, Contacts "prometheus")
+    let k = Key.Teams { name = default_team_name ; info = Contacts "prometheus" }
     and v =
       Value.AlertingContact {
         via = VA.Contact.Exec "\
