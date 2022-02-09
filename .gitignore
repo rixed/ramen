@@ -44,6 +44,9 @@ debtmp/
 *.smt2
 *.smt2.no_opt
 examples/**/*.ml
+examples/programs/generators/network/error_rate.ramen
+examples/programs/generators/network/resp_time.ramen
+examples/programs/monitoring/network/minutely.ramen
 tests/**/*.ml
 tests/func/*.success
 tests/func/*.cc
@@ -164,6 +167,7 @@ src/sync_selector.ml
 src/sync_server_msg.ml
 src/sync_msg.ml
 src/team_name_wire.ml
+src/pivot.ml
 tests/features/api.feature
 depend
 docker/Dockerfile

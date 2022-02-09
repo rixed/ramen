@@ -1,5 +1,5 @@
 {
-  "table": "aggregated#1min/http",
+  "table": "examples/programs/generators/network/aggregated/http",
   "column": "rt_perc_95th",
   "threshold": { "Constant": 0.33 },
   "hysteresis": -0.1,

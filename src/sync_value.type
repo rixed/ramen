@@ -20,6 +20,7 @@
 | Replayer $replayer
 | ReplayRequest $replay_request
 | Alert $alert
+| Pivot $pivot
 | OutputSpecs $output_specs
 | DashboardWidget $dashboard_widget
 | AlertingContact $alerting_contact

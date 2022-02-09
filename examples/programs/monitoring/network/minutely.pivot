@@ -1,0 +1,19 @@
+{
+  "from": "examples/programs/monitoring/network/hosts/collectd",
+  "type-field": "type_instance",
+  "value-field": "value",
+  "fields": [
+    { "name": "memory_free", "types": [ "free" ] },
+    { "name": "memory_used", "types": [ "used" ] },
+    { "name": "memory_cached", "types": [ "cached" ] },
+    { "name": "memory_buffered", "types": [ "buffered" ] },
+    { "name": "memory_slab", "types": [ "slab%" ] },
+    { "name": "cpu_user", "types": [ "user" ] },
+    { "name": "cpu_system", "types": [ "system" ] },
+    { "name": "cpu_nice", "types": [ "nice" ] },
+    { "name": "cpu_idle", "types": [ "idle" ] }
+  ],
+  "group-by": [ "host" ],
+  "duration": 60,
+  "max-lateness": 30
+}

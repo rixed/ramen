@@ -1,0 +1,34 @@
+// A high level operation to pivot data from a single stream into a well behaved
+// timely sequence of tuples.
+// Incomming stream has field: start, $name, $value
+// Outgoing stream is start, name1, name2 etc, for a selected subset of $name
+// that are selected using a union of LIKE expressions.
+// value field is assumed to be numerical.
+{
+  // TODO persist specification (as a $persist)
+  from: $fq_name;   // FIXME: allow relative program names and subexpressions
+  where: $simple_filter[] default [];
+  // Input fields:
+  type-field: $field_name;
+  value-field: $field_name;
+  // Output fields:
+  fields: {
+    name: $field_name;
+    // selection of types, union of the supplied LIKE :
+    types: string[] default []; // will default to match for the field name as the type value
+    // aggregates:
+    count: bool default false;
+    first: bool default false;
+    last: bool default false;
+    min: bool default false;
+    max: bool default false;
+    sum: bool default false;
+    avg: bool default true;
+    percentiles: float[] default [];
+    tops: (top as { n : u16 ; by : $field_name? })[] default [];
+  }[];
+  group-by: $field_name[] default [];
+  duration: float; // in secs
+  // Also in secs, wait for that long before committing an aggregation:
+  max-lateness: float default 0;
+}

@@ -30,6 +30,9 @@ let value_of_string key str =
   | Sources (_, "alert") ->
       let alert = Value.Alert.of_string str in
       Value.Alert alert
+  | Sources (_, "pivot") ->
+      let pivot = Value.Pivot.of_string str in
+      Value.Pivot pivot
   | PerSite (_, IsMaster)
     ->
       Value.of_bool (bool_of_string str)

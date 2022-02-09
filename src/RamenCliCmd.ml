@@ -427,6 +427,12 @@ let compile_sync conf replace src_file src_path_opt =
         let alert_str = Value.Alert.to_string alert in
         Value.Alert alert,
         N.md5 alert_str
+    | "pivot" ->
+        let pivot = Value.Pivot.of_string source in
+        (* The same string than RamenMake will use, for md5: *)
+        let pivot_str = Value.Pivot.to_string pivot in
+        Value.Pivot pivot,
+        N.md5 pivot_str
     | "ramen" ->
         Value.of_string source,
         N.md5 source

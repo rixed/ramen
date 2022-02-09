@@ -6,7 +6,7 @@ DEFINE collectd AS
 
 DEFINE memory PERSIST FOR 1d AS
   SELECT
-    truncate(start, 30s) AS start,
+    TRUNCATE(start, 30s) AS start,
     out.start + 30s AS stop,
     host,
     COALESCE (type_instance, "unknown") AS _type,
@@ -23,7 +23,7 @@ DEFINE memory PERSIST FOR 1d AS
 
 DEFINE cpu PERSIST FOR 1d AS
   SELECT
-    truncate(start, 30s) AS start,
+    TRUNCATE(start, 30s) AS start,
     out.start + 30s AS stop,
     host,
     -- regexp extract the integer from the quotes, then cast to int:

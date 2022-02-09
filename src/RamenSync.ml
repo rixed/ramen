@@ -586,8 +586,6 @@ struct
   module Alert =
   struct
     include Alert.DessserGen
-    module SimpleFilter = Simple_filter.DessserGen
-    type simple_filter = SimpleFilter.t
 
     let to_string a =
       dessser_to_string sersize_of_json to_json a
@@ -595,13 +593,8 @@ struct
     let of_string s =
       dessser_of_string wrap_of_json s
 
-    let print_simple_filter oc f =
-      Printf.fprintf oc "%a %s %s"
-        N.field_print f.SimpleFilter.lhs
-        f.op f.rhs
-
-    let print_simple_filters oc fs =
-      List.print ~sep:" AND " print_simple_filter oc fs
+    let print oc a =
+      to_string a |> String.print oc
 
     let print_distance oc = function
       | Absolute v -> Printf.fprintf oc "%f +" v
@@ -612,15 +605,20 @@ struct
           Float.print oc f
       | Baseline { max_distance ; _ } ->
           Printf.fprintf oc "%a baseline" print_distance max_distance
+  end
+
+  module Pivot =
+  struct
+    include Pivot.DessserGen
+
+    let to_string p =
+      dessser_to_string sersize_of_json to_json p
+
+    let of_string s =
+      dessser_of_string wrap_of_json s
 
     let print oc a =
-      Printf.fprintf oc "{ %a/%a %s %a where %a having %a }"
-        N.fq_print a.table
-        N.field_print a.column
-        (if a.hysteresis <= 0. then ">" else "<")
-        print_threshold a.threshold
-        print_simple_filters a.where
-        print_simple_filters a.having
+      to_string a |> String.print oc
   end
 
   module RuntimeStats =
@@ -932,6 +930,8 @@ struct
         Replayer.print oc r
     | Alert a ->
         Alert.print oc a
+    | Pivot p ->
+        Pivot.print oc p
     | OutputSpecs h ->
         OutputSpecs.print_out_specs oc h
     | DashboardWidget c ->

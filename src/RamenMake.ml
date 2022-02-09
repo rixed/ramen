@@ -144,7 +144,29 @@ let alert_rule =
       (* Whatever the reason why it's converted, register the conversion: *)
       Hashtbl.add tried target_file false ;
       let a = read_alert src_file in
-      CodeGen_Alert2RaQL.generate_alert get_parent target_file a)
+      CodeGen_Alert2RaQL.generate get_parent target_file a)
+
+let read_pivot =
+  let pivot_of_file =
+    Files.dessser_from_file "pivots" Value.Pivot.wrap_of_json in
+  fun fname ->
+    pivot_of_file fname
+
+(* Same as above but for pivots instead of alerts: *)
+let pivot_rule =
+  (* Since we cannot easily tell if the code generator for alerts has been
+   * updated since last restart, let's retry to transpile alerts into ramen
+   * once after restart. *)
+  let tried = Hashtbl.create 10 in
+  register "pivot" "ramen"
+    (fun src_file target_file ->
+      target_is_older src_file target_file ||
+      not (Hashtbl.mem tried target_file))
+    (fun _conf get_parent _prog_name src_file target_file ->
+      (* Whatever the reason why it's converted, register the conversion: *)
+      Hashtbl.add tried target_file false ;
+      let p = read_pivot src_file in
+      CodeGen_Pivot2RaQL.generate get_parent target_file p)
 
 (* Register a builder that will carry on from ".info" and generate actual
  * executable in ".x". Used only for local builds (from file to file). *)
@@ -187,6 +209,9 @@ let write_value_into_file fname value mtime =
       Files.write_whole_file fname text
   | Value.Alert alert ->
       let text = Value.Alert.to_string alert in
+      Files.write_whole_file fname text
+  | Value.Pivot pivot ->
+      let text = Value.Pivot.to_string pivot in
       Files.write_whole_file fname text
   | Value.SourceInfo info ->
       Files.marshal_into_file fname info
@@ -246,6 +271,9 @@ let build_next conf session ?(force=false) get_parent src_path from_ext =
     | "alert" ->
         let alert = read_alert fname in
         Value.Alert alert
+    | "pivot" ->
+        let pivot = read_pivot fname in
+        Value.Pivot pivot
     | "info" ->
         Value.SourceInfo (Files.marshal_from_file fname)
     | ext ->

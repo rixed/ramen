@@ -121,12 +121,14 @@ struct
     let add_ramen_example name text =
       let v = Value.of_string text in
       add_example name "ramen" v
-    (* FIXME: example alerts depend on generated#1min, which does not run,
-     * therefore alerts cannot compile. So they are not in the example set. *)
-    and _add_alert_example name text =
+    and add_alert_example name text =
       let a = dessser_of_string Value.Alert.wrap_of_json text in
       let v = Value.Alert a in
       add_example name "alert" v
+    and add_pivot_example name text =
+      let p = dessser_of_string Value.Pivot.wrap_of_json text in
+      let v = Value.Pivot p in
+      add_example name "pivot" v
     in
     let open RamenSourceExamples in
     add_ramen_example "monitoring/network/security"
@@ -135,10 +137,18 @@ struct
       Monitoring.Network.hosts ;
     add_ramen_example "monitoring/network/traffic"
       Monitoring.Network.traffic ;
+    add_pivot_example "monitoring/network/minutely"
+      Monitoring.Network.minutely ;
     add_ramen_example "generators/network/logs"
       Generators.Network.logs ;
     add_ramen_example "generators/network/aggregated"
       Generators.Network.aggregated ;
+    add_alert_example "generators/network/resp_time"
+      Generators.Network.resp_time_alert ;
+    add_ramen_example "generators/network/errors"
+      Generators.Network.errors ;
+    add_alert_example "generators/network/error_rate"
+      Generators.Network.error_rate_alert ;
     add_ramen_example "generators/basic"
       Generators.basic;
 end
@@ -445,7 +455,7 @@ exception Ignore
 
 let validate_cmd =
   let extension_is_known = function
-    | "ramen" | "info" | "alert" -> true
+    | "ramen" | "info" | "pivot" | "alert" -> true
     | _ -> false
   and path_is_valid p =
     not (

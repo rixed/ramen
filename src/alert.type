@@ -2,9 +2,9 @@
   table: $fq_name;  // FIXME: allow table to use relative program names
   column: $field_name;
   enabled: bool default true;
-  where: $simple_filter[[]] default [[]];
-  group-by: $field_name[[]]?;
-  having: $simple_filter[[]] default [[]];
+  where: $simple_filter[] default [];
+  group-by: $field_name[]?;
+  having: $simple_filter[] default [];
   threshold:
     (threshold as
     [ Constant float |
@@ -22,11 +22,11 @@
   duration: float default 0;
   ratio: float default 1;
   time-step: float default 0;
-  tops: $field_name[[]] default [[]];
-  carry-fields: $field_name[[]] default [[]];
+  tops: $field_name[] default [];
+  carry-fields: $field_name[] default [];
   carry-csts:
     (constant as
-      { name: $field_name; value: string })[[]] default [[]];
+      { name: $field_name; value: string })[] default [];
   id: string default "";
   desc-title: string default "";
   desc-firing: string default "";

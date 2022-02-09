@@ -127,7 +127,8 @@ let kill ~while_ ?(purge=false) session program_names =
                 (* TODO: A way to delete all keys matching a pattern *)
                 ZMQClient.send_cmd session (DelKey (k "info")) ;
                 ZMQClient.send_cmd session (DelKey (k "ramen")) ;
-                ZMQClient.send_cmd session (DelKey (k "alert"))
+                ZMQClient.send_cmd session (DelKey (k "alert")) ;
+                ZMQClient.send_cmd session (DelKey (k "pivot"))
               ) to_kill ;
             nb_kills := Array.length to_kill ;
             fin () ;

@@ -1,8 +1,4 @@
-(* Compilation of alerts into RaQL
- *
- * Allows to query the running schema, extract time series, and create
- * new nodes.
- *)
+(* Transpilation of alerts into RaQL *)
 open Batteries
 open Stdint
 
@@ -55,7 +51,7 @@ let group_keys_of_operation =
 
 (* This function turns an alert into a ramen program. It is called by the
  * compiler (via RamenMake). *)
-let generate_alert get_program (src_file : N.path) a =
+let generate get_program (src_file : N.path) a =
   let func_of_program fq =
     let pn, fn = N.fq_parse fq in
     match get_program pn with
@@ -80,7 +76,9 @@ let generate_alert get_program (src_file : N.path) a =
       Printf.sprintf2 "No column %a in table %a"
         N.field_print column
         N.fq_print a.table |>
-      failwith
+      failwith in
+  let type_of_column column =
+    (field_type_of_column column).RamenTuple.typ
   in
   File.with_file_out ~mode:[`create; `text ; `trunc]
                      (src_file :> string) (fun oc ->
@@ -107,32 +105,6 @@ let generate_alert get_program (src_file : N.path) a =
         Printf.sprintf "The value of %s recovered.\n"
           (a.column :> string) |>
         with_desc_link
-    and print_filter oc filter =
-      if filter = [] then String.print oc "true" else
-      List.print ~first:"" ~sep:" AND " ~last:"" (fun oc w ->
-        (* Get the proper right-type according to left-type and operator: *)
-        let lft = (field_type_of_column w.VA.SimpleFilter.lhs).RamenTuple.typ in
-        let rft =
-          if w.op = "in" || w.op = "not in" then
-            DT.(optional (TArr lft))
-          else lft in
-        let v = RamenSerialization.value_of_string rft w.rhs in
-        (* Turn 'in [x]' into '= x': *)
-        let op, v =
-          match w.op, v with
-          | "in", (VVec [| x |] | VArr [| x |]) -> "=", x
-          | "not in", (VVec [| x |] | VArr [| x |]) -> "<>", x
-          | _ -> w.op, v in
-        let s =
-          Printf.sprintf2 "%s %s %a"
-            (ramen_quote (w.lhs :> string))
-            op
-            T.print v in
-        if lft.nullable then
-          Printf.fprintf oc "COALESCE(%s, false)" s
-        else
-          String.print oc s
-      ) oc filter
     and field_expr fn =
       match func.VSI.operation with
       | O.Aggregate { aggregate_fields ; _ } ->
@@ -165,27 +137,29 @@ let generate_alert get_program (src_file : N.path) a =
      * So in that case, even if the group-by is fully cancelled we still need
      * to group-by the selected fields (but not necessarily by time), so that
      * we have one alerting context (hysteresis) per group. *)
-    let group_keys = group_keys_of_operation func.VSI.operation in
+    let group_keys = group_keys_of_operation func.VSI.operation |>
+                     Array.of_list in
+    Array.fast_sort N.compare group_keys ;
     (* Reaggregation is needed if we set time_step: *)
     let need_reaggr, group_by =
       match a.group_by with
       | None ->
           (* No explicit group-by, try to do the right thing automatically: *)
           let need_reaggr = a.time_step > 0. in
-          List.fold_left (fun (need_reaggr, group_by) group_key ->
+          Array.fold_left (fun (need_reaggr, group_by) group_key ->
             (* Reaggregation is also needed as soon as the group_keys have a field
              * which is not paired with a WHERE condition (remember
              * group_keys_of_operation leaves group by time aside): *)
             need_reaggr || not (
-              List.exists (fun w ->
-                w.VA.SimpleFilter.op = "=" && w.lhs = group_key
+              Array.exists (fun w ->
+                w.Simple_filter.DessserGen.op = "=" && w.lhs = group_key
               ) a.where
             ),
             (* group by any keys which is used in the where but not with an
              * equality. Used both when reaggregating and to have one alert
              * per group even when not reagregating *)
-            List.fold_left (fun group_by w ->
-              if w.VA.SimpleFilter.op <> "=" && w.lhs = group_key then
+            Array.fold_left (fun group_by w ->
+              if w.Simple_filter.DessserGen.op <> "=" && w.lhs = group_key then
                 (w.lhs :> string) :: group_by
               else
                 group_by
@@ -193,10 +167,9 @@ let generate_alert get_program (src_file : N.path) a =
           ) (need_reaggr, []) group_keys
       | Some group_by ->
           (* Explicit group-by replaces all the above logic: *)
-          let sorted = List.fast_sort N.compare in
-          let need_reaggr = a.time_step > 0. ||
-                            sorted group_by <> sorted group_keys in
-          need_reaggr, (group_by :> string list) in
+          Array.fast_sort N.compare group_by ;
+          let need_reaggr = a.time_step > 0. || group_by <> group_keys in
+          need_reaggr, ((Array.to_list group_by) :> string list) in
     Printf.fprintf oc "-- Alerting program\n\n" ;
     (* TODO: get rid of 'filtered' if a.where is empty and not need_reaggr *)
     (* The first function, filtered, as the name suggest, performs the WHERE
@@ -219,8 +192,8 @@ let generate_alert get_program (src_file : N.path) a =
         Set.String.add (fn : N.field :> string) !filtered_fields in
     add_field a.column ;
     List.iter (fun f -> add_field (N.field f)) group_by ;
-    List.iter (fun f -> add_field f.VA.SimpleFilter.lhs) a.having ;
-    List.iter add_field a.carry_fields ;
+    Array.iter (fun f -> add_field f.Simple_filter.DessserGen.lhs) a.having ;
+    Array.iter add_field a.carry_fields ;
     let default_aggr_of_field fn =
       if List.mem (fn : N.field :> string) group_by then "" else
       let ft = field_type_of_column fn in
@@ -260,7 +233,8 @@ let generate_alert get_program (src_file : N.path) a =
      * those fields straight from parent *)
     Printf.fprintf oc "DEFINE filtered AS\n" ;
     Printf.fprintf oc "  FROM %s\n" (ramen_quote (a.table :> string)) ;
-    Printf.fprintf oc "  WHERE %a\n" print_filter a.where ;
+    Printf.fprintf oc "  WHERE %a\n"
+      (CodeGen_SimpleFilter2RaQL.print type_of_column) a.where ;
     Printf.fprintf oc "  SELECT\n" ;
     (* For each top expression, compute the list of top contributing values *)
     (* XXX: filtered does group-by and therefore we want a top per group. But
@@ -276,9 +250,9 @@ let generate_alert get_program (src_file : N.path) a =
      * have something like "list top 10 thing locally by value for the past
      * $duration seconds"*)
     let add_tops () =
-      if a.tops <> [] then
+      if a.tops <> [||] then
         Printf.fprintf oc "    -- TOPs:\n" ;
-      List.iteri (fun i fn ->
+      Array.iteri (fun i fn ->
         Printf.fprintf oc "    LIST TOP 10 %s LOCALLY BY value\n     "
           (ramen_quote (fn : N.field :> string)) ;
         (*if a.duration > 0. then
@@ -370,7 +344,7 @@ let generate_alert get_program (src_file : N.path) a =
     if need_reaggr then
       Printf.fprintf oc "    min_value, max_value,\n" ;
     Printf.fprintf oc "    IF %a THEN value AS filtered_value,\n"
-       print_filter a.having ;
+       (CodeGen_SimpleFilter2RaQL.print type_of_column) a.having ;
     let threshold, group_by_period =
       match a.threshold with
       | Constant threshold ->
@@ -445,7 +419,7 @@ let generate_alert get_program (src_file : N.path) a =
         Printf.fprintf oc "    not ok\n" ;
       Printf.fprintf oc "      AS firing,\n" ;
       Printf.fprintf oc "    %S AS id,\n" a.id ;
-      List.iter (fun cst ->
+      Array.iter (fun cst ->
         Printf.fprintf oc "    %S AS %s,\n"
           cst.VA.value
           (ramen_quote (cst.name : N.field :> string))

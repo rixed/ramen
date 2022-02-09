@@ -177,20 +177,20 @@ struct
 
   type t =
     { enabled : bool [@ppp_default true] ;
-      where : simple_filter list [@ppp_default []] ;
-      having : simple_filter list [@ppp_default []] ;
+      where : simple_filter array [@ppp_default [||]] ;
+      having : simple_filter array [@ppp_default [||]] ;
       threshold : float ;
       recovery : float ;
       duration : float [@ppp_default 0.] ;
       ratio : float [@ppp_default 1.] ;
       time_step : float [@ppp_rename "time-step"] [@ppp_default 0.] ;
-      tops : N.field list [@ppp_default []] ;
+      tops : N.field array [@ppp_default [||]] ;
       (* Renamed as "carry" for retro-compatibility with old HTTP clients
        * (FIXME: obsolete all this) *)
-      carry_fields : N.field list
-        [@ppp_rename "carry"] [@ppp_default []] ;
-      carry_csts : (N.field * string) list
-        [@ppp_rename "carry-csts"] [@ppp_default []] ;
+      carry_fields : N.field array
+        [@ppp_rename "carry"] [@ppp_default [||]] ;
+      carry_csts : (N.field * string) array
+        [@ppp_rename "carry-csts"] [@ppp_default [||]] ;
       id : string [@ppp_default ""] ;
       desc_title : string [@ppp_rename "desc-title"] [@ppp_default ""] ;
       desc_firing : string [@ppp_rename "desc-firing"] [@ppp_default ""] ;
@@ -313,7 +313,7 @@ let get_alerts session table column =
 let alert_of_sync_value a =
   let simple_filter_of_sync f =
     AlertInfoV1.{
-      lhs = f.VA.SimpleFilter.lhs ;
+      lhs = f.Simple_filter.DessserGen.lhs ;
       rhs = f.rhs ;
       op = f.op } in
   let threshold, recovery =
@@ -327,8 +327,8 @@ let alert_of_sync_value a =
         0., 0. in
   AlertInfoV1.{
     enabled = a.enabled ;
-    where = List.map simple_filter_of_sync a.where ;
-    having = List.map simple_filter_of_sync a.having ;
+    where = Array.map simple_filter_of_sync a.where ;
+    having = Array.map simple_filter_of_sync a.having ;
     threshold ;
     recovery ;
     duration = a.duration ;
@@ -336,7 +336,7 @@ let alert_of_sync_value a =
     time_step = a.time_step ;
     tops = a.tops ;
     carry_fields = a.carry_fields ;
-    carry_csts = List.map (fun cst -> cst.VA.name, cst.value) a.carry_csts ;
+    carry_csts = Array.map (fun cst -> cst.VA.name, cst.value) a.carry_csts ;
     id = a.id ;
     desc_title = a.desc_title ;
     desc_firing = a.desc_firing ;
@@ -652,7 +652,7 @@ type set_alerts_v1_req =
 
 let sync_value_of_alert_v1 table column a =
   let sync_value_of_simple_filter f =
-    VA.SimpleFilter.{
+    Simple_filter.DessserGen.{
       lhs = f.AlertInfoV1.lhs ;
       rhs = f.rhs ;
       op = f.op } in
@@ -660,9 +660,9 @@ let sync_value_of_alert_v1 table column a =
   VA.{
     table ; column ;
     enabled = a.enabled ;
-    where = List.map sync_value_of_simple_filter a.where ;
+    where = Array.map sync_value_of_simple_filter a.where ;
     group_by = None ;
-    having = List.map sync_value_of_simple_filter a.having ;
+    having = Array.map sync_value_of_simple_filter a.having ;
     threshold = VA.Constant a.threshold ;
     hysteresis ;
     duration = a.duration ;
@@ -670,7 +670,8 @@ let sync_value_of_alert_v1 table column a =
     time_step = a.time_step ;
     tops = a.tops ;
     carry_fields = a.carry_fields ;
-    carry_csts = List.map (fun (name, value) -> VA.{ name ; value }) a.carry_csts ;
+    carry_csts =
+      Array.map (fun (name, value) -> VA.{ name ; value }) a.carry_csts ;
     id = a.id ;
     desc_title = a.desc_title ;
     desc_firing = a.desc_firing ;

@@ -35,7 +35,7 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v46" (* last: Added "best after" *)
+let sync_conf = "v47" (* last: Added a type for pivots *)
 
 (* Code generation: sources, binaries, marshaled types... *)
 let codegen = "v104_"^ dessser_version ^"_"^ sync_conf (* last: Added "best after" *)
