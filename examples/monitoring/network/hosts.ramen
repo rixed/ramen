@@ -1,43 +1,235 @@
 -- vim: ft=sql expandtab
 -- Example program to monitor some hosts via collectd
+-- Documentation for most fields found in https://wiki.opnfv.org/display/fastpath/Collectd+Metrics+and+Events
+
+PARAMETER period DEFAULTS TO 30s;
 
 DEFINE collectd AS
   LISTEN FOR COLLECTD;
 
 DEFINE memory PERSIST FOR 1d AS
   SELECT
-    TRUNCATE(start, 30s) AS start,
-    out.start + 30s AS stop,
+    TRUNCATE(start, period) AS start,
+    out.start + period AS stop,
     host,
+    -- FIXME: This coalesce because of https://github.com/rixed/ramen/issues/1412
     COALESCE (type_instance, "unknown") AS _type,
-    AVG (IF _type = "free" THEN value) AS free,
-    AVG (IF _type = "used" THEN value) AS used,
-    AVG (IF _type = "cached" THEN value) AS cached,
-    AVG (IF _type = "buffered" THEN value) AS buffered,
-    AVG (IF _type LIKE "slab%" THEN value) AS slab
+    AVG (IF _type = "free" THEN 1024 * value) AS free
+      "The amount of physical RAM left unused by the system.",
+    AVG (IF _type = "used" THEN 1024 * value) AS used
+      "mem_used = mem_total - (mem_free + mem_buffered + mem_cached + mem_slab_total).",
+    AVG (IF _type = "cached" THEN 1024 * value) AS cached
+      "The amount of physical RAM left unused by the system.",
+    AVG (IF _type = "buffered" THEN 1024 * value) {bytes} AS buffered
+      "The amount of temporary storage for raw disk blocks.",
+    MAX (IF _type = "total" THEN 1024 * value) AS total
+      "Total amount of usable RAM which is physical RAM minus a number of reserved bits and the kernel binary code.",
+    AVG (IF _type LIKE "slab_recl" THEN 1024 * value) AS slab_recl
+      "The part of Slab that can be reclaimed, such as caches.",
+    AVG (IF _type LIKE "slab_unrecl" THEN 1024 * value) AS slab_unrecl
+      "The part of Slab that cannot be reclaimed even when lacking memory."
   FROM collectd
   WHERE COALESCE (plugin = "memory", false)
-  GROUP BY host, start // 30
-  COMMIT AFTER in.start > out.start + 30s
+  GROUP BY host, TRUNCATE(start, period)
+  COMMIT AFTER in.start > out.stop + period/2
   FACTORS host;
 
 DEFINE cpu PERSIST FOR 1d AS
   SELECT
-    TRUNCATE(start, 30s) AS start,
-    out.start + 30s AS stop,
+    TRUNCATE(start, period) AS start,
+    out.start + period AS stop,
     host,
-    -- regexp extract the integer from the quotes, then cast to int:
     u16(instance) AS cpu_num,
     COALESCE (type_instance, "unknown") AS _type,
-    AVG (IF _type = "user" THEN value) {jiffies} AS user,
-    AVG (IF _type = "system" THEN value) {jiffies} AS system,
-    AVG (IF _type = "nice" THEN value) {jiffies} AS nice,
+    AVG (IF _type = "user" THEN value) {jiffies} AS user
+      "Time spent running un-niced user space processes.",
+    AVG (IF _type = "system" THEN value) {jiffies} AS system
+      "Time spent running the kernel.",
+    AVG (IF _type = "nice" THEN value) {jiffies} AS nice
+      "Time spent running user space processes that have been niced. The priority level a user space process can be tweaked by adjusting its niceness.",
     AVG (IF _type = "idle" THEN value) {jiffies} AS idle
+      "Time spent idle.",
+    AVG (IF _type = "interrupt" THEN value) {jiffies} AS interrupt
+      "Time spent servicing interrupts.",
+    AVG (IF _type = "softirq" THEN value) {jiffies} AS softirq
+      "Time spent servicing soft IRQs.",
+    AVG (IF _type = "steal" THEN value) {jiffies} AS steal
+      "CPU steal is a measure of the fraction of time that a machine is in a state of “involuntary wait.” It is time for which the kernel cannot otherwise account in one of the traditional classifications like user, system, or idle.  It is time that went missing, from the perspective of the kernel.",
+    AVG (IF _type = "wait" THEN value) {jiffies} AS wait
+      "The time spent idle while waiting for an I/O operation to complete."
   FROM collectd
-  WHERE COALESCE (plugin = "cpu", false) AND COALESCE (type_name = "cpu", false)
-  GROUP BY host, start // 30, instance
-  COMMIT AFTER in.start > out.start + 30
+  WHERE COALESCE (plugin = "cpu" AND type_name = "cpu", false)
+  GROUP BY host, TRUNCATE(start, period), instance
+  COMMIT AFTER in.start > out.stop + period/2
   FACTORS host AND cpu_num;
+
+DEFINE interface PERSIST FOR 1d AS
+  SELECT
+    TRUNCATE(start, period) AS start,
+    out.start + period AS stop,
+    host,
+    instance AS name,
+    COALESCE (type_instance, "unknown") AS _type,
+    COALESCE (type_name, "unknown") AS _tname,
+    AVG (IF _tname = "if_dropped" AND _type = "in" THEN value) AS in_dropped
+      "The total number of dropped incomming packets.",
+    AVG (IF _tname = "if_errors" AND _type = "in" THEN value) AS in_errors
+      "The total number of receiving errors.",
+    AVG (IF _tname = "if_octets" AND _type = "in" THEN value) {bytes} AS in_bytes
+      "The total received volume.",
+    AVG (IF _tname = "if_packets" AND _type = "in" THEN value) AS in_packets
+      "The total number of received packets.",
+    AVG (IF _tname = "if_dropped" AND _type = "out" THEN value) AS out_dropped
+      "The total number of dropped outgoing packets.",
+    AVG (IF _tname = "if_errors" AND _type = "out" THEN value) AS out_errors
+      "The total number of transmit error packets (This is the total of error conditions encountered when attempting to transmit a packet. The code here explains the possibilities, but this code is no longer present in /net/core/dev.c master at present - it appears to have moved to /net/core/net-procfs.c.)",
+    AVG (IF _tname = "if_octets" AND _type = "out" THEN value) {bytes} AS out_bytes
+      "The total transmitted volume.",
+    AVG (IF _tname = "if_packets" AND _type = "out" THEN value) AS out_packets
+      "The total number of transmitted packets."
+  FROM collectd
+  WHERE COALESCE (plugin = "interface", false)
+  GROUP BY host, TRUNCATE(start, period), instance
+  COMMIT AFTER in.start > out.stop + period/2
+  FACTORS host AND name;
+
+DEFINE disk PERSIST FOR 1d AS
+  SELECT
+    TRUNCATE(start, period) AS start,
+    out.start + period AS stop,
+    host,
+    instance AS partition,
+    COALESCE (type_instance, "unknown") AS _type,
+    COALESCE (type_name, "unknown") AS _tname,
+    AVG (IF _tname = "disk_io_time" AND _type = "io_time" THEN value) AS io_time
+      "Time spent doing I/Os per second. You can treat this metric as a device load percentage (value of 1 sec time spent matches 100% of load).",
+    AVG (IF _tname = "disk_io_time" AND _type = "weighted_io_time" THEN value) {seconds} AS weighted_io_time
+      "Measure of both I/O completion time and the backlog that may be accumulating.",
+    AVG (IF _tname = "disk_merged" AND _type = "read" THEN value) AS read_merged
+      "The number of operations that could be merged into other, already queued operations, ie. one physical disk access served two or more logical operations. Of course, the higher that number, the better.",
+    AVG (IF _tname = "disk_merged" AND _type = "write" THEN value) AS write_merged
+      "The number of operations, that could be merged into other, already queued operations, ie. one physical disk access served two or more logical operations. Of course, the higher that number, the better.",
+    AVG (IF _tname = "disk_octets" AND _type = "read" THEN value) AS read_bytes
+      "Volume read from a disk or partition",
+    AVG (IF _tname = "disk_octets" AND _type = "write" THEN value) AS write_bytes
+      "Volume from a disk or partition",
+    AVG (IF _tname = "disk_ops" AND _type = "read" THEN value) AS read_ops
+      "The number of read operations issued to the disk.",
+    AVG (IF _tname = "disk_ops" AND _type = "write" THEN value) AS write_ops
+      "The number of write operations issued to the disk.",
+    AVG (IF _tname = "disk_time" AND _type = "read" THEN value) AS read_time
+      "The average time an I/O-operation took to complete. Note from collectd: Since this is a little messy to calculate take the actual values with a grain of salt.",
+    AVG (IF _tname = "disk_time" AND _type = "write" THEN value) AS write_time
+      "The average time an I/O-operation took to complete. Note from collectd: Since this is a little messy to calculate take the actual values with a grain of salt.",
+    AVG (IF _tname = "pending_operations" THEN value) AS pending_ops
+      "Queue size of pending I/O operations."
+  FROM collectd
+  WHERE COALESCE (plugin = "disk", false)
+  GROUP BY host, TRUNCATE(start, period), instance
+  COMMIT AFTER in.start > out.stop + period/2
+  FACTORS host AND partition;
+
+DEFINE df PERSIST FOR 1d AS
+  SELECT
+    TRUNCATE(start, period) AS start,
+    out.start + period AS stop,
+    host,
+    instance AS partition,
+    COALESCE (type_instance, "unknown") AS _type,
+    AVG (IF _type = "free" THEN value) {bytes} AS free,
+    AVG (IF _type = "used" THEN value) {bytes} AS used,
+    AVG (IF _type = "reserved" THEN value) {bytes} AS reserved
+  FROM collectd
+  WHERE COALESCE (plugin = "df" AND type_name = "df_complex", false)
+  GROUP BY host, TRUNCATE(start, period), instance
+  COMMIT AFTER in.start > out.stop + period/2
+  FACTORS host AND partition;
+
+DEFINE swap PERSIST FOR 1d AS
+  SELECT
+    TRUNCATE(start, period) AS start,
+    out.start + period AS stop,
+    host,
+    COALESCE (type_instance, "unknown") AS _type,
+    COALESCE (type_name, "unknown") AS _tname,
+    AVG (IF _type = "free" AND _tname = "swap" THEN value) {bytes} AS free,
+    AVG (IF _type = "used" AND _tname = "swap" THEN value) {bytes} AS used,
+    AVG (IF _type = "cached" AND _tname = "swap" THEN value) {bytes} AS cached,
+    AVG (IF _type = "in" AND _tname = "swap_io" THEN value) {seconds^-1} AS swap_in,
+    AVG (IF _type = "out" AND _tname = "swap_io" THEN value) {seconds^-1} AS swap_out
+  FROM collectd
+  WHERE COALESCE (plugin = "swap", false)
+  GROUP BY host, TRUNCATE(start, period)
+  COMMIT AFTER in.start > out.stop + period/2
+  FACTORS host;
+
+DEFINE processes PERSIST FOR 1d AS
+  SELECT
+    TRUNCATE(start, period) AS start,
+    out.start + period AS stop,
+    host,
+    COALESCE (type_instance, "unknown") AS _type,
+    COALESCE (type_name, "unknown") AS _tname,
+    AVG (IF _type = "running" AND _tname = "ps_state" THEN value) AS running,
+    AVG (IF _type = "sleeping" AND _tname = "ps_state" THEN value) AS sleeping,
+    AVG (IF _type = "zombies" AND _tname = "ps_state" THEN value) AS zombies,
+    AVG (IF _type = "stopped" AND _tname = "ps_state" THEN value) AS stopped,
+    AVG (IF _type = "paging" AND _tname = "ps_state" THEN value) AS paging,
+    AVG (IF _type = "blocked" AND _tname = "ps_state" THEN value) AS blocked,
+    AVG (IF _tname = "fork_rrate" THEN value) AS fork_rate
+  FROM collectd
+  WHERE COALESCE (plugin = "processes", false)
+  GROUP BY host, TRUNCATE(start, period)
+  COMMIT AFTER in.start > out.stop + period/2
+  FACTORS host;
+
+DEFINE users PERSIST FOR 1d AS
+  SELECT
+    TRUNCATE(start, period) AS start,
+    out.start + period AS stop,
+    host,
+    AVG value AS count
+  FROM collectd
+  WHERE COALESCE (plugin = "users" AND type_name = "users", false)
+  GROUP BY host, TRUNCATE(start, period)
+  COMMIT AFTER in.start > out.stop + period/2
+  FACTORS host;
+
+DEFINE ping PERSIST FOR 1d AS
+  SELECT
+    TRUNCATE(start, period) AS start,
+    out.start + period AS stop,
+    host,
+    instance AS target,
+    COALESCE (type_name, "unknown") AS _tname,
+    AVG (IF _tname = "ping" THEN 1000 * value) AS ping
+      "Round-trip time. An ICMP “echo request” is sent to a host and the time needed for its echo-reply to arrive is measured.",
+    AVG (IF _tname = "ping_droprate" THEN value) AS drop_rate
+      "droprate = ((double) (pkg_sent - pkg_recv)) / ((double) pkg_sent).",
+    AVG (IF _tname = "ping_stddev" THEN value) AS stddev
+  FROM collectd
+  WHERE COALESCE (plugin = "ping", false)
+  GROUP BY host, TRUNCATE(start, period)
+  COMMIT AFTER in.start > out.stop + period/2
+  FACTORS host, target;
+
+DEFINE load PERSIST FOR 1d AS
+  SELECT
+    TRUNCATE(start, period) AS start,
+    out.start + period AS stop,
+    host,
+    COALESCE (type_instance, "unknown") AS _type,
+    AVG (IF _type = "shortterm" THEN value) AS load_1min
+      "Load average figures giving the number of jobs in the run queue (state R) or waiting for disk I/O (state D) averaged over 1 Minute",
+    AVG (IF _type = "midterm" THEN value) AS load_5min
+      "Load average figures giving the number of jobs in the run queue (state R) or waiting for disk I/O (state D) averaged over 5 Minutes.",
+    AVG (IF _type = "longterm" THEN value) AS load_15min
+      "Load average figures giving the number of jobs in the run queue (state R) or waiting for disk I/O (state D) averaged over 15 Minutes."
+  FROM collectd
+  WHERE COALESCE (plugin = "load" AND type_name = "load", false)
+  GROUP BY host, TRUNCATE(start, period)
+  COMMIT AFTER in.start > out.stop + period/2
+  FACTORS host;
 
 DEFINE memory_alert AS
   FROM memory
