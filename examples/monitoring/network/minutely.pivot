@@ -1,5 +1,5 @@
 {
-  "from": "examples/programs/monitoring/network/hosts/collectd",
+  "from": "examples/monitoring/network/hosts/collectd",
   "type-field": "type_instance",
   "value-field": "value",
   "fields": [
