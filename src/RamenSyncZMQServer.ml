@@ -67,7 +67,6 @@ struct
                       ~can_read ~can_write ~can_del in
     set "release tag" Versions.release_tag ;
     set codegen_version_name Versions.codegen ;
-    set "instrumentation format" Versions.instrumentation_tuple ;
     set "ringbuffer format" Versions.ringbuf ;
     set "workers snapshot format" Versions.worker_state ;
     set "internal instrumentation format" Versions.binocle ;

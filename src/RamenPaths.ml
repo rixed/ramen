@@ -87,9 +87,8 @@ let execompserver_cache_file persist_dir fname ext =
 let execompserver_cache_bin =
   let versions =
     Versions.[
-      codegen ; instrumentation_tuple ; ringbuf ;
-      worker_state ; binocle ; experiment ; factors ; services ; sync_conf ;
-      release_tag ] |>
+      codegen ; ringbuf ; worker_state ; binocle ; experiment ; factors ;
+      services ; sync_conf ; release_tag ] |>
     String.join "_" |>
     N.md5 in
   fun persist_dir info_sign ->

@@ -7,9 +7,6 @@ let dessser_version = DessserCompilConfig.version
  * anything. *)
 let release_tag = "v@PACKAGE_VERSION@"
 
-(* Instrumentation data sent from workers to Ramen *)
-let instrumentation_tuple = "v10" (* last: Use dessser types *)
-
 (* Ringbuf formats *)
 let ringbuf = "v14" (* last: only have nulbits for nullable fields in recs/tups*)
 
