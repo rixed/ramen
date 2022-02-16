@@ -250,7 +250,7 @@ let build_next conf session ?(force=false) get_parent src_path from_ext =
           let what = Printf.sprintf2 "Building %a" N.src_path_print src_path in
           print_exception ~what exn
         ) else (
-          !logger.info "While Building %a: %s"
+          !logger.error "While building %a: %s"
             N.src_path_print src_path
             (Printexc.to_string exn)
         ) ;
