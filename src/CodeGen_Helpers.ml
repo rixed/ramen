@@ -33,6 +33,16 @@ let expr_needs_group e =
   | _ ->
       false)
 
+let operation_uses_local_last_out op =
+  try
+    O.iter_expr (fun _ _ e ->
+      if expr_needs_tuple_from [ LocalLastOut ] e then
+        raise Exit
+    ) op ;
+    false
+  with Exit ->
+    true
+
 (* Depending on what uses a commit/flush condition, we might need to check
  * all groups after every single input tuple (very slow), or after every
  * selected input tuple (still quite slow), or only when this group is
@@ -76,9 +86,9 @@ let rec defined_order = function
       in
       if dep_only_on [ In ] l &&
          no_local_state l &&
-         dep_only_on [ Out; OutPrevious ] r
+         dep_only_on [ Out ; GlobalLastOut ] r
       then l, false, op, r
-      else if dep_only_on [ Out; OutPrevious ] l &&
+      else if dep_only_on [ Out ; GlobalLastOut ] l &&
               dep_only_on [ In ] r &&
               no_local_state r
       then r, true, op, r

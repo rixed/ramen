@@ -254,7 +254,7 @@ let listen_on
  * product of their values.
  *)
 
-type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
+type ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'group_order) group =
   { (* The key value of this group: *)
     key : 'key ;
     (* used to compute the actual selected field when outputing the
@@ -269,7 +269,11 @@ type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
      * require the group states and this minimal_out, but then what to do of
      * expressions such as "SELECT in.foo + 95th percentile bar"? *)
     mutable current_out : 'minimal_out ;
-    mutable previous_out : 'minimal_out option ;
+    (* Not the previously emitted value from this group but the last value
+     * of current_out, ie closer to the next output actually: *)
+    mutable previous_current_out : 'minimal_out option ;
+    (* The previously committed tuple from that group (aka local_previous) *)
+    mutable local_last_out : 'generator_out option ;
     (* The record of aggregation values aka the group or local state: *)
     mutable local_state : 'local_state ;
     (* The current value for the second operand of commit_cond0, if in
@@ -280,15 +284,16 @@ type ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group =
 (* WARNING: increase RamenVersions.worker_state whenever this record is
  * changed. *)
 type ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'global_state, 'sort_key, 'group_order) aggr_persist_state =
-  { mutable last_out_tuple : 'generator_out option ; (* last committed tuple generator *)
+  { (* Last committed tuple generator (globally): *)
+    mutable global_last_out : 'generator_out option ;
     global_state : 'global_state ;
     (* The hash of all groups: *)
     mutable groups :
-      ('key, ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group) Hashtbl.t ;
+      ('key, ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'group_order) group) Hashtbl.t ;
     (* The optional heap of groups used to speed up commit condition checks
      * on all groups: *)
     mutable groups_heap :
-      ('key, 'local_state, 'tuple_in, 'minimal_out, 'group_order) group Heap.t ;
+      ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'group_order) group Heap.t ;
     (* Input sort buffer and related tuples: *)
     mutable sort_buf : ('sort_key, 'tuple_in) SortBuf.t ;
     (* We have one such state per channel, that we timeout when a
@@ -443,12 +448,14 @@ let aggregate
        * fields. *)
       (minimal_tuple_of_aggr :
         'tuple_in -> (* current input *)
-        'generator_out option -> (* last_out *)
+        'generator_out option -> (* global_last_out *)
+        'generator_out option -> (* local_last_out *)
         'local_state -> 'global_state -> 'minimal_out)
       (* Update the states for all other fields. *)
       (update_states :
         'tuple_in -> (* current input *)
-        'generator_out option -> (* last_out *)
+        'generator_out option -> (* global_last_out *)
+        'generator_out option -> (* local_last_out *)
         'local_state -> 'global_state -> 'minimal_out -> unit)
       (* Build the generator_out tuple from the minimal_out and all the same
        * parameters as passed to minimal_tuple_of_aggr, all of which must be
@@ -457,7 +464,8 @@ let aggregate
        * group. *)
       (out_tuple_of_minimal_tuple :
         'tuple_in -> (* current input *)
-        'generator_out option -> (* last_out *)
+        'generator_out option -> (* global_last_out *)
+        'generator_out option -> (* local_last_out *)
         'local_state -> 'global_state -> 'minimal_out -> 'generator_out)
       (sort_last : Uint32.t)
       (sort_until : 'tuple_in sort_until_fun)
@@ -469,12 +477,13 @@ let aggregate
       (where_fast :
         'global_state ->
         'tuple_in -> (* current input *)
-        'generator_out option -> (* previous.out *)
+        'generator_out option -> (* global_last_out *)
         bool)
       (where_slow :
         'global_state ->
         'tuple_in -> (* current input *)
-        'generator_out option -> (* previous.out *)
+        'generator_out option -> (* global_last_out *)
+        'generator_out option -> (* local_last_out *)
         'local_state ->
         bool)
       (key_of_input : 'tuple_in -> 'key)
@@ -485,7 +494,8 @@ let aggregate
        * 'commit before'. *)
       (commit_cond :
         'tuple_in -> (* current input *)
-        'generator_out option -> (* out_last *)
+        'generator_out option -> (* global_last_out *)
+        'generator_out option -> (* local_last_out *)
         'local_state ->
         'global_state ->
         'minimal_out -> (* current minimal out *)
@@ -496,13 +506,16 @@ let aggregate
        * groups are ordered. Makes it possible to check a commit condition
        * on many groups quickly: *)
       (has_commit_cond0 : bool)
-      (* Those are just placeholders if the above flag is false: *)
+      (* Those are just placeholders when the above flag is false: *)
         (* Returns the value of the first operand: *)
         (cond0_left_op :
           'tuple_in -> 'global_state -> 'group_order)
         (* Returns the value of the second operand: *)
         (cond0_right_op :
-          'minimal_out -> 'generator_out option -> 'local_state ->
+          'minimal_out ->
+          'generator_out option -> (* global_last_out *)
+          'generator_out option -> (* local_last_out *)
+          'local_state ->
           'global_state -> 'group_order)
         (* Compare two such values: *)
         (cond0_cmp :
@@ -512,6 +525,7 @@ let aggregate
       (commit_before : bool)
       (do_flush : bool)
       (check_commit_for_all : bool)
+      (uses_local_last_out : bool)
       (global_state : unit -> 'global_state)
       (group_init : 'global_state -> 'local_state)
       (get_notifications :
@@ -550,7 +564,7 @@ let aggregate
     let with_state =
       let open State.Persistent in
       let init_state () =
-        { last_out_tuple = None ;
+        { global_last_out = None ;
           global_state = global_state () ;
           groups =
             (* Try to make the state as small as possible: *)
@@ -611,11 +625,12 @@ let aggregate
         else
           true
         ) &&
-        commit_cond in_tuple s.last_out_tuple g.local_state
+        commit_cond in_tuple s.global_last_out g.local_last_out g.local_state
                     s.global_state g.current_out in
       let may_relocate_group_in_heap g =
         if has_commit_cond0 then
-          let g0 = cond0_right_op g.current_out s.last_out_tuple g.local_state
+          let g0 = cond0_right_op g.current_out s.global_last_out
+                                  g.local_last_out g.local_state
                                   s.global_state in
           if g.g0 <> Some g0 then (
             (* Relocate that group in the heap: *)
@@ -632,30 +647,34 @@ let aggregate
           s.groups_heap <- Heap.rem_phys cmp g s.groups_heap in
       let finalize_out g =
         (* Output the tuple *)
-        match commit_before, g.previous_out with
+        match commit_before, g.previous_current_out with
         | false, _ ->
             let out =
               out_tuple_of_minimal_tuple
-                g.last_in s.last_out_tuple g.local_state s.global_state
-                g.current_out in
-            s.last_out_tuple <- Some out ;
+                g.last_in s.global_last_out g.local_last_out g.local_state
+                s.global_state g.current_out in
+            s.global_last_out <- Some out ;
+            g.local_last_out <- Some out ;
             Some out
-        | true, None -> None
-        | true, Some previous_out ->
+        | true, None ->
+            None
+        | true, Some prev ->
             let out =
               out_tuple_of_minimal_tuple
-                g.last_in s.last_out_tuple g.local_state s.global_state
-                previous_out in
-            s.last_out_tuple <- Some out ;
+                g.last_in s.global_last_out g.local_last_out g.local_state
+                s.global_state prev in
+            s.global_last_out <- Some out ;
+            g.local_last_out <- Some out ;
             Some out
       and flush g =
         g.size <- 0 ;
-        if commit_before then (
-          (* Note that when "committing before" groups never disappear. *)
+        if commit_before || uses_local_last_out then (
+          (* Note that when "committing before" or using the local last out,
+           * then groups never disappear but are just cleaned and kept. *)
           (* Restore the group as if this tuple were the first and only
-           * one: *)
+           * one, and keep the last output tuple: *)
           g.first_in <- g.last_in ;
-          g.previous_out <- None ;
+          g.previous_current_out <- None ;
           (* We cannot rewind the global state, but the local state we
            * can: for other fields than minimum-out we can reset, and
            * for the states owned by minimum-out, where_slow and the
@@ -683,7 +702,7 @@ let aggregate
       let perf = ref (Perf.start ()) in
       let aggr_opt =
         (* maybe the key and group that has been updated: *)
-        if where_fast s.global_state in_tuple s.last_out_tuple
+        if where_fast s.global_state in_tuple s.global_last_out
         then (
           perf := Perf.add_and_transfer Stats.perf_where_fast !perf ;
           (* 2. Retrieve the group *)
@@ -697,24 +716,26 @@ let aggregate
             let local_state = group_init s.global_state in
             perf := Perf.add_and_transfer Stats.perf_find_group !perf ;
             (* 3. Filtering (slow path) - for new group *)
-            if where_slow s.global_state in_tuple s.last_out_tuple local_state
+            if where_slow s.global_state in_tuple s.global_last_out None
+                 local_state
             then (
               perf := Perf.add_and_transfer Stats.perf_where_slow !perf ;
               (* 4. Compute new minimal_out (and new group) *)
               let current_out =
                 minimal_tuple_of_aggr
-                  in_tuple s.last_out_tuple local_state s.global_state in
+                  in_tuple s.global_last_out None local_state s.global_state in
               let g = {
                 key = k ;
                 first_in = in_tuple ;
                 last_in = in_tuple ;
                 size = 1 ;
                 current_out ;
-                previous_out = None ;
+                previous_current_out = None ;
+                local_last_out = None ;
                 local_state ;
                 g0 =
                   if has_commit_cond0 then Some (
-                    cond0_right_op current_out None local_state s.global_state
+                    cond0_right_op current_out None None local_state s.global_state
                   ) else None } in
               (* Adding this group: *)
               Hashtbl.add s.groups k g ;
@@ -731,18 +752,20 @@ let aggregate
             (* The group already exists. *)
             perf := Perf.add_and_transfer Stats.perf_find_group !perf ;
             (* 3. Filtering (slow path) - for existing group *)
-            if where_slow s.global_state in_tuple s.last_out_tuple g.local_state
+            if where_slow s.global_state in_tuple s.global_last_out
+                 g.local_last_out g.local_state
             then (
               (* 4. Compute new current_out (and update the group) *)
               perf := Perf.add_and_transfer Stats.perf_where_slow !perf ;
               (* current_out and last_in are better updated only after we called the
                * various clauses receiving g *)
               g.last_in <- in_tuple ;
-              g.previous_out <- Some g.current_out ;
+              g.previous_current_out <- Some g.current_out ;
               g.size <- g.size + 1 ;
               g.current_out <-
                 minimal_tuple_of_aggr
-                  g.last_in s.last_out_tuple g.local_state s.global_state ;
+                  g.last_in s.global_last_out g.local_last_out g.local_state
+                  s.global_state ;
               may_relocate_group_in_heap g ;
               perf := Perf.add_and_transfer Stats.perf_update_group !perf ;
               Some g
@@ -760,7 +783,7 @@ let aggregate
         if channel_id = Channel.live then
           IntCounter.inc Stats.selected_tuple_count ;
         if not commit_before then
-          update_states g.last_in s.last_out_tuple
+          update_states g.last_in s.global_last_out g.local_last_out
                         g.local_state s.global_state g.current_out ;
         if must_commit g then (
           already_output_aggr := Some g ;
@@ -773,7 +796,7 @@ let aggregate
           )
         ) ;
         if commit_before then
-          update_states g.last_in s.last_out_tuple
+          update_states g.last_in s.global_last_out g.local_last_out
                         g.local_state s.global_state g.current_out
       | None -> () (* in_tuple failed filtering *)) ;
       perf := Perf.add_and_transfer Stats.perf_commit_incoming !perf ;
@@ -794,8 +817,8 @@ let aggregate
                 if c > 0 || c = 0 && cond0_true_when_eq then (
                   (* Or it's been removed from the heap already: *)
                   assert (not (already_output g)) ;
-                  if commit_cond in_tuple s.last_out_tuple g.local_state
-                                 s.global_state g.current_out
+                  if commit_cond in_tuple s.global_last_out g.local_last_out
+                                 g.local_state s.global_state g.current_out
                   then Heap.Collect
                   else Heap.Keep
                 ) else
@@ -807,8 +830,8 @@ let aggregate
           else
             Hashtbl.fold (fun _ g to_commit ->
               if not (already_output g) &&
-                 commit_cond in_tuple s.last_out_tuple g.local_state
-                             s.global_state g.current_out
+                 commit_cond in_tuple s.global_last_out g.local_last_out
+                             g.local_state s.global_state g.current_out
               then g :: to_commit else to_commit
             ) s.groups [] in
         (* FIXME: use the channel_id as a label! *)

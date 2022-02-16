@@ -11,7 +11,7 @@ let release_tag = "v@PACKAGE_VERSION@"
 let ringbuf = "v14" (* last: only have nulbits for nullable fields in recs/tups*)
 
 (* Workers state format *)
-let worker_state = "v25_"^ dessser_version (* last: changed program_parameter type *)
+let worker_state = "v26_"^ dessser_version (* last: modified RamenVariables *)
 
 (* Format of the binocle save files *)
 let binocle = Binocle.version
@@ -35,4 +35,4 @@ let replays = "v2" (* Replace final_rb with more flexible recipient *)
 let sync_conf = "v47" (* last: Added a type for pivots *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v104_"^ dessser_version ^"_"^ sync_conf (* last: Added "best after" *)
+let codegen = "v105_"^ dessser_version ^"_"^ sync_conf (* last: modified RamenVariables *)

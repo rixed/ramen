@@ -955,9 +955,9 @@ let checked ?(unit_tests=false) params globals op =
         List.fold_left (fun prev_selected sf ->
           check_fields_from
             Variable.[
-              Param; Env; GlobalVar; In; GroupState;
+              Param ; Env ; GlobalVar ; In ; GroupState ;
               Out (* FIXME: only if defined earlier *);
-              OutPrevious ; Record ] "SELECT clause" sf.expr ;
+              GlobalLastOut ; LocalLastOut ; Record ] "SELECT clause" sf.expr ;
           (* Check unicity of aliases *)
           if have_field sf.alias prev_selected then
             Printf.sprintf2 "Alias %a is not unique"
@@ -969,8 +969,9 @@ let checked ?(unit_tests=false) params globals op =
               Printf.sprintf2 "re-aggregated field %a" N.field_print sf.alias in
             check_fields_from
               Variable.[
-                Param; Env; GlobalVar; In; Out; GroupState; OutPrevious;
-                SortFirst; SortSmallest; SortGreatest; Record ]
+                Param ; Env ; GlobalVar ; In ; Out ; GroupState ;
+                GlobalLastOut ; LocalLastOut ;
+                SortFirst ; SortSmallest ; SortGreatest ; Record ]
               clause sf.expr ;
             let added =
               let have_field added alias =
@@ -1004,43 +1005,43 @@ let checked ?(unit_tests=false) params globals op =
       check_factors field_names aggregate_factors ;
       check_fields_from
         Variable.[
-          Param; Env; GlobalVar; In;
-          GroupState; OutPrevious; Record ]
+          Param ; Env ; GlobalVar ; In ;
+          GroupState ; GlobalLastOut ; LocalLastOut ; Record ]
         "WHERE clause" where ;
       List.iter (fun k ->
         check_pure "GROUP-BY clause" k ;
         check_fields_from
           Variable.[
-            Param; Env; GlobalVar; In ; Record ] "Group-By KEY" k
+            Param ; Env ; GlobalVar ; In ; Record ] "Group-By KEY" k
       ) key ;
       List.iter (fun name ->
         check_fields_from
-          Variable.[ Param; Env; GlobalVar; In; Out; Record ]
+          Variable.[ Param ; Env ; GlobalVar ; In ; Out ; Record ]
           "notification" name
       ) notifications ;
       check_fields_from
         Variable.[
-          Param; Env; GlobalVar; In;
-          Out; OutPrevious;
-          GroupState; Record ]
+          Param ; Env ; GlobalVar ; In ;
+          Out ; GlobalLastOut ; LocalLastOut ;
+          GroupState ; Record ]
         "COMMIT WHEN clause" commit_cond ;
       Option.may (fun (_, until_opt, bys) ->
         Option.may (fun until ->
           check_fields_from
             Variable.[
-              Param; Env; GlobalVar;
-              SortFirst; SortSmallest; SortGreatest; Record ]
+              Param ; Env ; GlobalVar ;
+              SortFirst ; SortSmallest ; SortGreatest ; Record ]
             "SORT-UNTIL clause" until
         ) until_opt ;
         List.iter (fun by ->
           check_fields_from
-            Variable.[ Param; Env; GlobalVar; In; Record ]
+            Variable.[ Param ; Env ; GlobalVar ; In ; Record ]
             "SORT-BY clause" by
         ) bys
       ) sort ;
       Option.may
         (check_fields_from
-          Variable.[ Param; Env; GlobalVar ] "EVERY clause") every ;
+          Variable.[ Param ; Env ; GlobalVar ] "EVERY clause") every ;
       if every <> None && from <> [] then
         failwith "Cannot have both EVERY and FROM" ;
       (* Check that we do not use any fields from out that is generated: *)
@@ -1052,7 +1053,9 @@ let checked ?(unit_tests=false) params globals op =
         match e.E.text with
         | Stateless (SL2 (
               Get, { text = Stateless (SL0 (Const (VString n))) ; _ },
-                   { text = Stateless (SL0 (Variable OutPrevious)) ; _ })) ->
+                   { text = Stateless (SL0 (
+                        Variable (GlobalLastOut | LocalLastOut))) ; _ }
+          )) ->
             let n = N.field n in
             if List.mem n generators then
               Printf.sprintf2 "Cannot use a generated output field %a"

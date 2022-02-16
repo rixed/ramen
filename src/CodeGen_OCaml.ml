@@ -872,8 +872,11 @@ let add_tuple_environment tuple typ env =
       | Env ->
           Printf.sprintf2 "Sys.getenv_opt %S"
             (ft.RamenTuple.name :> string)
-      | OutPrevious ->
-          Printf.sprintf2 "(maybe_%s_ out_previous_)"
+      | GlobalLastOut ->
+          Printf.sprintf2 "(maybe_%s_ global_last_out_)"
+            (ft.name :> string)
+      | LocalLastOut ->
+          Printf.sprintf2 "(maybe_%s_ local_last_out_)"
             (ft.name :> string)
       | _ ->
           id_of_field_typ ~tuple ft in
@@ -1002,7 +1005,7 @@ and finalize_state ~env ~opc ~nullable skip my_state func_name fin_args
                    func_name ((NoConv, PropagateNull)::to_typ) oc
                    (my_state::fin_args)
 
-(* The vectors OutPrevious is nullable: the commit when and
+(* The vectors GlobalLastOut is nullable: the commit when and
  * select clauses of aggregate operations either have it or not.
  * Each time they need access to a field they call a function "maybe_XXX_"
  * with that nullable tuple, which avoids propagating out_typ down to
@@ -3960,14 +3963,17 @@ let emit_state_update_for_expr ~env ~what ~opc expr =
   ) expr
 
 let emit_where ?(with_group=false) ~env name in_typ ~opc expr =
-  Printf.fprintf opc.code "let %s global_ %a out_previous_ "
+  Printf.fprintf opc.code "let %s global_ %a global_last_out_%s =\n"
     name
-    (emit_tuple ~with_alias:true In) in_typ ;
+    (emit_tuple ~with_alias:true In) in_typ
+    (if with_group then " local_last_out_ group_" else "") ;
   let env =
     add_tuple_environment In in_typ env |>
-    add_tuple_environment OutPrevious opc.typ in
-  if with_group then Printf.fprintf opc.code "group_ " ;
-  Printf.fprintf opc.code "=\n" ;
+    add_tuple_environment GlobalLastOut opc.typ in
+  let env =
+    if with_group then
+      add_tuple_environment LocalLastOut opc.typ env
+    else env in
   (* Update the states used by this expression: *)
   emit_state_update_for_expr ~env ~opc ~what:"where clause" expr ;
   Printf.fprintf opc.code "\t%a\n\n"
@@ -3990,12 +3996,14 @@ let emit_field_selection
     ) minimal_typ in
   let must_output_field field_name =
     not build_minimal || field_in_minimal field_name in
-  Printf.fprintf opc.code "let %s %a out_previous_ group_ global_ "
+  Printf.fprintf opc.code
+    "let %s %a global_last_out_ local_last_out_ group_ global_ "
     name
     (emit_tuple ~with_alias:true In) in_typ ;
   let env =
     add_tuple_environment In in_typ env |>
-    add_tuple_environment OutPrevious opc.typ in
+    add_tuple_environment GlobalLastOut opc.typ |>
+    add_tuple_environment LocalLastOut opc.typ in
   let env =
     if not build_minimal then (
       Printf.fprintf opc.code "%a "
@@ -4068,14 +4076,16 @@ let emit_update_states
       ft.RamenTuple.name = field_name
     ) minimal_typ
   in
-  Printf.fprintf opc.code "let %s %a out_previous_ group_ global_ %a =\n"
+  Printf.fprintf opc.code
+    "let %s %a global_last_out_ local_last_out_ group_ global_ %a =\n"
     name
     (emit_tuple ~with_alias:true In) in_typ
     (emit_tuple ~with_alias:true Out) minimal_typ ;
   let env =
     add_tuple_environment In in_typ env |>
     add_tuple_environment Out minimal_typ |>
-    add_tuple_environment OutPrevious opc.typ in
+    add_tuple_environment GlobalLastOut opc.typ |>
+    add_tuple_environment LocalLastOut opc.typ in
   List.iter (fun sf ->
     if not (field_in_minimal sf.alias) then (
       (* Update the states as required for this field, just before
@@ -4275,15 +4285,17 @@ let emit_state_init name state_lifespan ~env other_params
 
 (* Note: we need group_ in addition to out_tuple because the commit-when clause
  * might have its own stateful functions going on *)
-let emit_when ~env name in_typ minimal_typ ~opc when_expr =
-  Printf.fprintf opc.code "let %s %a out_previous_ group_ global_ %a =\n"
+let emit_commit_cond ~env name in_typ minimal_typ ~opc when_expr =
+  Printf.fprintf opc.code
+    "let %s %a global_last_out_ local_last_out_ group_ global_ %a =\n"
     name
     (emit_tuple ~with_alias:true In) in_typ
     (emit_tuple ~with_alias:true Out) minimal_typ ;
   let env =
     add_tuple_environment In in_typ env |>
     add_tuple_environment Out minimal_typ |>
-    add_tuple_environment OutPrevious opc.typ in
+    add_tuple_environment GlobalLastOut opc.typ |>
+    add_tuple_environment LocalLastOut opc.typ in
   (* Update the states used by this expression: *)
   emit_state_update_for_expr ~env ~opc ~what:"commit clause" when_expr ;
   Printf.fprintf opc.code "\t%a\n\n"
@@ -4302,12 +4314,14 @@ let emit_cond0_in ~env name in_typ ?to_typ ~opc e =
     (conv_to ~env ~context:Finalize ~opc to_typ) e
 
 let emit_cond0_out ~env name minimal_typ ?to_typ ~opc e =
-  Printf.fprintf opc.code "let %s %a out_previous_ group_ global_ =\n"
+  Printf.fprintf opc.code
+    "let %s %a global_last_out_ local_last_out_ group_ global_ =\n"
     name
     (emit_tuple ~with_alias:true Out) minimal_typ ;
   let env =
     add_tuple_environment Out minimal_typ env |>
-    add_tuple_environment OutPrevious opc.typ in
+    add_tuple_environment GlobalLastOut opc.typ |>
+    add_tuple_environment LocalLastOut opc.typ in
   (* Update the states used by this expression: *)
   emit_state_update_for_expr ~env ~opc ~what:"commit clause 0, out" e ;
   Printf.fprintf opc.code "\t%a\n\n"
@@ -4374,20 +4388,12 @@ let emit_default_tuple name ~opc typ =
     name
     emit_type v
 
-let expr_needs_tuple_from lst e =
-  match e.E.text with
-  | Stateless (SL0 (Variable tuple))
-  | Stateless (SL0 (Binding (RecordField (tuple, _)))) ->
-      List.mem tuple lst
-  | _ ->
-      false
-
 (* Tells whether this expression requires the out tuple (or anything else
  * from the group). *)
 (* FIXME: Move into a compilation helper module with other helpers
  * independent of the backend. *)
 let expr_needs_group e =
-  expr_needs_tuple_from [ GroupState ] e ||
+  Helpers.expr_needs_tuple_from [ GroupState ] e ||
   (match e.E.text with
   | Stateful { lifespan = Some LocalState ; _ } ->
       true
@@ -4403,7 +4409,7 @@ let default_commit_cond0 =
    * never be called: *)
   "false \
    (fun _ _ -> assert false) \
-   (fun _ _ _ _ -> assert false) \
+   (fun _ _ _ _ _ -> assert false) \
    (fun _ _ -> assert false) \
    false"
 
@@ -4466,6 +4472,7 @@ let emit_aggregate opc global_state_env group_state_env
   | Some (O.Aggregate
       { aggregate_fields ; sort ; where ; key ; commit_before ; commit_cond ;
         flush_how ; notifications ; every ; _ } as op) ->
+  let uses_local_last_out = Helpers.operation_uses_local_last_out op in
   let minimal_typ = Helpers.minimal_type op in
   (* When filtering, the worker has two options:
    * It can check an incoming tuple as soon as it receives it, or it can
@@ -4508,8 +4515,9 @@ let emit_aggregate opc global_state_env group_state_env
     emit_key_of_input "key_of_input_" in_typ ~env:(global_state_env @ base_env)
                       ~opc key) ;
   fail_with_context "commit condition function" (fun () ->
-    emit_when ~env:(group_state_env @ global_state_env @ base_env) "commit_cond_"
-              in_typ minimal_typ ~opc commit_cond_rest) ;
+    emit_commit_cond
+      ~env:(group_state_env @ global_state_env @ base_env) "commit_cond_"
+      in_typ minimal_typ ~opc commit_cond_rest) ;
   fail_with_context "select-clause function" (fun () ->
     emit_field_selection ~build_minimal:true
                          ~env:(group_state_env @ global_state_env @ base_env)
@@ -4565,8 +4573,9 @@ let emit_aggregate opc global_state_env group_state_env
     p "    (Uint32.of_int %s) sort_until_ sort_by_"
       (match sort with None -> "0" | Some (n, _, _) -> Uint32.to_string n) ;
     p "    where_fast_ where_slow_ key_of_input_ %b" (key = []) ;
-    p "    commit_cond_ %s %b %b %b"
-      commit_cond0 commit_before (flush_how <> Never) check_commit_for_all ;
+    p "    commit_cond_ %s %b %b %b %b"
+      commit_cond0 commit_before (flush_how <> Never) check_commit_for_all
+      uses_local_last_out ;
     p "    global_init_ group_init_" ;
     p "    get_notifications_ %a"
       (fun oc -> function
@@ -4593,10 +4602,14 @@ let emit_aggregate opc global_state_env group_state_env
    * filtered against the full fast_filter. *)
   let expr_needs_global_tuples =
     Helpers.expr_needs_tuple_from
-      [ OutPrevious; SortFirst; SortSmallest; SortGreatest ] in
+      [ GlobalLastOut ; SortFirst ; SortSmallest ; SortGreatest ] in
+  let expr_needs_local_last_out =
+    Helpers.expr_needs_tuple_from [ LocalLastOut ] in
   let where_top, _ =
     E.and_partition (fun e ->
-      E.is_pure e && not (expr_needs_global_tuples e)
+      E.is_pure e &&
+      not (expr_needs_global_tuples e) &&
+      not (expr_needs_local_last_out e)
     ) where_fast in
   fail_with_context "top-where function" (fun () ->
     p "let top_where_ %a ="

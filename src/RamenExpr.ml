@@ -1525,7 +1525,7 @@ struct
             raise (Reject "Changed operator is only valid for \
                            fields of the output tuple") ;
           make_stateless (SL2 (Get, n,
-            make_stateless (SL0 (Variable Variable.OutPrevious))))
+            make_stateless (SL0 (Variable Variable.LocalLastOut))))
         in
         let prev_field =
           match f.text with

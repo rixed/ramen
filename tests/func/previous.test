@@ -1,0 +1,23 @@
+{
+  programs = [
+    { src = "previous.ramen" };
+  ];
+  outputs = {
+    "previous/f2" => {
+      timeout = 5;
+      present = [
+        { "global_ok" => "true" };
+        { "local_ok_1" => "true" };
+        { "local_ok_2" => "true" };
+        { "local_ok_3" => "true" };
+        { "t" => "100" };
+      ];
+      absent = [
+        { "global_ok" => "false" } ;
+        { "local_ok_1" => "false" } ;
+        { "local_ok_2" => "false" } ;
+        { "local_ok_3" => "false" } ;
+      ]
+    }
+  }
+}

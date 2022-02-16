@@ -11,7 +11,8 @@ let to_string = function
   | In -> "in"
   | GroupState -> "group_state"
   | GlobalState -> "global_state"
-  | OutPrevious -> "out_previous"
+  | GlobalLastOut -> "global_last_out"
+  | LocalLastOut -> "local_last_out"
   | Out -> "out"
   | SortFirst -> "sort_first"
   | SortSmallest -> "sort_smallest"
@@ -34,8 +35,11 @@ let parse m =
     (w "in" >>: fun () -> In) |<|
     (w "group_state" >>: fun () -> GroupState) |<|
     (w "global_state" >>: fun () -> GlobalState) |<|
-    (w "out_previous" >>: fun () -> OutPrevious) |<|
-    (w "previous" >>: fun () -> OutPrevious) |<|
+    (w "global_last_out" >>: fun () -> GlobalLastOut) |<|
+    (w "global_last" >>: fun () -> GlobalLastOut) |<|
+    (w "local_last_out" >>: fun () -> LocalLastOut) |<|
+    (w "local_last" >>: fun () -> LocalLastOut) |<|
+    (w "previous" >>: fun () -> LocalLastOut) |<| (* Historic keyword *)
     (w "out" >>: fun () -> Out) |<|
     (w "sort_first" >>: fun () -> SortFirst) |<|
     (w "sort_smallest" >>: fun () -> SortSmallest) |<|
@@ -56,5 +60,5 @@ let has_type_input = function
 
 (* Variables that has the fields of this func output type *)
 let has_type_output = function
-  | OutPrevious | Out -> true
+  | GlobalLastOut | LocalLastOut | Out -> true
   | _ -> false

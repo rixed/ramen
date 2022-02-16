@@ -3,7 +3,8 @@
 | In
 | GroupState
 | GlobalState
-| OutPrevious
+| GlobalLastOut
+| LocalLastOut
 | Out
 // Variables usable in sort expressions:
 | SortFirst

@@ -1,0 +1,34 @@
+-- vim: ft=sql expandtab
+
+DEFINE f1 AS
+  SELECT 1 + (previous.t |? 0) AS t,
+  RANDOM AS _r,
+  CASE
+    WHEN _r < 0.3 THEN "foo"
+    WHEN _r < 0.6 THEN "bar"
+    ELSE "baz"
+  END AS k
+  EVERY 10ms;
+
+DEFINE f2 AS
+  SELECT
+    *,
+    -- Since we increment t at every step no matter the group:
+    t = (global_last_out.t |? 0) + 1 AS global_ok,
+    -- By vertue of the group-by clause:
+    local_last_out.k IS NULL OR local_last_out.k = k AS local_ok_1,
+    -- If the previous output tuple felt in the same group then current seqnum
+    -- must come next:
+    IF COALESCE(global_last_out.k = k, false) THEN
+      t = (local_last_out.t |? 0) + 1
+    ELSE
+      COALESCE(t > local_last_out.t + 1, true)
+      AS local_ok_2,
+    -- Similarly, seqnunm must be equal if in the same category:
+    IF COALESCE(global_last_out.k = k, false) THEN
+      (local_last_out.t |? 0) = (global_last_out.t |? 0)
+    ELSE
+      COALESCE(local_last_out.t < global_last_out.t, true)
+      AS local_ok_3
+  FROM f1
+  GROUP BY k;

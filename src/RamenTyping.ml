@@ -689,8 +689,8 @@ let emit_constraints tuple_sizes records field_names
           failwith
         in
       emit_assert_eq eid oc (t_of_prefix pref' id) ;
-      (* This one is always nullable, others never: *)
-      let nullable = pref = OutPrevious in
+      (* Those ones are always nullable, others never: *)
+      let nullable = pref = GlobalLastOut || pref = LocalLastOut in
       let name = expr_err e Err.(Nullability nullable) in
       emit_assert_id_is_bool ~name nid oc nullable
 

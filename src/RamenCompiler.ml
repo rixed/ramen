@@ -611,7 +611,6 @@ let subst_fields_for_binding pref =
         { e with text = Stateless (SL0 (Binding (RecordField (pref, f)))) }
     | _ -> e)
 
-
 (* [program_name] is used to resolve relative parent names, and name a few
  * temp files.
  * [get_parent] is a function that returns the P.t of a given
@@ -832,7 +831,7 @@ let compile conf info ~exec_file base_file src_path =
             List.fold_left (fun op tuple ->
               subst_fields_for_binding tuple op
             ) func.VSI.operation
-              [ Env ; Param ; In ; GroupState ; OutPrevious ;
+              [ Env ; Param ; In ; GroupState ; GlobalLastOut ; LocalLastOut ;
                 Out ; SortFirst ; SortSmallest ; SortGreatest ;
                 Record ]
           in
