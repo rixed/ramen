@@ -235,7 +235,7 @@ DEFINE memory_alert AS
   FROM memory
   SELECT
     start, host,
-    free + used + cached + buffered + slab AS total,
+    total,
     free * 100 / total AS used_ratio,
     used_ratio > 50 AS firing
   GROUP BY host
