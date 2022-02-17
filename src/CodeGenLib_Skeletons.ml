@@ -636,10 +636,10 @@ let aggregate
             (* Relocate that group in the heap: *)
             IntCounter.inc Stats.relocated_groups ;
             let cmp = cmp_g0 cond0_cmp in
-            s.groups_heap <- Heap.rem_phys cmp g s.groups_heap ;
+            let groups_heap = Heap.rem_phys cmp g s.groups_heap in
             (* Now that it's no longer in the heap, its g0 can be updated: *)
             g.g0 <- Some g0 ;
-            s.groups_heap <- Heap.add cmp g s.groups_heap
+            s.groups_heap <- Heap.add cmp g groups_heap
           ) in
       let may_rem_group_from_heap g =
         if has_commit_cond0 then
