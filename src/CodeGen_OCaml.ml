@@ -4388,22 +4388,6 @@ let emit_default_tuple name ~opc typ =
     name
     emit_type v
 
-(* Tells whether this expression requires the out tuple (or anything else
- * from the group). *)
-(* FIXME: Move into a compilation helper module with other helpers
- * independent of the backend. *)
-let expr_needs_group e =
-  Helpers.expr_needs_tuple_from [ GroupState ] e ||
-  (match e.E.text with
-  | Stateful { lifespan = Some LocalState ; _ } ->
-      true
-  | Stateless (SL0 (EventStart|EventStop)) ->
-      (* This depends on the definition of the event time really.
-       * TODO: pass the event time down here and actually check. *)
-      true
-  | _ ->
-      false)
-
 let default_commit_cond0 =
   (* Pass to Skeleton.aggregate some placeholder functions that will
    * never be called: *)
@@ -4483,7 +4467,7 @@ let emit_aggregate opc global_state_env group_state_env
    * It is best to partition the WHERE expression in two so that as much of
    * it can be checked as early as possible. *)
   let where_fast, where_slow =
-    E.and_partition (not % expr_needs_group) where
+    E.and_partition (not % Helpers.expr_needs_group) where
   and check_commit_for_all = Helpers.check_commit_for_all commit_cond
   (* Every functions have at least access to env + params + globals: *)
   and base_env = param_env @ env_env @ globals_env in

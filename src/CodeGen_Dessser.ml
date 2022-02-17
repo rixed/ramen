@@ -1401,7 +1401,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
    * It is best to partition the WHERE expression in two so that as much of
    * it can be checked as early as possible. *)
   let where_fast, where_slow =
-    E.and_partition (not % CodeGen_OCaml.expr_needs_group) where in
+    E.and_partition (not % Helpers.expr_needs_group) where in
   let compunit =
     fail_with_context "coding for tuple reader" (fun () ->
       let compunit, e = deserialize_tuple "in" in_type compunit in
