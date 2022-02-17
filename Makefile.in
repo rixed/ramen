@@ -1094,8 +1094,6 @@ genRamenSubcommands.opt: \
 	@echo 'Linking $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package batteries,dessser,stdint,binocle $^ -o $@
 
-
-
 #
 # Tests
 #

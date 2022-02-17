@@ -54,5 +54,3 @@ let save_possible_values prev_fname pvs =
     | fd -> do_write fd) ;
     if not (N.is_empty prev_fname) then
       log_and_ignore_exceptions Files.safe_unlink prev_fname)
-
-

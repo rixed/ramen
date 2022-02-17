@@ -261,7 +261,8 @@ type ('key, 'local_state, 'tuple_in, 'minimal_out, 'generator_out, 'group_order)
      * aggregate: *)
     mutable first_in : 'tuple_in ; (* first in-tuple of this aggregate *)
     mutable last_in : 'tuple_in ; (* last in-tuple of this aggregate. *)
-    mutable size : int ; (* number of tuples aggregated in that group *)
+    (* Number of tuples aggregated in that group (for stats) *)
+    mutable size : int ;
     (* minimal_out is a subset of the 'generator_out tuple, with only
      * those fields required for commit_cond and update_states.
      * Alternatively, we could have merely the (non-required) stateful
@@ -612,7 +613,7 @@ let aggregate
       (* Define some short-hand values and functions we will keep
        * referring to: *)
       (* When committing other groups, this is used to skip the current
-       * groupif it has been sent already: *)
+       * group if it has been sent already: *)
       let already_output_aggr = ref None in
       let already_output g =
         Option.map_default ((==) g) false !already_output_aggr in
@@ -645,8 +646,10 @@ let aggregate
         if has_commit_cond0 then
           let cmp = cmp_g0 cond0_cmp in
           s.groups_heap <- Heap.rem_phys cmp g s.groups_heap in
+      (* Return the output tuple that must be emitted (via the output
+       * generator, so not really final). When [commit_before] we simply
+       * return [previous_current_out] *)
       let finalize_out g =
-        (* Output the tuple *)
         match commit_before, g.previous_current_out with
         | false, _ ->
             let out =
@@ -666,11 +669,15 @@ let aggregate
             s.global_last_out <- Some out ;
             g.local_last_out <- Some out ;
             Some out
+      (* Destroy the group, or clean it.
+       * When "committing before" or using the local last out, then groups
+       * never disappear but are just cleaned and kept.
+       * Does not also remove the group from the heap because this is done
+       * more efficiently in the collecting phase, so has to be done manually
+       * by the called if outside of a mass flush. *)
       and flush g =
         g.size <- 0 ;
         if commit_before || uses_local_last_out then (
-          (* Note that when "committing before" or using the local last out,
-           * then groups never disappear but are just cleaned and kept. *)
           (* Restore the group as if this tuple were the first and only
            * one, and keep the last output tuple: *)
           g.first_in <- g.last_in ;
@@ -737,7 +744,7 @@ let aggregate
                   if has_commit_cond0 then Some (
                     cond0_right_op current_out None None local_state s.global_state
                   ) else None } in
-              (* Adding this group: *)
+              (* Add this group: *)
               Hashtbl.add s.groups k g ;
               if has_commit_cond0 then (
                 let cmp = cmp_g0 cond0_cmp in
@@ -804,7 +811,7 @@ let aggregate
        * for every single input tuple :-< *)
       if check_commit_for_all && not commit_before then (
         let to_commit =
-          (* FIXME: What if commit-when update the global state? We are
+          (* FIXME: What if [commit_cond] update the global state? We are
            * going to update it several times here. We should prevent this
            * clause to access the global state. *)
           if has_commit_cond0 then
@@ -831,6 +838,7 @@ let aggregate
             s.groups_heap <- heap ;
             to_commit
           else
+            (* Slow version without the help of the Heap: *)
             Hashtbl.fold (fun _ g to_commit ->
               if not (already_output g) &&
                  commit_cond in_tuple s.global_last_out g.local_last_out
