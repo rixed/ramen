@@ -624,11 +624,16 @@ let reify_star_fields get_program program_name funcs =
               | exception Exit ->
                   changed, func :: prev
               | common_fields ->
-                  if Set.is_empty common_fields then
-                    Printf.sprintf2
-                      "Parent functions %a have no fields in common"
-                      (pretty_list_print (O.print_data_source false)) from |>
-                    failwith ;
+                  if Set.is_empty common_fields then (
+                    if from = [] then
+                      Printf.sprintf2
+                        "Function %a lacks a parent to select from"
+                        N.func_print (option_get "func.name" __LOC__ func.name)
+                    else
+                      Printf.sprintf2
+                        "Parent functions %a have no fields in common"
+                        (pretty_list_print (O.print_data_source false)) from
+                  ) |> failwith ;
                   (* Note that the fields are added in reverse alphabetical
                    * order at the beginning of the selected fields. That
                    * way, they can be used in the specified fields. Still it
