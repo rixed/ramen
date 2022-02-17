@@ -1416,7 +1416,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
       where_clause ~r_env ~with_group:true in_type last_out_type
                    global_state_type group_state_type where_slow |>
       add_expr compunit "where_slow_") in
-  let check_commit_for_all = Helpers.check_commit_for_all commit_cond in
+  let check_commit_for_all = O.check_commit_for_all commit_cond in
   let has_commit_cond, cond0_left_op, cond0_right_op, cond0_cmp,
       cond0_true_when_eq, commit_cond_rest =
     if check_commit_for_all then

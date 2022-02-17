@@ -852,6 +852,27 @@ let check_depends_only_on lst e =
   all_used_variables e |>
   List.iter (fun (var, field) -> check_can_use ?field var)
 
+(* Depending on what uses a commit/flush condition, we might need to check
+ * all groups after every single input tuple (very slow), or after every
+ * selected input tuple (still quite slow), or only when this group is
+ * modified (fast). Users should limit all/selected tuple to aggregations
+ * with few groups only. *)
+let check_commit_for_all expr =
+  (* Tells whether the commit condition applies to all or only to the
+   * selected group: *)
+  try
+    E.iter (fun _ e ->
+      match e.E.text with
+      | Stateless (SL0 (Path _ |
+                        Variable In |
+                        Binding (RecordField (In, _)))) ->
+          raise Exit
+      | _ -> ()
+    ) expr ;
+    false
+  with Exit ->
+    true
+
 let default_commit_cond = E.of_bool true
 
 (* Check that the expression is valid, or return an error message.
@@ -928,7 +949,8 @@ let checked ?(unit_tests=false) params globals op =
     match op with
     | Aggregate ({ aggregate_fields ; and_all_others ; sort ; where ; key ;
                    commit_cond ; aggregate_event_time ; notifications ; from ;
-                   every ; aggregate_factors ; flush_how ; _ } as aggregate) ->
+                   every ; aggregate_factors ; flush_how ; commit_before }
+                 as aggregate) ->
       let open Raql_select_field.DessserGen in
       (* STAR operator must have been dealt with by now normally, but
        * not for unit-testing:: *)
@@ -1093,6 +1115,12 @@ let checked ?(unit_tests=false) params globals op =
         Printf.sprintf2 "Too many fields (configured maximum is %d)"
           num_all_fields |>
         failwith ;
+      (* Prevent commit_before if commit condition applies also to other
+       * groups: *)
+      if commit_before && check_commit_for_all commit_cond then
+        failwith
+          "Cannot use COMMIT BEFORE when the commit condition applies also \
+           to other groups" ;
       let op =
         Aggregate { aggregate with aggregate_fields ; aggregate_event_time } in
       (* Set default lifespan: *)

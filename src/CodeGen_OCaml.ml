@@ -4468,7 +4468,7 @@ let emit_aggregate opc global_state_env group_state_env
    * it can be checked as early as possible. *)
   let where_fast, where_slow =
     E.and_partition (not % Helpers.expr_needs_group) where
-  and check_commit_for_all = Helpers.check_commit_for_all commit_cond
+  and check_commit_for_all = O.check_commit_for_all commit_cond
   (* Every functions have at least access to env + params + globals: *)
   and base_env = param_env @ env_env @ globals_env in
   let commit_cond0, commit_cond_rest =

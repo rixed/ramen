@@ -803,7 +803,6 @@ let aggregate
       (* Now there is also the possibility that we need to commit or flush
        * for every single input tuple :-< *)
       if check_commit_for_all then (
-        (* FIXME: prevent commit_before in that case *)
         let to_commit =
           (* FIXME: What if commit-when update the global state? We are
            * going to update it several times here. We should prevent this
