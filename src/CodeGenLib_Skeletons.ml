@@ -791,7 +791,7 @@ let aggregate
           Histogram.add Stats.group_sizes (float_of_int g.size) ;
           if do_flush then (
             flush g ;
-            if not commit_before then
+            if commit_before || uses_local_last_out then
               may_rem_group_from_heap g
           )
         ) ;
@@ -802,7 +802,7 @@ let aggregate
       perf := Perf.add_and_transfer Stats.perf_commit_incoming !perf ;
       (* Now there is also the possibility that we need to commit or flush
        * for every single input tuple :-< *)
-      if check_commit_for_all then (
+      if check_commit_for_all && not commit_before then (
         let to_commit =
           (* FIXME: What if commit-when update the global state? We are
            * going to update it several times here. We should prevent this
@@ -814,15 +814,19 @@ let aggregate
                 let g0 = option_get "g0" __LOC__ g.g0 in
                 let c = cond0_cmp f0 g0 |> Int8.to_int in
                 if c > 0 || c = 0 && cond0_true_when_eq then (
-                  (* Or it's been removed from the heap already: *)
-                  assert (not (already_output g)) ;
                   if commit_cond in_tuple s.global_last_out g.local_last_out
                                  g.local_state s.global_state g.current_out
-                  then Heap.Collect
-                  else Heap.Keep
+                  then
+                    if commit_before || uses_local_last_out then
+                      (* Keep the Heap as is, but add this group in
+                       * [to_commit]: *)
+                      Heap.SelectAndKeep
+                    else
+                      Heap.SelectAndRemove
+                  else Heap.Ignore
                 ) else
                   (* No way we will find another true pre-condition *)
-                  Heap.KeepAll
+                  Heap.IgnoreAll
               ) s.groups_heap in
             s.groups_heap <- heap ;
             to_commit
@@ -839,6 +843,8 @@ let aggregate
         perf := Perf.add_and_transfer Stats.perf_finalize_others !perf ;
         List.iter (outputer channel_id in_tuple) outs ;
         perf := Perf.add_and_transfer Stats.perf_commit_others !perf ;
+        (* Notice that the groups have been removed from the heap already
+         * during the collecting phase: *)
         if do_flush then List.iter flush to_commit ;
         Perf.add Stats.perf_flush_others (Perf.stop !perf)
       ) ;

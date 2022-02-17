@@ -126,23 +126,28 @@ let length t =
 
 (* A function that goes through the heap from top to bottom, offering the
  * caller to either collect, keep or stop at each item. It returns the
- * list of collected items as well as the resulting heap. *)
-type collect_action = Collect | Keep | KeepAll
+ * list of collected items as well as the resulting heap.
+ * As a special treatment for groups that must be kept in the heap but still
+ * output, [PickAndKeep] instruct the heap to stays the same (as in Keep)
+ * yet to return the group with collected ones. *)
+type collect_action = SelectAndRemove | SelectAndKeep | Ignore | IgnoreAll
 let collect cmp f h =
   let rec loop collected h =
     match h with
     | E -> collected, h
     | T t ->
         let res = f t.value in
-        if res = KeepAll then
+        if res = IgnoreAll then
             collected, h
         else
           let collected, a = loop collected t.left in
           let collected, b = loop collected t.right in
-          if res = Keep then
+          if res = Ignore then
             collected, makeT t.value a b
+          else if res = SelectAndKeep then
+            (t.value :: collected), makeT t.value a b
           else (
-            assert (res = Collect) ;
+            assert (res = SelectAndRemove) ;
             (t.value :: collected), merge cmp a b
           ) in
   loop [] h

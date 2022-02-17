@@ -1461,11 +1461,11 @@ tests/func/generated.success: tests/func/generated.test tests/func/fixtures/gene
 FORCED_DESSSER = \
 	;any_ext;basename;basic_aggr;bits;\
 	;case;casts;changed;char;count;count_lines;\
-	;fit;from;fun_with_funcs;previous;\
+	;fit;from;fun_with_funcs;\
 	;generated;gets;globals_function;globals_program;groups;\
 	;in;kahan_sum;lag;list_aggr;local_state_in_where_slow;\
-	;min_max;nan_vs_null;nulls;peek;port_scan;rowbinary;\
-	;sample;simplest;simplest_aggr;sort;stress;strings;top_expr;
+	;min_max;nan_vs_null;nulls;peek;port_scan;previous;rowbinary;\
+	;sample;simplest;simplest_aggr;sort;stress;strings;top_expr;tumbling;
 
 # FIXME: Missing deps on some sources. `ramen test -MM` should output those.
 %.success: %.test %.ramen src/ramen

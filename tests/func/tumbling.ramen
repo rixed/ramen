@@ -1,0 +1,42 @@
+-- vim: ft=sql expandtab
+-- Demonstrate an efficient way to implement tumbling windows with a group-by
+
+PARAMETERS
+  gen_dt DEFAULTS TO 0.1s,
+  win_dt DEFAULTS TO 1s;
+
+DEFINE f1 AS
+  SELECT (previous.start + gen_dt) |? 0 AS start,
+  RANDOM AS r,
+  CASE
+    WHEN r < 0.33 THEN "foo"
+    WHEN r < 0.66 THEN "bar"
+    ELSE "baz"
+  END AS k
+  EVERY gen_dt;
+
+DEFINE f2 AS
+  SELECT
+    MIN (start // win_dt) AS start,
+    start + win_dt AS stop,
+    k,
+    -- Since we group by only k we can use the previous variable with
+    -- confidence that it will be kept continuously for a given k (would not be
+    -- the case if we also groupped by start//win).
+    (previous.k IS NOT NULL) OR start = 0 AS check_1
+  FROM f1
+  -- Commit this group as soon as any input tuple (don't wait for this k)
+  -- has a start time greater than this stop.
+  -- This works only when the event times are always increasing.
+  -- When that's not true then one must also group by start//win_dt and then
+  -- one can add a tolerance, but then the local_last_out variable is less
+  -- meaningful of course.
+  GROUP BY k
+  COMMIT BEFORE in.start >= out.stop;
+
+DEFINE f3 AS
+  SELECT
+    start,
+    stop - start = win_dt AS check_1
+  FROM f2;
+

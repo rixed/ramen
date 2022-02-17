@@ -1,0 +1,28 @@
+{
+  programs = [
+    { src = "tumbling.ramen" };
+  ];
+  outputs = {
+    "tumbling/f2" => {
+      timeout = 8;
+      present = [
+        { "check_1" => "true" };
+        { "start" => "4" };
+      ];
+      absent = [
+        { "check_1" => "false" } ;
+      ]
+    };
+    "tumbling/f3" => {
+      timeout = 8;
+      present = [
+        { "check_1" => "true" };
+        { "start" => "4" };
+      ];
+      absent = [
+        { "check_1" => "false" } ;
+      ]
+    }
+  }
+}
+

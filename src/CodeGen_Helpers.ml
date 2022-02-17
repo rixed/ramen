@@ -43,6 +43,27 @@ let operation_uses_local_last_out op =
   with Exit ->
     true
 
+(* Depending on what uses a commit/flush condition, we might need to check
+ * all groups after every single input tuple (very slow), or after every
+ * selected input tuple (still quite slow), or only when this group is
+ * modified (fast). Users should limit all/selected tuple to aggregations
+ * with few groups only. *)
+let check_commit_for_all expr =
+  (* Tells whether the commit condition applies to all or only to the
+   * selected group: *)
+  try
+    E.iter (fun _ e ->
+      match e.E.text with
+      | Stateless (SL0 (Path _ |
+                        Variable In |
+                        Binding (RecordField (In, _)))) ->
+          raise Exit
+      | _ -> ()
+    ) expr ;
+    false
+  with Exit ->
+    true
+
 (* Takes an expression and if that expression is equivalent to
  * f(in) op g(out) then returns [f], [neg], [op], [g] where [neg] is true
  * if [op] is meant to be negated, or raise Not_found: *)

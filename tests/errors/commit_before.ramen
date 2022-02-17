@@ -1,2 +1,0 @@
-DEFINE p AS SELECT "foo" as k, 1 AS x;
-DEFINE f AS SELECT SUM x FROM p GROUP BY k COMMIT BEFORE in.x > 0;
