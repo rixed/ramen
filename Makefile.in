@@ -1345,7 +1345,7 @@ heavyhitters_test.opt: \
 	@echo 'Building $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $(filter %.cmx, $^) -o $@
 
-check: unit-check ringbuf-check cli-check func-check comp-check arc-check orc-check examples-check
+check: unit-check ringbuf-check cli-check func-check comp-check arc-check orc-check examples-check err-check
 
 unit-check: all_tests.opt
 	@echo 'Running unit tests...'
