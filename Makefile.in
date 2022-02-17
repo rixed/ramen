@@ -1467,8 +1467,8 @@ FORCED_DESSSER = \
 	;min_max;nan_vs_null;nulls;peek;port_scan;rowbinary;\
 	;sample;simplest;simplest_aggr;sort;stress;strings;top_expr;
 
-# FIXME: Missing deps on the sources. `ramen test -MM` should output those.
-%.success: %.test src/ramen
+# FIXME: Missing deps on some sources. `ramen test -MM` should output those.
+%.success: %.test %.ramen src/ramen
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
 	@if echo '$<' | grep -q /func/; then \
