@@ -122,6 +122,24 @@ let check_ringbuffer ?rb conf fname =
           do_check rb
   )
 
+let get_precompiled clt src_path =
+  let source_k = Key.Sources (src_path, "info") in
+  match Client.find clt source_k with
+  | exception Not_found ->
+      Printf.sprintf2 "No such source %a"
+        Key.print source_k |>
+      failwith
+  | { value = Value.SourceInfo
+                ({ detail = Compiled compiled ; _ } as info) ; _ } ->
+      info, compiled
+  | { value = Value.SourceInfo
+                { detail = Failed { errors } } ; _ } ->
+      Printf.sprintf2 "Compilation failed: %a"
+        (pretty_list_print RamenRaqlError.print) errors |>
+      failwith
+  | hv ->
+      invalid_sync_type source_k hv.value "a source info"
+
 (* [info_sign] is the signature of the info identifying the result of
  * precompilation.
  * Raises Not_found if the binary is not available yet,
@@ -139,6 +157,34 @@ let has_executable conf session info_sign =
     Files.exists ~has_perms:0o100 fname
   with _ ->
     false
+
+let has_info session fq info_sign =
+  let clt = option_get "has_info" __LOC__ session.ZMQClient.clt in
+  let prog_name, func_name = N.fq_parse fq in
+  let src_path = N.src_path_of_program prog_name in
+  match get_precompiled clt src_path with
+  | exception _ ->
+      false
+  | { detail = Compiled ({ funcs ; _ } as compiled) ; _ }, _ ->
+      if List.exists (fun f ->
+           f.Source_info.DessserGen.name = func_name
+         ) funcs then (
+        let this_info_sign = VSI.signature_of_compiled compiled in
+        if this_info_sign = info_sign then true else (
+          !logger.warning
+            "Compiled info has a different signature (%s) than worker's (%s)"
+            this_info_sign
+            info_sign ;
+          false
+        )
+      ) else (
+        !logger.warning "Program %a has no function named %a"
+          N.program_print prog_name
+          N.func_print func_name ;
+        false
+      )
+  | _ ->
+      false
 
 let find_worker session site fq =
   let clt = option_get "find_worker" __LOC__ session.ZMQClient.clt in
@@ -674,24 +720,6 @@ let should_run conf session site fq worker_sign =
       ) else
         true
 
-let get_precompiled clt src_path =
-  let source_k = Key.Sources (src_path, "info") in
-  match Client.find clt source_k with
-  | exception Not_found ->
-      Printf.sprintf2 "No such source %a"
-        Key.print source_k |>
-      failwith
-  | { value = Value.SourceInfo
-                ({ detail = Compiled compiled ; _ } as info) ; _ } ->
-      info, compiled
-  | { value = Value.SourceInfo
-                { detail = Failed { errors } } ; _ } ->
-      Printf.sprintf2 "Compilation failed: %a"
-        (pretty_list_print RamenRaqlError.print) errors |>
-      failwith
-  | hv ->
-      invalid_sync_type source_k hv.value "a source info"
-
 (* As the worker may be gone, look at the sources.
  * Fail if that info is not available. *)
 let has_parents session fq =
@@ -991,6 +1019,8 @@ let synchronize_once =
                 if not b then !logger.debug "Lacking condition: %s" cause ;
                 b in
               if reason "should run" (worker_should_run conf worker) &&
+                 reason "is precompiled"
+                   (has_info session fq worker.info_signature) &&
                  reason "has executable"
                    (has_executable conf session worker.info_signature) &&
                  reason "already running"

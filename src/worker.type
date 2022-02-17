@@ -5,7 +5,7 @@
   debug: bool;
   report_period: float;
   cwd: $file_path;
-  // Mash together the function operation and types, program parameters
+  // Mash together the function signature, the program parameters
   // and some RC entries such as debug and report_period. Identifies a
   // running worker. Aka an "instance".
   worker_signature: string;
