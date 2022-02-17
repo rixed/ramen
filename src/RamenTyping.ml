@@ -2397,8 +2397,7 @@ let id_or_type_of_field op path =
     let field =
       match path with [ Name n ] -> n
       | _ ->
-          Printf.sprintf2 "Cherry-picking (%a) in well-known types (%s) is \
-                           not supported"
+          Printf.sprintf2 "Cherry-picking (%a) in %s is not supported"
             E.print_path path what |>
           failwith
     in
