@@ -808,8 +808,8 @@ let aggregate
       | None -> () (* in_tuple failed filtering *)) ;
       perf := Perf.add_and_transfer Stats.perf_commit_incoming !perf ;
       (* Now there is also the possibility that we need to commit or flush
-       * for every single input tuple :-< *)
-      if check_commit_for_all && not commit_before then (
+       * *other* groups for every single input tuple :-< *)
+      if check_commit_for_all then (
         let to_commit =
           (* FIXME: What if [commit_cond] update the global state? We are
            * going to update it several times here. We should prevent this
@@ -818,32 +818,43 @@ let aggregate
             let f0 = cond0_left_op in_tuple s.global_state in
             let to_commit, heap =
               Heap.collect (cmp_g0 cond0_cmp) (fun g ->
-                let g0 = option_get "g0" __LOC__ g.g0 in
-                let c = cond0_cmp f0 g0 |> Int8.to_int in
-                if c > 0 || c = 0 && cond0_true_when_eq then (
-                  if commit_cond in_tuple s.global_last_out g.local_last_out
-                                 g.local_state s.global_state g.current_out
-                  then
-                    if commit_before || uses_local_last_out then
-                      (* Keep the Heap as is, but add this group in
-                       * [to_commit]: *)
-                      Heap.SelectAndKeep
-                    else
-                      Heap.SelectAndRemove
-                  else Heap.Ignore
-                ) else
-                  (* No way we will find another true pre-condition *)
-                  Heap.IgnoreAll
+                if Option.map_default ((==) g) false aggr_opt then
+                  Heap.Ignore (* Already Handled above: *)
+                else
+                  let g0 = option_get "g0" __LOC__ g.g0 in
+                  let c = cond0_cmp f0 g0 |> Int8.to_int in
+                  if c > 0 || c = 0 && cond0_true_when_eq then (
+                    (* Or it's been removed from the heap already: *)
+                    assert (not (already_output g)) ;
+                    if commit_cond in_tuple s.global_last_out g.local_last_out
+                                   g.local_state s.global_state g.current_out
+                    then
+                      if uses_local_last_out then
+                        (* Keep the groups alive so they can rely on
+                         * local_last_out variable. Commit-before is not a
+                         * reason not to clean the group though, unless that's
+                         * the current group that we want to keep because we
+                         * have the next value already. *)
+                        Heap.SelectAndKeep
+                      else
+                        Heap.SelectAndRemove
+                    else Heap.Ignore
+                  ) else
+                    (* No way we will find another true pre-condition *)
+                    Heap.IgnoreAll
               ) s.groups_heap in
             s.groups_heap <- heap ;
             to_commit
           else
             (* Slow version without the help of the Heap: *)
             Hashtbl.fold (fun _ g to_commit ->
-              if not (already_output g) &&
-                 commit_cond in_tuple s.global_last_out g.local_last_out
-                             g.local_state s.global_state g.current_out
-              then g :: to_commit else to_commit
+              if Option.map_default ((==) g) false aggr_opt then
+                to_commit (* Already handled *)
+              else
+                if not (already_output g) &&
+                   commit_cond in_tuple s.global_last_out g.local_last_out
+                               g.local_state s.global_state g.current_out
+                then g :: to_commit else to_commit
             ) s.groups [] in
         (* FIXME: use the channel_id as a label! *)
         perf := Perf.add_and_transfer Stats.perf_select_others !perf ;

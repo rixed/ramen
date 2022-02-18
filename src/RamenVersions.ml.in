@@ -35,4 +35,4 @@ let replays = "v2" (* Replace final_rb with more flexible recipient *)
 let sync_conf = "v47" (* last: Added a type for pivots *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v105_"^ dessser_version ^"_"^ sync_conf (* last: modified RamenVariables *)
+let codegen = "v106_"^ dessser_version ^"_"^ sync_conf (* last: fix commit-before bug *)
