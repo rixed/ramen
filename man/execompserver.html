@@ -57,7 +57,7 @@
 
 <div id="page">
 
-<h1 align="center">RAMEN-ALERTER</h1>
+<h1 align="center">RAMEN-EXECOMPSERVER</h1>
 
 
 
@@ -66,8 +66,10 @@
 </h2>
 
 
-<p style="margin-left:11%; margin-top: 1em">ramen-alerter -
-Start the alerter.</p>
+
+<p style="margin-left:11%; margin-top: 1em">ramen-execompserver
+- Service that turns precompiled programs into local
+executables files.</p>
 
 <h2>SYNOPSIS
 <a name="SYNOPSIS"></a>
@@ -75,7 +77,7 @@ Start the alerter.</p>
 
 
 <p style="margin-left:11%; margin-top: 1em"><b>ramen
-alerter</b> [<i>OPTION</i>]...</p>
+execompserver</b> [<i>OPTION</i>]...</p>
 
 <h2>OPTIONS
 <a name="OPTIONS"></a>
@@ -89,16 +91,18 @@ alerter</b> [<i>OPTION</i>]...</p>
 <p style="margin-left:17%;">Daemonize.</p>
 
 
-<p style="margin-left:11%;"><b>--debounce-delay</b>=<i>VAL</i>
-(absent=10. or <b>ALERTER_DEBOUNCE_DELAY</b> env)</p>
+<p style="margin-left:11%;"><b>--dessser-code-generator</b>=<i>never|try|force</i>
+(absent=never or <b><br>
+RAMEN_DESSSER_CODE_GENERATOR</b> env)</p>
 
-<p style="margin-left:17%;">Minimum delay between a
-notification and the first message is sent.</p>
+<p style="margin-left:17%;">Controls the usage of the new
+experimental code generator using the dessser library.</p>
 
-<p style="margin-left:11%;"><b>--for-test</b></p>
+<p style="margin-left:11%;"><b>--external-compiler</b>
+(absent <b>RAMEN_USE_EXTERNAL_COMPILER</b> env)</p>
 
-<p style="margin-left:17%;">Internal special setup for
-running alerting tests.</p>
+<p style="margin-left:17%;">Call external compiler rather
+than using embedded one.</p>
 
 <p style="margin-left:11%;"><b>--help</b>[=<i>FMT</i>]
 (default=auto)</p>
@@ -111,37 +115,21 @@ With &rsquo;auto', the format is &rsquo;pager&rsquo; or
 &rsquo;dumb' or undefined.</p>
 
 
-<p style="margin-left:11%;"><b>--kafka-producers-timeout</b>=<i>VAL</i>
-(absent=86400. or <b><br>
-ALERTER_KAFKA_PRODUCERS_TIMEOUT</b> env)</p>
+<p style="margin-left:11%;"><b>--max-simultaneous-compilations</b>=<i>VAL</i>,
+<b>--max-simult-compilations</b>=<i>VAL</i> <br>
+(absent=4 or <b>RAMEN_MAX_SIMULT_COMPILATIONS</b> env)</p>
 
-<p style="margin-left:17%;">How long to keep idle kafka
-producers.</p>
+<p style="margin-left:17%;">Max number of compilations to
+perform simultaneously.</p>
 
-<p style="margin-left:11%;"><b>--max-fpr</b>=<i>VAL</i>,
-<b>--fpr</b>=<i>VAL</i>, <b>--default-max-fpr</b>=<i>VAL</i>
-<br>
-(absent=0.00166666666667 or <b>ALERTER_MAX_FPR</b> env)</p>
+<p style="margin-left:11%;"><b>-O</b> <i>VAL</i>,
+<b>--optimization-level</b>=<i>VAL</i> (absent=1 or
+<b>RAMEN_OPTIMIZATION_LEVEL</b> <br>
+env)</p>
 
-<p style="margin-left:17%;">Max global false-positive
-rate.</p>
-
-
-<p style="margin-left:11%;"><b>--max-incident-age</b>=<i>VAL</i>
-(absent=86400. or <b>ALERTER_MAX_INCIDENT_AGE</b> env)</p>
-
-<p style="margin-left:17%;">Maximum age for an incident
-after which it is automatically cancelled.</p>
-
-
-<p style="margin-left:11%;"><b>--max-last-sent-kept</b>=<i>VAL</i>,
-<b>--max-last-incidents-kept</b>=<i>VAL</i> (absent=100 or
-<b><br>
-ALERTER_MAX_LAST_SENT_KEPT</b> env)</p>
-
-<p style="margin-left:17%;">Maximum number of previous
-messages to keep in order to estimate the false positive
-rate.</p>
+<p style="margin-left:17%;">Controls how much effort is
+spent trying to optimize generated code, from 0 (none) to 3
+(max)</p>
 
 <p style="margin-left:11%;"><b>--prefix-log-with-name</b>
 (absent <b>RAMEN_PREFIX_LOG_WITH_NAME</b> env)</p>
@@ -151,11 +139,11 @@ service name. Comes handy when all logs are scrambled
 together, as in the output of docker logs.</p>
 
 
-<p style="margin-left:11%;"><b>--reschedule-clock</b>=<i>VAL</i>,
-<b>--clock</b>=<i>VAL</i> (absent=15. or
-<b>ALERTER_CLOCK</b> env)</p>
+<p style="margin-left:11%;"><b>--quarantine</b>=<i>DURATION</i>
+(absent=300. or <b>RAMEN_COMPILATION_QUARANTINE</b> env)</p>
 
-<p style="margin-left:17%;">Duration of the event loop.</p>
+<p style="margin-left:17%;">Delay after execompserver can
+retry compiling a program after failure.</p>
 
 <p style="margin-left:11%;"><b>--to-stdout</b>,
 <b>--to-stderr</b>, <b>--stdout</b>, <b>--stderr</b> (absent
@@ -302,7 +290,7 @@ generator with (will use a random one if unset).</p>
 <p style="margin-left:17%;">The name of this site.</p>
 
 <p style="margin-left:11%;"><b>--username</b>=<i>VAL</i>
-(absent=_alerter)</p>
+(absent=_execompserver)</p>
 
 <p style="margin-left:17%;">Login name to connect to the
 confserver.</p>
@@ -320,41 +308,8 @@ confserver.</p>
 
 <p style="margin-left:11%; margin-top: 1em">These
 environment variables affect the execution of
-<b>alerter</b>: <b><br>
-ALERTER_CLOCK</b></p>
-
-<p style="margin-left:17%;">See option <b>--clock</b>.</p>
-
-
-<p style="margin-left:11%;"><b>ALERTER_DEBOUNCE_DELAY</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--debounce-delay</b>.</p>
-
-
-<p style="margin-left:11%;"><b>ALERTER_KAFKA_PRODUCERS_TIMEOUT</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--kafka-producers-timeout</b>.</p>
-
-<p style="margin-left:11%;"><b>ALERTER_MAX_FPR</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--default-max-fpr</b>.</p>
-
-
-<p style="margin-left:11%;"><b>ALERTER_MAX_INCIDENT_AGE</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--max-incident-age</b>.</p>
-
-
-<p style="margin-left:11%;"><b>ALERTER_MAX_LAST_SENT_KEPT</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--max-last-incidents-kept</b>.</p>
-
-<p style="margin-left:11%;"><b>HOSTNAME</b></p>
+<b>execompserver</b>: <b><br>
+HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option <b>--site</b>.</p>
 
@@ -380,6 +335,12 @@ ALERTER_CLOCK</b></p>
 
 <p style="margin-left:17%;">See option <b>--colors</b>.</p>
 
+
+<p style="margin-left:11%;"><b>RAMEN_COMPILATION_QUARANTINE</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--quarantine</b>.</p>
+
 <p style="margin-left:11%;"><b>RAMEN_CONFSERVER</b></p>
 
 <p style="margin-left:17%;">See option
@@ -399,6 +360,12 @@ ALERTER_CLOCK</b></p>
 <p style="margin-left:11%;"><b>RAMEN_DEBUG</b></p>
 
 <p style="margin-left:17%;">See option <b>--debug</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_DESSSER_CODE_GENERATOR</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--dessser-code-generator</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_DIR</b></p>
 
@@ -444,6 +411,18 @@ ALERTER_CLOCK</b></p>
 <b>--masters</b>.</p>
 
 
+<p style="margin-left:11%;"><b>RAMEN_MAX_SIMULT_COMPILATIONS</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--max-simultaneous-compilations</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_OPTIMIZATION_LEVEL</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--optimization-level</b>.</p>
+
+
 <p style="margin-left:11%;"><b>RAMEN_PREFIX_LOG_WITH_NAME</b></p>
 
 <p style="margin-left:17%;">See option
@@ -468,6 +447,12 @@ ALERTER_CLOCK</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--users-dir</b>.</p>
+
+
+<p style="margin-left:11%;"><b>RAMEN_USE_EXTERNAL_COMPILER</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--external-compiler</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_VARIANTS</b></p>
 

@@ -57,7 +57,7 @@
 
 <div id="page">
 
-<h1 align="center">ramen-variants</h1>
+<h1 align="center">RAMEN-VARIANTS</h1>
 
 
 
@@ -83,13 +83,7 @@ variants</b> [<i>OPTION</i>]...</p>
 
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>--colors</b>=<i>VAL</i>
-(absent=always or <b>RAMEN_COLORS</b> env)</p>
-
-<p style="margin-left:17%;">Whether or not to use colors in
-terminal output.</p>
-
-<p style="margin-left:11%;"><b>--help</b>[=<i>FMT</i>]
+<p style="margin-left:11%; margin-top: 1em"><b>--help</b>[=<i>FMT</i>]
 (default=auto)</p>
 
 <p style="margin-left:17%;">Show this help in format
@@ -98,6 +92,12 @@ terminal output.</p>
 With &rsquo;auto', the format is &rsquo;pager&rsquo; or
 &rsquo;plain' whenever the <b>TERM</b> env var is
 &rsquo;dumb' or undefined.</p>
+
+<p style="margin-left:11%;"><b>--users-dir</b>=<i>PATH</i>
+(absent <b>RAMEN_USERS_DIR</b> env)</p>
+
+<p style="margin-left:17%;">Where to find users directory
+(defaults to $RAMEN_DIR/confserver/users).</p>
 
 <p style="margin-left:11%;"><b>--version</b></p>
 
@@ -109,12 +109,11 @@ With &rsquo;auto', the format is &rsquo;pager&rsquo; or
 
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>--bundle-dir</b>=<i>VAL</i>
-(absent=/home/rixed/.opam/BER/lib/ramen/bundle/ or <b><br>
-RAMEN_LIBS</b> env)</p>
+<p style="margin-left:11%; margin-top: 1em"><b>--colors</b>=<i>VAL</i>
+(absent=always or <b>RAMEN_COLORS</b> env)</p>
 
-<p style="margin-left:17%;">Directory where to find
-libraries for the embedded compiler.</p>
+<p style="margin-left:17%;">Whether or not to use colors in
+terminal output.</p>
 
 <p style="margin-left:11%;"><b>-d</b>, <b>--debug</b>
 (absent <b>RAMEN_DEBUG</b> env)</p>
@@ -128,14 +127,31 @@ libraries for the embedded compiler.</p>
 <p style="margin-left:17%;">How long to export a node
 output after startup before a client asks for it.</p>
 
-<p style="margin-left:11%;"><b>--master</b>=<i>VAL</i>
+<p style="margin-left:11%;"><b>--libs</b>=<i>VAL</i>,
+<b>--bundle-dir</b>=<i>VAL</i>
+(absent=/usr/local/libexec/bundle/ or <b><br>
+RAMEN_LIBS</b> env)</p>
+
+<p style="margin-left:17%;">Directory where to find
+libraries for the embedded compiler.</p>
+
+
+<p style="margin-left:11%;"><b>--local-experiments-config</b>=<i>FILE</i>,
+<b>--experiments-config</b>=<i>FILE</i> (absent <b><br>
+RAMEN_EXPERIMENTS_CONFIG</b> env)</p>
+
+<p style="margin-left:17%;">Configuration file for local
+experiments (defaults to
+$RAMEN_DIR/experiments/v1/config).</p>
+
+<p style="margin-left:11%;"><b>--masters</b>=<i>VAL</i>
 (absent <b>RAMEN_MASTERS</b> env)</p>
 
 <p style="margin-left:17%;">Indicates that Ramen must run
 in distributed mode and what sites play the master role.</p>
 
 
-<p style="margin-left:11%;"><b>--persist-dir</b>=<i>VAL</i>
+<p style="margin-left:11%;"><b>--persist-dir</b>=<i>PATH</i>
 (absent=/tmp/ramen or <b>RAMEN_DIR</b> env)</p>
 
 <p style="margin-left:17%;">Directory where are stored data
@@ -170,7 +186,8 @@ generator with (will use a random one if unset).</p>
 
 <p style="margin-left:17%;">The name of this site.</p>
 
-<p style="margin-left:11%;"><b>--variant</b>=<i>VAL</i>
+
+<p style="margin-left:11%;"><b>--variant</b>=<i>EXP1=VAR1,EXP2=VAR2...</i>
 (absent <b>RAMEN_VARIANTS</b> env)</p>
 
 <p style="margin-left:17%;">Force variants.</p>
@@ -201,6 +218,12 @@ HOSTNAME</b></p>
 <b>--persist-dir</b>.</p>
 
 
+<p style="margin-left:11%;"><b>RAMEN_EXPERIMENTS_CONFIG</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--experiments-config</b>.</p>
+
+
 <p style="margin-left:11%;"><b>RAMEN_INITIAL_EXPORT</b></p>
 
 <p style="margin-left:17%;">See option
@@ -219,7 +242,8 @@ HOSTNAME</b></p>
 
 <p style="margin-left:11%;"><b>RAMEN_MASTERS</b></p>
 
-<p style="margin-left:17%;">See option <b>--master</b>.</p>
+<p style="margin-left:17%;">See option
+<b>--masters</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_QUIET</b></p>
 
@@ -227,13 +251,19 @@ HOSTNAME</b></p>
 
 <p style="margin-left:11%;"><b>RAMEN_RANDOM_SEED</b></p>
 
-<p style="margin-left:17%;">See option <b>--seed</b>.</p>
+<p style="margin-left:17%;">See option
+<b>--rand-seed</b>.</p>
 
 
 <p style="margin-left:11%;"><b>RAMEN_REUSE_PREV_FILES</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--reuse-prev-files</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_USERS_DIR</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--users-dir</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_VARIANTS</b></p>
 

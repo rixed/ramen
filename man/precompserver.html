@@ -57,7 +57,7 @@
 
 <div id="page">
 
-<h1 align="center">RAMEN-ALERTER</h1>
+<h1 align="center">RAMEN-PRECOMPSERVER</h1>
 
 
 
@@ -66,8 +66,10 @@
 </h2>
 
 
-<p style="margin-left:11%; margin-top: 1em">ramen-alerter -
-Start the alerter.</p>
+
+<p style="margin-left:11%; margin-top: 1em">ramen-precompserver
+- Service that precompiles (aka parse+type-check)
+programs.</p>
 
 <h2>SYNOPSIS
 <a name="SYNOPSIS"></a>
@@ -75,7 +77,7 @@ Start the alerter.</p>
 
 
 <p style="margin-left:11%; margin-top: 1em"><b>ramen
-alerter</b> [<i>OPTION</i>]...</p>
+precompserver</b> [<i>OPTION</i>]...</p>
 
 <h2>OPTIONS
 <a name="OPTIONS"></a>
@@ -88,18 +90,6 @@ alerter</b> [<i>OPTION</i>]...</p>
 
 <p style="margin-left:17%;">Daemonize.</p>
 
-
-<p style="margin-left:11%;"><b>--debounce-delay</b>=<i>VAL</i>
-(absent=10. or <b>ALERTER_DEBOUNCE_DELAY</b> env)</p>
-
-<p style="margin-left:17%;">Minimum delay between a
-notification and the first message is sent.</p>
-
-<p style="margin-left:11%;"><b>--for-test</b></p>
-
-<p style="margin-left:17%;">Internal special setup for
-running alerting tests.</p>
-
 <p style="margin-left:11%;"><b>--help</b>[=<i>FMT</i>]
 (default=auto)</p>
 
@@ -110,39 +100,6 @@ With &rsquo;auto', the format is &rsquo;pager&rsquo; or
 &rsquo;plain' whenever the <b>TERM</b> env var is
 &rsquo;dumb' or undefined.</p>
 
-
-<p style="margin-left:11%;"><b>--kafka-producers-timeout</b>=<i>VAL</i>
-(absent=86400. or <b><br>
-ALERTER_KAFKA_PRODUCERS_TIMEOUT</b> env)</p>
-
-<p style="margin-left:17%;">How long to keep idle kafka
-producers.</p>
-
-<p style="margin-left:11%;"><b>--max-fpr</b>=<i>VAL</i>,
-<b>--fpr</b>=<i>VAL</i>, <b>--default-max-fpr</b>=<i>VAL</i>
-<br>
-(absent=0.00166666666667 or <b>ALERTER_MAX_FPR</b> env)</p>
-
-<p style="margin-left:17%;">Max global false-positive
-rate.</p>
-
-
-<p style="margin-left:11%;"><b>--max-incident-age</b>=<i>VAL</i>
-(absent=86400. or <b>ALERTER_MAX_INCIDENT_AGE</b> env)</p>
-
-<p style="margin-left:17%;">Maximum age for an incident
-after which it is automatically cancelled.</p>
-
-
-<p style="margin-left:11%;"><b>--max-last-sent-kept</b>=<i>VAL</i>,
-<b>--max-last-incidents-kept</b>=<i>VAL</i> (absent=100 or
-<b><br>
-ALERTER_MAX_LAST_SENT_KEPT</b> env)</p>
-
-<p style="margin-left:17%;">Maximum number of previous
-messages to keep in order to estimate the false positive
-rate.</p>
-
 <p style="margin-left:11%;"><b>--prefix-log-with-name</b>
 (absent <b>RAMEN_PREFIX_LOG_WITH_NAME</b> env)</p>
 
@@ -150,12 +107,13 @@ rate.</p>
 service name. Comes handy when all logs are scrambled
 together, as in the output of docker logs.</p>
 
+<p style="margin-left:11%;"><b>--solver</b>=<i>VAL</i>,
+<b>--smt-solver</b>=<i>VAL</i> (absent=/usr/bin/z3 -t:90000
+-smt2 %s or <b><br>
+RAMEN_SMT_SOLVER</b> env)</p>
 
-<p style="margin-left:11%;"><b>--reschedule-clock</b>=<i>VAL</i>,
-<b>--clock</b>=<i>VAL</i> (absent=15. or
-<b>ALERTER_CLOCK</b> env)</p>
-
-<p style="margin-left:17%;">Duration of the event loop.</p>
+<p style="margin-left:17%;">Command to run the SMT solver
+(with %s in place of the SMT2 file name).</p>
 
 <p style="margin-left:11%;"><b>--to-stdout</b>,
 <b>--to-stderr</b>, <b>--stdout</b>, <b>--stderr</b> (absent
@@ -302,7 +260,7 @@ generator with (will use a random one if unset).</p>
 <p style="margin-left:17%;">The name of this site.</p>
 
 <p style="margin-left:11%;"><b>--username</b>=<i>VAL</i>
-(absent=_alerter)</p>
+(absent=_precompserver)</p>
 
 <p style="margin-left:17%;">Login name to connect to the
 confserver.</p>
@@ -320,41 +278,8 @@ confserver.</p>
 
 <p style="margin-left:11%; margin-top: 1em">These
 environment variables affect the execution of
-<b>alerter</b>: <b><br>
-ALERTER_CLOCK</b></p>
-
-<p style="margin-left:17%;">See option <b>--clock</b>.</p>
-
-
-<p style="margin-left:11%;"><b>ALERTER_DEBOUNCE_DELAY</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--debounce-delay</b>.</p>
-
-
-<p style="margin-left:11%;"><b>ALERTER_KAFKA_PRODUCERS_TIMEOUT</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--kafka-producers-timeout</b>.</p>
-
-<p style="margin-left:11%;"><b>ALERTER_MAX_FPR</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--default-max-fpr</b>.</p>
-
-
-<p style="margin-left:11%;"><b>ALERTER_MAX_INCIDENT_AGE</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--max-incident-age</b>.</p>
-
-
-<p style="margin-left:11%;"><b>ALERTER_MAX_LAST_SENT_KEPT</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--max-last-incidents-kept</b>.</p>
-
-<p style="margin-left:11%;"><b>HOSTNAME</b></p>
+<b>precompserver</b>: <b><br>
+HOSTNAME</b></p>
 
 <p style="margin-left:17%;">See option <b>--site</b>.</p>
 
@@ -463,6 +388,11 @@ ALERTER_CLOCK</b></p>
 
 <p style="margin-left:17%;">See option
 <b>--reuse-prev-files</b>.</p>
+
+<p style="margin-left:11%;"><b>RAMEN_SMT_SOLVER</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--smt-solver</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_USERS_DIR</b></p>
 

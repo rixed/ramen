@@ -57,7 +57,7 @@
 
 <div id="page">
 
-<h1 align="center">ramen-timeseries</h1>
+<h1 align="center">RAMEN-TIMESERIES</h1>
 
 
 
@@ -76,7 +76,7 @@
 
 
 <p style="margin-left:11%; margin-top: 1em"><b>ramen
-timeseries</b> [<i>OPTION</i>]... <i>OPERATION</i>...</p>
+timeseries</b> [<i>OPTION</i>]... <i>FUNCTION</i>...</p>
 
 <h2>ARGUMENTS
 <a name="ARGUMENTS"></a>
@@ -84,10 +84,10 @@ timeseries</b> [<i>OPTION</i>]... <i>OPERATION</i>...</p>
 
 
 
-<p style="margin-left:11%; margin-top: 1em"><i>OPERATION</i>
+<p style="margin-left:11%; margin-top: 1em"><i>FUNCTION</i>
 (required)</p>
 
-<p style="margin-left:17%;">function fully qualified name
+<p style="margin-left:17%;">Function fully qualified name
 and field names, or code statement.</p>
 
 <h2>OPTIONS
@@ -100,12 +100,6 @@ and field names, or code statement.</p>
 (absent=begin)</p>
 
 <p style="margin-left:17%;">Selected bucket time.</p>
-
-<p style="margin-left:11%;"><b>--colors</b>=<i>VAL</i>
-(absent=always or <b>RAMEN_COLORS</b> env)</p>
-
-<p style="margin-left:17%;">Whether or not to use colors in
-terminal output.</p>
 
 
 <p style="margin-left:11%;"><b>--consolidation</b>=<i>min|max|avg|sum</i>
@@ -137,14 +131,6 @@ With &rsquo;auto', the format is &rsquo;pager&rsquo; or
 &rsquo;plain' whenever the <b>TERM</b> env var is
 &rsquo;dumb' or undefined.</p>
 
-
-<p style="margin-left:11%;"><b>--max-simultaneous-compilations</b>=<i>VAL</i>,
-<b>--max-simult-compilations</b>=<i>VAL</i> <br>
-(absent=4 or <b>RAMEN_MAX_SIMULT_COMPILATIONS</b> env)</p>
-
-<p style="margin-left:17%;">Max number of compilations to
-perform simultaneously.</p>
-
 <p style="margin-left:11%;"><b>-n</b> <i>POINTS</i>,
 <b>--num-points</b>=<i>POINTS</i> (absent=0)</p>
 
@@ -171,14 +157,6 @@ values.</p>
 <p style="margin-left:17%;">Timestamp of the first
 point.</p>
 
-<p style="margin-left:11%;"><b>--solver</b>=<i>VAL</i>,
-<b>--smt-solver</b>=<i>VAL</i> (absent=/usr/bin/z3 -t:60000
--smt2 %s or <b><br>
-RAMEN_SMT_SOLVER</b> env)</p>
-
-<p style="margin-left:17%;">Command to run the SMT solver
-(with %s in place of the SMT2 file name).</p>
-
 
 <p style="margin-left:11%;"><b>--time-step</b>=<i>DURATION</i>
 (absent=0.)</p>
@@ -192,13 +170,11 @@ points.</p>
 <p style="margin-left:17%;">Timestamp of the last
 point.</p>
 
+<p style="margin-left:11%;"><b>--users-dir</b>=<i>PATH</i>
+(absent <b>RAMEN_USERS_DIR</b> env)</p>
 
-<p style="margin-left:11%;"><b>--use-external-compiler</b>,
-<b>--external-compiler</b> (absent <b><br>
-RAMEN_USE_EMBEDDED_COMPILER</b> env)</p>
-
-<p style="margin-left:17%;">Call external compiler rather
-than using embedded one.</p>
+<p style="margin-left:17%;">Where to find users directory
+(defaults to $RAMEN_DIR/confserver/users).</p>
 
 <p style="margin-left:11%;"><b>--version</b></p>
 
@@ -216,12 +192,11 @@ field match the given value.</p>
 
 
 
-<p style="margin-left:11%; margin-top: 1em"><b>--bundle-dir</b>=<i>VAL</i>
-(absent=/home/rixed/.opam/BER/lib/ramen/bundle/ or <b><br>
-RAMEN_LIBS</b> env)</p>
+<p style="margin-left:11%; margin-top: 1em"><b>--colors</b>=<i>VAL</i>
+(absent=always or <b>RAMEN_COLORS</b> env)</p>
 
-<p style="margin-left:17%;">Directory where to find
-libraries for the embedded compiler.</p>
+<p style="margin-left:17%;">Whether or not to use colors in
+terminal output.</p>
 
 
 <p style="margin-left:11%;"><b>--confserver</b>[=<i>VAL</i>]
@@ -256,28 +231,49 @@ user's identity</p>
 <p style="margin-left:17%;">How long to export a node
 output after startup before a client asks for it.</p>
 
-<p style="margin-left:11%;"><b>--master</b>=<i>VAL</i>
+<p style="margin-left:11%;"><b>--libs</b>=<i>VAL</i>,
+<b>--bundle-dir</b>=<i>VAL</i>
+(absent=/usr/local/libexec/bundle/ or <b><br>
+RAMEN_LIBS</b> env)</p>
+
+<p style="margin-left:17%;">Directory where to find
+libraries for the embedded compiler.</p>
+
+
+<p style="margin-left:11%;"><b>--local-experiments-config</b>=<i>FILE</i>,
+<b>--experiments-config</b>=<i>FILE</i> (absent <b><br>
+RAMEN_EXPERIMENTS_CONFIG</b> env)</p>
+
+<p style="margin-left:17%;">Configuration file for local
+experiments (defaults to
+$RAMEN_DIR/experiments/v1/config).</p>
+
+<p style="margin-left:11%;"><b>--masters</b>=<i>VAL</i>
 (absent <b>RAMEN_MASTERS</b> env)</p>
 
 <p style="margin-left:17%;">Indicates that Ramen must run
 in distributed mode and what sites play the master role.</p>
 
 
-<p style="margin-left:11%;"><b>--persist-dir</b>=<i>VAL</i>
+<p style="margin-left:11%;"><b>--persist-dir</b>=<i>PATH</i>
 (absent=/tmp/ramen or <b>RAMEN_DIR</b> env)</p>
 
 <p style="margin-left:17%;">Directory where are stored data
 persisted on disc.</p>
 
-<p style="margin-left:11%;"><b>--priv-key</b>=<i>VAL</i>
-(absent=&lt;KEY&gt; or <b>RAMEN_CLIENT_PRIV_KEY</b> env)</p>
+<p style="margin-left:11%;"><b>--priv-key</b>=<i>VAL</i>,
+<b>--client-private-key</b>=<i>VAL</i> (absent=&lt;KEY&gt;
+or <b><br>
+RAMEN_CLIENT_PRIV_KEY</b> env)</p>
 
 <p style="margin-left:17%;">File name where the client
 private key is stored. This file must not be readable or
 writable by others.</p>
 
-<p style="margin-left:11%;"><b>--pub-key</b>=<i>VAL</i>
-(absent=&quot;&quot; or <b>RAMEN_CLIENT_PUB_KEY</b> env)</p>
+<p style="margin-left:11%;"><b>--pub-key</b>=<i>VAL</i>,
+<b>--client-public-key</b>=<i>VAL</i> (absent=&quot;&quot;
+or <b><br>
+RAMEN_CLIENT_PUB_KEY</b> env)</p>
 
 <p style="margin-left:17%;">File name where the client
 public key is stored.</p>
@@ -317,7 +313,8 @@ generator with (will use a random one if unset).</p>
 <p style="margin-left:17%;">Login name to connect to the
 confserver.</p>
 
-<p style="margin-left:11%;"><b>--variant</b>=<i>VAL</i>
+
+<p style="margin-left:11%;"><b>--variant</b>=<i>EXP1=VAR1,EXP2=VAR2...</i>
 (absent <b>RAMEN_VARIANTS</b> env)</p>
 
 <p style="margin-left:17%;">Force variants.</p>
@@ -386,6 +383,12 @@ HOSTNAME</b></p>
 <b>--persist-dir</b>.</p>
 
 
+<p style="margin-left:11%;"><b>RAMEN_EXPERIMENTS_CONFIG</b></p>
+
+<p style="margin-left:17%;">See option
+<b>--experiments-config</b>.</p>
+
+
 <p style="margin-left:11%;"><b>RAMEN_INITIAL_EXPORT</b></p>
 
 <p style="margin-left:17%;">See option
@@ -404,13 +407,8 @@ HOSTNAME</b></p>
 
 <p style="margin-left:11%;"><b>RAMEN_MASTERS</b></p>
 
-<p style="margin-left:17%;">See option <b>--master</b>.</p>
-
-
-<p style="margin-left:11%;"><b>RAMEN_MAX_SIMULT_COMPILATIONS</b></p>
-
 <p style="margin-left:17%;">See option
-<b>--max-simult-compilations</b>.</p>
+<b>--masters</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_QUIET</b></p>
 
@@ -418,7 +416,8 @@ HOSTNAME</b></p>
 
 <p style="margin-left:11%;"><b>RAMEN_RANDOM_SEED</b></p>
 
-<p style="margin-left:17%;">See option <b>--seed</b>.</p>
+<p style="margin-left:17%;">See option
+<b>--rand-seed</b>.</p>
 
 
 <p style="margin-left:11%;"><b>RAMEN_REUSE_PREV_FILES</b></p>
@@ -426,16 +425,10 @@ HOSTNAME</b></p>
 <p style="margin-left:17%;">See option
 <b>--reuse-prev-files</b>.</p>
 
-<p style="margin-left:11%;"><b>RAMEN_SMT_SOLVER</b></p>
+<p style="margin-left:11%;"><b>RAMEN_USERS_DIR</b></p>
 
 <p style="margin-left:17%;">See option
-<b>--smt-solver</b>.</p>
-
-
-<p style="margin-left:11%;"><b>RAMEN_USE_EMBEDDED_COMPILER</b></p>
-
-<p style="margin-left:17%;">See option
-<b>--use-external-compiler</b>.</p>
+<b>--users-dir</b>.</p>
 
 <p style="margin-left:11%;"><b>RAMEN_VARIANTS</b></p>
 
