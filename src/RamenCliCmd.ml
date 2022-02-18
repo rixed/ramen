@@ -369,9 +369,7 @@ let compile_local conf lib_path source_file output_file_opt src_path_opt =
     (try
       apply_rule from_file to_file rule ;
     with e ->
-      !logger.error "Cannot compile: %s"
-        (Printexc.to_string e) ;
-      raise Exit) ;
+      failwith (Printexc.to_string e)) ;
     to_ext
   ) from_ext build_rules |>
   ignore
