@@ -9,63 +9,82 @@ DEFINE collectd AS
 
 DEFINE memory PERSIST FOR 1d AS
   SELECT
-    TRUNCATE(start, period) AS start,
+    TRUNCATE(MIN start, period) AS start,
     out.start + period AS stop,
     host,
     -- FIXME: This coalesce because of https://github.com/rixed/ramen/issues/1412
     COALESCE (type_instance, "unknown") AS _type,
-    AVG (IF _type = "free" THEN 1024 * value) AS free
+    COALESCE (type_name, "unknown") AS _tname,
+    AVG (IF _type = "free" AND _tname = "memory" THEN 1024 * value) {bytes} AS free
       "The amount of physical RAM left unused by the system.",
-    AVG (IF _type = "used" THEN 1024 * value) AS used
+    AVG (IF _type = "free" AND _tname = "percent" THEN value) AS perc_free
+      "Percentage of unused RAM.",
+    AVG (IF _type = "used" AND _tname = "memory" THEN 1024 * value) {bytes} AS used
       "mem_used = mem_total - (mem_free + mem_buffered + mem_cached + mem_slab_total).",
-    AVG (IF _type = "cached" THEN 1024 * value) AS cached
+    AVG (IF _type = "used" AND _tname = "percent" THEN value) AS perc_used
+      "Percentage of used RAM.",
+    AVG (IF _type = "cached" AND _tname = "memory" THEN 1024 * value) {bytes} AS cached
       "The amount of physical RAM left unused by the system.",
-    AVG (IF _type = "buffered" THEN 1024 * value) {bytes} AS buffered
+    AVG (IF _type = "cached" AND _tname = "percent" THEN value) AS perc_cached
+      "Percentage of cached RAM.",
+    AVG (IF _type = "buffered" AND _tname = "memory" THEN 1024 * value) {bytes} AS buffered
       "The amount of temporary storage for raw disk blocks.",
-    MAX (IF _type = "total" THEN 1024 * value) AS total
-      "Total amount of usable RAM which is physical RAM minus a number of reserved bits and the kernel binary code.",
-    AVG (IF _type LIKE "slab_recl" THEN 1024 * value) AS slab_recl
+    AVG (IF _type = "buffered" AND _tname = "percent" THEN value) AS perc_buffered
+      "Percentage of buffered RAM.",
+    AVG (IF _type LIKE "slab_recl" AND _tname = "memory" THEN 1024 * value) {bytes} AS slab_recl
       "The part of Slab that can be reclaimed, such as caches.",
-    AVG (IF _type LIKE "slab_unrecl" THEN 1024 * value) AS slab_unrecl
-      "The part of Slab that cannot be reclaimed even when lacking memory."
+    AVG (IF _type LIKE "slab_recl" AND _tname = "percent" THEN value) AS perc_slab_recl
+      "Percentage of RAM used as slab that can be reclaimed.",
+    AVG (IF _type LIKE "slab_unrecl" AND _tname = "memory" THEN 1024 * value) {bytes} AS slab_unrecl
+      "The part of Slab that cannot be reclaimed even when lacking memory.",
+    AVG (IF _type LIKE "slab_unrecl" AND _tname = "percent" THEN value) AS perc_slab_unrecl
+      "Percentage of RAM used as slab that cannot be reclaimed."
   FROM collectd
   WHERE COALESCE (plugin = "memory", false)
-  GROUP BY host, TRUNCATE(start, period)
-  COMMIT AFTER in.start > out.stop + period/2
+  GROUP BY host
+  COMMIT BEFORE in.start >= out.stop
   FACTORS host;
 
 DEFINE cpu PERSIST FOR 1d AS
   SELECT
-    TRUNCATE(start, period) AS start,
+    TRUNCATE(MIN start, period) AS start,
     out.start + period AS stop,
     host,
     u16(instance) AS cpu_num,
     COALESCE (type_instance, "unknown") AS _type,
-    AVG (IF _type = "user" THEN value) {jiffies} AS user
+    MAX (IF _type = "user" THEN value) {jiffies} AS _user,
+    _user - previous._user AS user
       "Time spent running un-niced user space processes.",
-    AVG (IF _type = "system" THEN value) {jiffies} AS system
+    MAX (IF _type = "system" THEN value) {jiffies} AS _system,
+    _system - previous._system AS system
       "Time spent running the kernel.",
-    AVG (IF _type = "nice" THEN value) {jiffies} AS nice
+    MAX (IF _type = "nice" THEN value) {jiffies} AS _nice,
+    _nice - previous._nice AS nice
       "Time spent running user space processes that have been niced. The priority level a user space process can be tweaked by adjusting its niceness.",
-    AVG (IF _type = "idle" THEN value) {jiffies} AS idle
+    MAX (IF _type = "idle" THEN value) {jiffies} AS _idle,
+    _idle - previous._idle AS idle
       "Time spent idle.",
-    AVG (IF _type = "interrupt" THEN value) {jiffies} AS interrupt
+    MAX (IF _type = "interrupt" THEN value) {jiffies} AS _interrupt,
+    _interrupt - previous._interrupt AS interrupt
       "Time spent servicing interrupts.",
-    AVG (IF _type = "softirq" THEN value) {jiffies} AS softirq
+    MAX (IF _type = "softirq" THEN value) {jiffies} AS _softirq,
+    _softirq - previous._softirq AS softirq
       "Time spent servicing soft IRQs.",
-    AVG (IF _type = "steal" THEN value) {jiffies} AS steal
+    MAX (IF _type = "steal" THEN value) {jiffies} AS _steal,
+    _steal - previous._steal AS steal
       "CPU steal is a measure of the fraction of time that a machine is in a state of “involuntary wait.” It is time for which the kernel cannot otherwise account in one of the traditional classifications like user, system, or idle.  It is time that went missing, from the perspective of the kernel.",
-    AVG (IF _type = "wait" THEN value) {jiffies} AS wait
+    MAX (IF _type = "wait" THEN value) {jiffies} AS _wait,
+    _wait - previous._wait AS wait
       "The time spent idle while waiting for an I/O operation to complete."
   FROM collectd
   WHERE COALESCE (plugin = "cpu" AND type_name = "cpu", false)
-  GROUP BY host, TRUNCATE(start, period), instance
-  COMMIT AFTER in.start > out.stop + period/2
+  GROUP BY host, instance
+  COMMIT BEFORE in.start >= out.stop
   FACTORS host AND cpu_num;
 
 DEFINE interface PERSIST FOR 1d AS
   SELECT
-    TRUNCATE(start, period) AS start,
+    TRUNCATE(MIN start, period) AS start,
     out.start + period AS stop,
     host,
     instance AS name,
@@ -89,13 +108,13 @@ DEFINE interface PERSIST FOR 1d AS
       "The total number of transmitted packets."
   FROM collectd
   WHERE COALESCE (plugin = "interface", false)
-  GROUP BY host, TRUNCATE(start, period), instance
-  COMMIT AFTER in.start > out.stop + period/2
+  GROUP BY host, instance
+  COMMIT BEFORE in.start >= out.stop
   FACTORS host AND name;
 
 DEFINE disk PERSIST FOR 1d AS
   SELECT
-    TRUNCATE(start, period) AS start,
+    TRUNCATE(MIN start, period) AS start,
     out.start + period AS stop,
     host,
     instance AS partition,
@@ -125,13 +144,13 @@ DEFINE disk PERSIST FOR 1d AS
       "Queue size of pending I/O operations."
   FROM collectd
   WHERE COALESCE (plugin = "disk", false)
-  GROUP BY host, TRUNCATE(start, period), instance
-  COMMIT AFTER in.start > out.stop + period/2
+  GROUP BY host, instance
+  COMMIT BEFORE in.start >= out.stop
   FACTORS host AND partition;
 
 DEFINE df PERSIST FOR 1d AS
   SELECT
-    TRUNCATE(start, period) AS start,
+    TRUNCATE(MIN start, period) AS start,
     out.start + period AS stop,
     host,
     instance AS partition,
@@ -141,13 +160,13 @@ DEFINE df PERSIST FOR 1d AS
     AVG (IF _type = "reserved" THEN value) {bytes} AS reserved
   FROM collectd
   WHERE COALESCE (plugin = "df" AND type_name = "df_complex", false)
-  GROUP BY host, TRUNCATE(start, period), instance
-  COMMIT AFTER in.start > out.stop + period/2
+  GROUP BY host, instance
+  COMMIT BEFORE in.start >= out.stop
   FACTORS host AND partition;
 
 DEFINE swap PERSIST FOR 1d AS
   SELECT
-    TRUNCATE(start, period) AS start,
+    TRUNCATE(MIN start, period) AS start,
     out.start + period AS stop,
     host,
     COALESCE (type_instance, "unknown") AS _type,
@@ -159,13 +178,13 @@ DEFINE swap PERSIST FOR 1d AS
     AVG (IF _type = "out" AND _tname = "swap_io" THEN value) {seconds^-1} AS swap_out
   FROM collectd
   WHERE COALESCE (plugin = "swap", false)
-  GROUP BY host, TRUNCATE(start, period)
-  COMMIT AFTER in.start > out.stop + period/2
+  GROUP BY host
+  COMMIT BEFORE in.start >= out.stop
   FACTORS host;
 
 DEFINE processes PERSIST FOR 1d AS
   SELECT
-    TRUNCATE(start, period) AS start,
+    TRUNCATE(MIN start, period) AS start,
     out.start + period AS stop,
     host,
     COALESCE (type_instance, "unknown") AS _type,
@@ -179,25 +198,25 @@ DEFINE processes PERSIST FOR 1d AS
     AVG (IF _tname = "fork_rrate" THEN value) AS fork_rate
   FROM collectd
   WHERE COALESCE (plugin = "processes", false)
-  GROUP BY host, TRUNCATE(start, period)
-  COMMIT AFTER in.start > out.stop + period/2
+  GROUP BY host
+  COMMIT BEFORE in.start >= out.stop
   FACTORS host;
 
 DEFINE users PERSIST FOR 1d AS
   SELECT
-    TRUNCATE(start, period) AS start,
+    TRUNCATE(MIN start, period) AS start,
     out.start + period AS stop,
     host,
     AVG value AS count
   FROM collectd
   WHERE COALESCE (plugin = "users" AND type_name = "users", false)
-  GROUP BY host, TRUNCATE(start, period)
-  COMMIT AFTER in.start > out.stop + period/2
+  GROUP BY host
+  COMMIT BEFORE in.start >= out.stop
   FACTORS host;
 
 DEFINE ping PERSIST FOR 1d AS
   SELECT
-    TRUNCATE(start, period) AS start,
+    TRUNCATE(MIN start, period) AS start,
     out.start + period AS stop,
     host,
     instance AS target,
@@ -209,13 +228,13 @@ DEFINE ping PERSIST FOR 1d AS
     AVG (IF _tname = "ping_stddev" THEN value) AS stddev
   FROM collectd
   WHERE COALESCE (plugin = "ping", false)
-  GROUP BY host, TRUNCATE(start, period)
-  COMMIT AFTER in.start > out.stop + period/2
+  GROUP BY host
+  COMMIT BEFORE in.start >= out.stop
   FACTORS host, target;
 
 DEFINE load PERSIST FOR 1d AS
   SELECT
-    TRUNCATE(start, period) AS start,
+    TRUNCATE(MIN start, period) AS start,
     out.start + period AS stop,
     host,
     COALESCE (type_instance, "unknown") AS _type,
@@ -227,17 +246,15 @@ DEFINE load PERSIST FOR 1d AS
       "Load average figures giving the number of jobs in the run queue (state R) or waiting for disk I/O (state D) averaged over 15 Minutes."
   FROM collectd
   WHERE COALESCE (plugin = "load" AND type_name = "load", false)
-  GROUP BY host, TRUNCATE(start, period)
-  COMMIT AFTER in.start > out.stop + period/2
+  GROUP BY host
+  COMMIT BEFORE in.start >= out.stop
   FACTORS host;
 
 DEFINE memory_alert AS
   FROM memory
   SELECT
-    start, host,
-    total,
-    free * 100 / total AS used_ratio,
-    used_ratio > 50 AS firing
+    *,
+    perc_free < 10 AS firing
   GROUP BY host
   KEEP ALL AND NOTIFY "RAM is low"
   AFTER COALESCE (out.firing <> previous.firing, false);

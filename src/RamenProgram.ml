@@ -125,7 +125,53 @@ let has_star = function
  * Returns a new programs with unknown variables replaced by actual ones
  * and unused params and globals removed. *)
 
-let checked (params, run_cond, globals, funcs, warnings) =
+exception MissingParent of N.src_path
+let () =
+  Printexc.register_printer (function
+    | MissingParent path ->
+        Some (
+          Printf.sprintf2 "Cannot find parent source %a"
+            N.src_path_print path)
+    | _ -> None)
+
+let operation_of_data_source get_program start_name funcs data_source =
+  let unknown_parent fn parents =
+    Printf.sprintf2
+      "While expanding STAR, cannot find parent function %a (have %a)"
+      N.func_print fn
+      (pretty_list_print N.func_print) parents |>
+    failwith in
+  match data_source with
+  | O.SubQuery _ ->
+      (* Sub-queries have been reified already *)
+      assert false
+  | O.NamedOperation (_, None, fn) ->
+      (match List.find (fun f -> f.name = Some fn) funcs with
+      | exception Not_found ->
+          unknown_parent fn (List.filter_map (fun f -> f.name) funcs)
+      | par ->
+          par.operation)
+  | O.NamedOperation (_, Some rel_pn, fn) ->
+      let pn = N.program_of_rel_program start_name (N.rel_program rel_pn) in
+      (match get_program pn with
+      | exception Not_found ->
+          (* Have a more dedicated error in that case, because the compilation
+           * error might be automatically retried when this missing parent
+           * appears. *)
+          !logger.warning "Cannot get parent program %a"
+            N.program_print pn ;
+          raise (MissingParent (N.src_path_of_program pn))
+      | par_rc ->
+          (match List.find (fun f -> f.VSI.name = fn) par_rc.VSI.funcs with
+          | exception Not_found ->
+              unknown_parent fn
+                (List.map (fun f -> f.VSI.name) par_rc.VSI.funcs)
+          | par_func ->
+              par_func.VSI.operation))
+
+let anonymous = N.func "<anonymous>"
+
+let checked get_program program_name (params, run_cond, globals, funcs, warnings) =
   let warnings = ref warnings in
   let warn ?line ?column message =
     !logger.warning "%s" message ;
@@ -142,8 +188,8 @@ let checked (params, run_cond, globals, funcs, warnings) =
         Printf.sprintf "Running condition cannot use tuple %s"
           (Variable.to_string tuple) |>
         failwith
-    | _ -> ()) run_cond ;
-  let anonymous = N.func "<anonymous>" in
+    | _ -> ()
+  ) run_cond ;
   let name_not_unique name =
     Printf.sprintf "Name %s is not unique" name |> failwith in
   (* Check parameters have unique names: *)
@@ -154,28 +200,28 @@ let checked (params, run_cond, globals, funcs, warnings) =
   ) Set.empty params |> ignore ;
   (* Check all functions in turn: *)
   let funcs, used_params, used_globals, _ =
-    List.fold_left (fun (funcs, used_params, used_globals, names) n ->
+    List.fold_left (fun (funcs, used_params, used_globals, names) func ->
       (* We should not have any STAR left at that point: *)
-      assert (not (has_star n.operation)) ;
+      assert (not (has_star func.operation)) ;
       (* Resolve unknown tuples in the operation: *)
       let op =
         (* Check the operation is OK: *)
-        try O.checked params globals n.operation
+        try O.checked params globals func.operation
         with Failure msg ->
           let open RamenTypingHelpers in
           Printf.sprintf "In function %s: %s"
-            (N.func_color (n.name |? anonymous))
+            (N.func_color (func.name |? anonymous))
             msg |>
           failwith in
       (* Check that lazy functions do not emit notifications: *)
-      if n.is_lazy && O.notifications_of_operation n.operation <> [] then
+      if func.is_lazy && O.notifications_of_operation func.operation <> [] then
         Printf.sprintf2
           "Function %a defined as LAZY but emits notifications"
-          N.func_print (n.name |? anonymous) |>
+          N.func_print (func.name |? anonymous) |>
         warn ;
       (* Check that the name is valid and unique: *)
       let names =
-        match n.name with
+        match func.name with
         | Some name ->
             let ns = (name :> string) in
             (* Names of defined functions cannot use '#' as we use it to delimit
@@ -187,12 +233,53 @@ let checked (params, run_cond, globals, funcs, warnings) =
             if Set.mem name names then name_not_unique ns ;
             Set.add name names
         | None -> names in
+      (* Check that the function does not group by non factor in a context
+       * when groups are kept indefinitely: *)
+      (match func.operation with
+      | O.Aggregate { commit_before ; from ; key ; _ } ->
+          if commit_before (* FIXME: or rather, uses *) then (
+            let non_factor_keys =
+              (* Collect field names from input used in the group-by clause: *)
+              let group_by_fields =
+                List.fold_left (fun lst k ->
+                  E.fold (fun _ lst -> function
+                    | { text = Stateless (SL2 (Get,
+                        { text = Stateless (SL0 (Const (VString name))) ; _ },
+                        { text = Stateless (SL0 (Variable var)) ; _ })) ; _ }
+                      when Variable.has_type_input var ->
+                        N.field name :: lst
+                    | _ ->
+                        lst
+                  ) lst k
+                ) [] key in
+              List.filter (fun f ->
+                (* If is reassuring enough that [f] be a factor in at least one
+                 * parent: *)
+                not (
+                  List.exists (fun data_source ->
+                    match operation_of_data_source
+                            get_program program_name funcs data_source with
+                    | exception _ -> false
+                    | parent_op -> List.mem f (O.factors_of_operation parent_op)
+                  ) from)
+              ) group_by_fields in
+            List.iter (fun f ->
+              Printf.sprintf2
+                "Function %a group by non factor field %a in a context when groups \
+                 are forever"
+                N.func_print (func.name |? anonymous)
+                N.field_print f |>
+              warn
+            ) non_factor_keys
+          )
+      | _ ->
+          ()) ;
       (* Collect all parameters and global variables that are used: *)
       let collect_variable var used e =
         match e.E.text with
-        | Stateless (SL2 (Get, n, { text = Stateless (SL0 (Variable v)) ;
-                                    _ })) when v = var ->
-            (match E.string_of_const n with
+        | Stateless (SL2 (Get, func, { text = Stateless (SL0 (Variable v)) ;
+                                       _ })) when v = var ->
+            (match E.string_of_const func with
             | None ->
                 Printf.sprintf2
                   "Cannot determine the name of variable in expression %a"
@@ -205,10 +292,11 @@ let checked (params, run_cond, globals, funcs, warnings) =
       let used_variables var used =
         O.fold_expr used (fun _ _ -> collect_variable var) op in
       let used_params =
-        Retention.fold_expr used_params (collect_variable Param) n.retention in
+        Retention.fold_expr used_params (collect_variable Param)
+                                        func.retention in
       let used_params = used_variables Param used_params
       and used_globals = used_variables GlobalVar used_globals in
-      { n with operation = op } :: funcs, used_params, used_globals, names
+      { func with operation = op } :: funcs, used_params, used_globals, names
     ) ([], Set.empty, Set.empty, Set.empty) funcs in
   (* Remove unused parameters from params
    * See https://github.com/rixed/ramen/issues/731 *)
@@ -533,15 +621,6 @@ let name_unnamed =
     if func.name <> None then func else
     { func with name = Some (make_name ()) })
 
-exception MissingParent of N.src_path
-let () =
-  Printexc.register_printer (function
-    | MissingParent path ->
-        Some (
-          Printf.sprintf2 "Cannot find parent source %a"
-            N.src_path_print path)
-    | _ -> None)
-
 (* For convenience, it is possible to 'SELECT *' rather than, or in addition
  * to, a set of named fields (see [and_all_others] in RamenOperation). For
  * simplicity, we resolve this STAR into the actual list of fields here right
@@ -550,46 +629,13 @@ let () =
 
 (* Exits when we met a parent which output type is not stable: *)
 let common_fields_of_from get_program start_name funcs from =
-  let unknown_parent fn parents =
-    Printf.sprintf2
-      "While expanding STAR, cannot find parent function %a (have %a)"
-      N.func_print fn
-      (pretty_list_print N.func_print) parents |>
-    failwith in
   List.fold_left (fun common data_source ->
     let fields =
-      match data_source with
-      | O.SubQuery _ ->
-          (* Sub-queries have been reified already *)
-          assert false
-      | O.NamedOperation (_, None, fn) ->
-          (match List.find (fun f -> f.name = Some fn) funcs with
-          | exception Not_found ->
-              unknown_parent fn (List.filter_map (fun f -> f.name) funcs)
-          | par ->
-              if has_star par.operation then raise Exit ;
-              O.out_type_of_operation ~with_priv:false par.operation |>
-              List.map (fun ft -> ft.RamenTuple.name))
-      | O.NamedOperation (_, Some rel_pn, fn) ->
-          let pn = N.program_of_rel_program start_name (N.rel_program rel_pn) in
-          (match get_program pn with
-          | exception Not_found ->
-              !logger.warning "Cannot get parent program %a"
-                N.program_print pn ;
-              raise (MissingParent (N.src_path_of_program pn))
-          | par_rc ->
-              (match List.find (fun f ->
-                       f.VSI.name = fn
-                     ) par_rc.VSI.funcs with
-              | exception Not_found ->
-                  unknown_parent fn (
-                    List.map (fun f -> f.VSI.name) par_rc.VSI.funcs)
-              | par_func ->
-                  if has_star par_func.VSI.operation then raise Exit ;
-                  O.out_type_of_operation
-                    ~with_priv:false par_func.VSI.operation |>
-                  List.map (fun ft -> ft.RamenTuple.name)))
-    in
+      let parent_op =
+        operation_of_data_source get_program start_name funcs data_source in
+      if has_star parent_op then raise Exit ;
+      O.out_type_of_operation ~with_priv:false parent_op |>
+      List.map (fun ft -> ft.RamenTuple.name) in
     let fields = Set.of_list fields in
     match common with
     | None -> Some fields
@@ -674,6 +720,14 @@ let reify_star_fields get_program program_name funcs =
     failwith "Cannot expand STAR selections" ;
   !new_funcs
 
+(* TODO: infer event times and factors sooner than in RamenTypingHelpers: *)
+
+let infer_event_time _get_program _program_name funcs =
+  funcs
+
+let infer_factors _get_program _program_name funcs =
+  funcs
+
 (*
  * Friendlier version of the parser.
  * Allows for extra spaces and reports errors.
@@ -689,5 +743,7 @@ let parse =
     let funcs = name_unnamed funcs in
     let funcs = reify_subqueries funcs in
     let funcs = reify_star_fields get_program program_name funcs in
+    let funcs = infer_event_time get_program program_name funcs in
+    let funcs = infer_factors get_program program_name funcs in
     let t = params, run_cond, globals, funcs, warnings in
-    checked t
+    checked get_program program_name t

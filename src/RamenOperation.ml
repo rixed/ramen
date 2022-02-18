@@ -480,11 +480,12 @@ let program_of_parent_prog child_prog = function
   | Some rel_prog ->
       N.(program_of_rel_program child_prog rel_prog)
 
-let parents_of_operation = function
-  | ListenFor _ | ReadExternal _ ->
-      []
-  | Aggregate { from ; _ } ->
-      List.map func_id_of_data_source from
+let data_sources_of_operation = function
+  | ListenFor _ | ReadExternal _ -> []
+  | Aggregate { from ; _ } -> from
+
+let parents_of_operation op =
+  List.map func_id_of_data_source (data_sources_of_operation op)
 
 let factors_of_operation = function
   | ReadExternal { readExternal_factors ; _ } -> readExternal_factors
@@ -492,6 +493,10 @@ let factors_of_operation = function
   | ListenFor { factors ; proto ; _ } ->
       if factors <> [] then factors
       else RamenProtocols.factors_of_proto proto
+
+let key_of_operation = function
+  | Aggregate { key ; _ } -> key
+  | _ -> []
 
 let operation_with_factors op factors = match op with
   | ReadExternal s -> ReadExternal { s with readExternal_factors = factors }
