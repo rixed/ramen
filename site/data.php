@@ -138,6 +138,9 @@ $info_pages = [
       'blog/2019-12_.html' => [
         'date' => 'December 2019',
         'title' => 'Walk through replays' ],
+      'blog/2022-02.html' => [
+        'date' => 'February 2022',
+        'title' => 'What happened those last two years?' ],
     ] ],
 ];
 ?>
