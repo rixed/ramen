@@ -443,6 +443,14 @@ let num_infos clt =
     | Key.Sources (_, "info"),
       Value.(SourceInfo { detail = Compiled _ ; _ }) ->
         num + 1
+    (* Abort on fatal errors: *)
+    | Key.Sources (src_path, "info"),
+      Value.(SourceInfo { detail = Failed { errors = e :: _ ;
+                                            depends_on = None } ; _ }) ->
+        Printf.sprintf2 "Cannot compile %a: %a"
+          N.src_path_print src_path
+          RamenRaqlError.print e |>
+        failwith
     | _ ->
         num
   ) 0
