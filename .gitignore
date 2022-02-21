@@ -48,9 +48,8 @@ examples/generators/network/error_rate.ramen
 examples/generators/network/resp_time.ramen
 examples/monitoring/network/minutely.ramen
 tests/**/*.ml
-tests/func/*.success
+*.success
 tests/func/*.cc
-tests/alerter/*.success
 tests/kafka/tmp
 examples/prometheus-alertmanager.yml
 wrap.sh
@@ -172,3 +171,5 @@ tests/features/api.feature
 depend
 docker/Dockerfile
 docker/Dockerfile-dev
+doc/*/*.ramen
+doc/*/*.test

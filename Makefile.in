@@ -145,12 +145,13 @@ all: $(INSTALLED) bundle
 
 # Generic rules
 
-.SUFFIXES: .ml .mli .cmi .cmx .cmo .cmxs .cmt .top .html .adoc .ramen .alert .pivot .x \
-           .test .success .type
-.PHONY: clean clean-temp clean-dist clean-dessserc-gen \
-        all dep bundle doc deb tarball bundle check \
-        func-check unit-check ringbuf-check cli-check err-check arc-check \
-        orc-check comp-check examples-check examples-check-prep \
+.SUFFIXES: .ml .mli .cmi .cmx .cmo .cmxs .cmt .top .html .adoc .ramen .alert \
+           .pivot .x .test .success .type
+
+.PHONY: clean clean-temp clean-dist clean-dessserc-gen clean-doc clean-dist-doc \
+        all dep bundle doc deb tarball bundle \
+        check func-check unit-check ringbuf-check cli-check err-check arc-check \
+        orc-check comp-check examples-check examples-check-prep doc-check \
         install install-bundle install-examples install-systemd uninstall reinstall \
         docker docker-dev docker-push docker-dev-push appimage coverity bench
 
@@ -687,12 +688,6 @@ tests/func/sort.x: tests/func/fixtures/earthquakes.x
 tests/func/top_expr.x: tests/func/fixtures/cars.x
 tests/func/tuples.x: tests/func/fixtures/n123.x
 
-# Documentation
-
-doc: docs/tutorial.html docs/manual.html docs/roadmap.html
-
-docs/tutorial.html: docs/tutorial_group_by.svg docs/sample_chart1.svg
-
 
 # GeoIP database
 # We use the one from http://software77.net/geo-ip/
@@ -1094,6 +1089,41 @@ genRamenSubcommands.opt: \
 	@echo 'Linking $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package batteries,dessser,stdint,binocle $^ -o $@
 
+
+#
+# Documentation
+#
+
+GENERATED_PAGES = \
+	doc/raql/now.html \
+	doc/raql/random.html \
+	doc/raql/pi.html \
+	doc/raql/age.html \
+	doc/raql/cast.html \
+	doc/raql/force.html \
+
+doc: $(GENERATED_PAGES)
+
+doc/gen_doc.cmo: doc/gen_doc.ml doc/raql/expr.cmo
+	ocamlfind ocamlc -annot -package batteries,owww -I doc/raql -c $< -o $@
+
+doc/raql/expr.cmo: doc/raql/expr.ml
+	ocamlfind ocamlc -annot -package batteries,owww -I doc/raql -c $< -o $@
+
+doc/gen_doc.byte: doc/raql/expr.cmo doc/gen_doc.cmo
+	ocamlfind ocamlc -annot -package batteries,owww -linkpkg $^ -o $@
+
+clean-doc:
+	for d in doc doc/raql; do $(RM) $$d/*.cmo $$d/*.o $$d/*.cmt $$d/*.cmi; done
+
+clean-dist-doc:
+	$(RM) doc/gen_doc.byte
+	$(RM) $(GENERATED_PAGES)
+
+doc/raql/%.html doc/raql/%.test doc/raql/%.ramen: doc/gen_doc.byte
+	@doc/gen_doc.byte $@
+
+
 #
 # Tests
 #
@@ -1343,7 +1373,9 @@ heavyhitters_test.opt: \
 	@echo 'Building $@'
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $(filter %.cmx, $^) -o $@
 
-check: unit-check ringbuf-check cli-check func-check comp-check arc-check orc-check examples-check err-check
+check: \
+		unit-check ringbuf-check cli-check func-check comp-check arc-check \
+		orc-check examples-check err-check doc-check
 
 unit-check: all_tests.opt
 	@echo 'Running unit tests...'
@@ -1395,6 +1427,13 @@ examples-check:
 		examples/tests/qps.x \
 		examples/tests/seq.x \
 		examples/tests/simplest.x
+
+GENERATED_DOC_TESTS = \
+	doc/raql/pi.test \
+	doc/raql/cast.test \
+	doc/raql/force.test
+
+doc-check: $(addsuffix .success, $(basename $(GENERATED_DOC_TESTS)))
 
 # Also that one once instrumentation is available from within ramen again:
 # examples/benchmarks/comms.x \
@@ -1469,7 +1508,7 @@ FORCED_DESSSER = \
 %.success: %.test %.ramen src/ramen
 	@echo 'Running test $(basename $< .test)'
 	@$(RM) $@
-	@if echo '$<' | grep -q /func/; then \
+	@if echo '$<' | grep -q /func/ || echo '$<' | grep -q ^doc/; then \
 	  RAMEN_DESSSER_CODE_GENERATOR=$(if $(findstring ;$(notdir $(basename $< .test));,$(FORCED_DESSSER)),force,never) \
 	  RAMEN_OPTIMIZATION_LEVEL=3 \
 	  src/ramen test --bundle-dir=bundle '$<' && touch $@ ;\
@@ -1764,7 +1803,7 @@ clean-temp:
 	            -delete ;\
 	 done
 
-clean-dist: clean clean-temp
+clean-dist: clean clean-temp clean-dist-doc
 	@echo 'Cleaning all build files'
 	$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
 	find tests -name '*.success' -delete
@@ -1778,7 +1817,7 @@ clean-dist: clean clean-temp
 	$(RM) src/country_of_ip/db_v4.c src/country_of_ip/db_v6.c
 	$(RM) IpToCountry.csv.gz IpToCountry.6R.csv.gz
 
-clean: clean-dessserc-gen
+clean: clean-dessserc-gen clean-doc
 	@echo 'Cleaning result'
 	$(RM) src/*.s src/*.annot src/*.cmt src/*.cmti src/*.o
 	$(RM) *.opt src/all_tests.* perf.data* gmon.out
