@@ -1230,7 +1230,12 @@ and emit_expr_ ~env ~context ~opc oc expr =
       emit_functionN ~env ~opc ~nullable (omod_of_type t ^".div")
         [ ConvTo t, PropagateNull ;
           ConvTo t, PropagateNull ] oc [e1; e2] ;
-      Printf.fprintf oc " in if x_ >= 0. then floor x_ else ceil x_)"
+      if nullable then
+        Printf.fprintf oc
+          " in Option.map (fun x_ -> if x_ >= 0. then floor x_ else ceil x_) x_ "
+      else
+        Printf.fprintf oc " in if x_ >= 0. then floor x_ else ceil x_" ;
+      Printf.fprintf oc ")"
   | Finalize,
     Stateless (SL2 (Div, e1, e2)),
     TFloat ->
