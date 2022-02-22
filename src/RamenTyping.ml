@@ -1758,21 +1758,13 @@ let emit_constraints tuple_sizes records field_names
   | Stateless (SL1 (Sqrt, x)) ->
       (* - x must be numeric;
        * - The result is a float;
-       * - If x is known to be positive then nullability of the result is that of
-       *   x, otherwise the result is nullable *)
+       * - The result is nullable *)
       emit_assert_numeric oc x ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
-      let always_nullable =
-        match E.float_of_const x with
-        | Some f when f >= 0. -> false
-        | _ -> true in
-      if always_nullable then
-        emit_assert_true oc nid
-      else
-        emit_assert_eq (n_of_expr x) oc nid
+      emit_assert_true oc nid
 
   | Stateless (SL1 (Sq, x)) ->
-      (* - e1 and e2 must be numeric
+      (* - x must be numeric
        * - the result is the same as x;
        *   (TODO: experiment with doubling its integer width?);
        * - nullability propagates from e1 to the result.

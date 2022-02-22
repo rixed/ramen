@@ -955,7 +955,16 @@ GENERATED_PAGES = \
 	doc/raql/length.html \
 	doc/raql/lower.html \
 	doc/raql/upper.html \
-	doc/raql/uuid_of_u128.html
+	doc/raql/uuid_of_u128.html \
+	doc/raql/not.html \
+	doc/raql/abs.html \
+	doc/raql/neg.html \
+	doc/raql/is-null.html \
+	doc/raql/exp.html \
+	doc/raql/log.html \
+	doc/raql/log10.html \
+	doc/raql/sqrt.html \
+	doc/raql/sq.html
 
 doc: $(GENERATED_PAGES)
 

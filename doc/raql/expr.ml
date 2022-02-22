@@ -11,46 +11,45 @@ type expr =
     long_descr : html ;
     syntaxes : html list ;  (* what function names are accepted *)
     typing : html list ;
-    examples : example list }
+    examples : (string * string) list ;
+    limitations : html }
 
-and example =
-  { inputs : string list ;
-    output : string }
-
-let make ?(infix = false) ?(has_state = false) ?(deterministic = true) name
+let make ?(infix = false) ?(has_state = false) ?(deterministic = true)
+         ?(limitations = []) name
          short_descr long_descr syntaxes typing examples =
   { name ; infix ; has_state ; deterministic ; short_descr ; long_descr ;
-    syntaxes ; typing ; examples }
-
-let example inputs output = { inputs ; output }
+    syntaxes ; typing ; examples ; limitations }
 
 let exprs =
+  let warn_utf8 =
+    p [ text "For now, strings are just variable length sequences of \
+              bytes. However, the plan is to make them UTF8 though." ] in
   [ make "now" "Return the current time as a UNIX timestamp."
          ~deterministic:false
       [ p [ text "Floating point number of seconds since 1970-01-01 00:00 \
                   UTC." ] ]
       [ [ text "NOW" ] ]
       [ [ text "float" ] ]
-      [ example [] (string_of_float (Unix.gettimeofday ())) ] ;
+      [ "NOW", string_of_float (Unix.gettimeofday ()) ] ;
     make "random" "Return a random number."
          ~deterministic:false
       [ p [ text "Results are uniformly distributed between 0 and 1." ] ]
       [ [ text "RANDOM" ] ]
       [ [ text "float" ] ]
-      [ example [] (string_of_float (Random.float 1.)) ] ;
+      [ "RANDOM", string_of_float (Random.float 1.) ] ;
     make "pi" "The constant π."
       []
       [ [ text "PI" ] ]
       [ [ text "float" ] ]
-      [ example [] "3.14159265358979312" ] ;
+      [ "PI", "3.14159265358979312" ] ;
     make "age" "Return the time elapsed since a past date."
          ~deterministic:false
       [ p [ bold "AGE D" ; text " is equivalent to " ; bold "NOW - D" ] ]
-      [ [ text "AGE D" ] ; [ text "AGE(D)"] ]
+      [ [ text "AGE …float-expr…" ] ]
       [ [ text "float" ] ]
-      [ example [ "NOW - 3s" ] "3" ;
-        example [ "0" ] "1645380250.123524" ;
-        example [ "NOW" ] "0" ] ;
+      [ "AGE(NOW - 3s)", "3" ;
+        "AGE(0)", "1645380250.123524" ;
+        "AGE(NOW)", "0" ] ;
     make "cast" "Cast an expression into a specific type."
       [ p [ text "Any type can be cast into any other one. \
                   For instance, strings can be parsed as numbers or numbers \
@@ -61,13 +60,130 @@ let exprs =
                   expression is nullable. See FORCE to cast away nullability." ] ]
       [ [ text "CAST(…expr… AS …type…)" ] ; [ text "…type…(…expr…)" ] ]
       [ [ text "t1 -> t2" ] ]
-      [ example [ "PI AS U8" ] "3" ;
-        example [ "PI AS STRING" ] "\"3.14159265359\"" ] ;
+      [ "CAST(PI AS U8)", "3" ;
+        "CAST(PI AS STRING)", "\"3.14159265359\"" ] ;
     make "force" "Convert to not-null or crash."
       [ p [ text "Only force a value when you are certain it is not NULL, as the \
                   worker will abort otherwise." ] ;
         p [ text "Does not accept non nullable arguments." ] ]
-      [ [ text "FORCE(…expr…)" ] ]
+      [ [ text "FORCE …nullable-expr…" ] ]
       [ [ text "t? -> t" ] ]
-      [ example [ "U8?(42)" ] "42" ]
+      [ "FORCE(U8?(42))", "42" ] ;
+    make "peek" "Read some bytes into a wider integer."
+      ~limitations:[ p [ text "Some integer widths are not yet implemented." ] ]
+      [ p [ text "Either read some bytes from a string into an integer, \
+                  or convert a vector of small unsigned integers into a large \
+                  integer. \
+                  Can come handy when receiving arrays of integers from \
+                  external systems that have no better ways to encode large \
+                  integers." ] ;
+        p [ text "The endianness can be specified, and little-endian is the \
+                  default." ] ;
+        p [ text "If the destination type is actually narrower than required \
+                  then the result is merely truncated. But if the destination \
+                  type is wider than the number of provided bytes then the \
+                  result will be NULL." ] ;
+        p [ text "The result is not nullable only when reading from a non \
+                  nullable vector of non nullable integers." ] ]
+      [ [ text "PEEK …int-type… [[BIG | LITTLE] ENDIAN] …string…" ] ;
+        [ text "PEEK …int-type… [[BIG | LITTLE] ENDIAN] …int_vector…" ] ]
+      [ [ text "STRING -> int?" ] ; [ text "int1[] -> int2" ] ]
+      [ "PEEK U32 LITTLE ENDIAN \"\\002\\001\\000\\000\"", "258" ;
+        "PEEK U32 LITTLE ENDIAN \"\\002\\001\"", "NULL" ;
+        "PEEK I16 BIG ENDIAN \"\\002\\001\"", "513" ;
+        "PEEK U8 \"\\004\\003\\002\\001\"", "4" ;
+        (* Notice the arrays must be cast as U8s because default integer size
+         * is 32bits: *)
+        "PEEK U32 LITTLE ENDIAN [0xC0u8; 0xA8u8; 0x00u8; 0x01u8]", "16820416" ;
+        "PEEK U32 BIG ENDIAN CAST([0xC0; 0xA8; 0x00; 0x01] AS U8[4])", "3232235521" ] ;
+    make "length" "Compute the length of a string or array."
+      [ p [ text "Returns the number of " ; bold "bytes" ; text " in a \
+                  string." ] ;
+        warn_utf8 ;
+        p [ text "Can also return the length of an array." ] ]
+      [ [ text "LENGTH …string-expr…" ] ; [ text "LENGTH …array…" ] ]
+      [ [ text "STRING -> U32" ] ; [ text "t[] -> U32" ] ]
+      [ "LENGTH \"foo\"", "3" ;
+        "LENGTH \"\"", "0" ;
+        "LENGTH CAST([42] AS U8[])", "1" ] ;
+    make "lower" "Return the lowercase version of a string."
+      [ warn_utf8 ]
+      [ [ text "LOWER …string-expr…" ] ]
+      [ [ text "STRING -> STRING" ] ]
+      [ "LOWER \"Foo Bar Baz\"", "\"foo bar baz\"" ] ;
+    make "upper" "Return the uppercase version of a string."
+      [ warn_utf8 ]
+      [ [ text "UPPER …string-expr…" ] ]
+      [ [ text "STRING -> STRING" ] ]
+      [ "UPPER \"Foo Bar Baz\"", "\"FOO BAR BAZ\"" ] ;
+    make "uuid_of_u128" "Print a U128 as an UUID."
+      [ p [ text "Convert a U128 into a STRING using the traditional \
+                  notation for UUIDs." ] ]
+      [ [ text "UUID_OF_U128 …u128-expr…" ] ]
+      [ [ text "U128 -> STRING" ] ]
+      [ "UUID_OF_U128 0x123456789abcdeffedcba098765431",
+        "\"00123456-789a-bcde-ffed-cba098765431\"" ] ;
+    make "not" "Negation." [ p [ text "boolean negation." ] ]
+      [ [ text "NOT …bool-expr…" ] ]
+      [ [ text "BOOL -> BOOL" ] ]
+      [ "NOT TRUE", "FALSE" ;
+        "NOT (0 > 1)", "TRUE" ] ;
+    make "abs" "Absolute value."
+      [ p [ text "Return the absolute value of an expression of any numeric \
+                  type." ] ]
+      [ [ text "ABS …numeric-expr…" ] ]
+      [ [ text "numeric -> numeric" ] ]
+        (* Note: parentheses are required to disambiguate: *)
+      [ "ABS(-1.2)", "1.2" ] ;
+    make "neg" "Negation."
+      [ p [ text "Negation of the numeric argument." ] ;
+        p [ text "The return type is either the same as that of the argument, \
+                  or a non smaller signed integer type" ] ]
+      [ [ text "-…numerix-expr…" ] ]
+      [ [ text "numeric -> signed-numeric" ] ]
+      [ "-(1+1)", "-2" ] ;
+    make "is-null" "Check for NULL"
+      [ p [ text "Test any nullable argument for NULL. Always returns a \
+                  non-nullable boolean." ] ;
+        p [ text "Notice that this is not equivalent to comparing a value \
+                  to NULL using the equality operator. Indeed, NULL propagates \
+                  through the equality operator and the result of such a \
+                  comparison would merely be NULL." ] ]
+      [ [ text "…nullable-expr… IS NULL" ] ;
+        [ text "…nullable-expr… IS NOT NULL" ] ]
+      [ [ text "t? -> BOOL" ] ]
+      [ "NULL IS NULL", "TRUE" ;
+        "NULL IS NOT NULL", "FALSE" ;
+        "(NULL = 1) IS NULL", "TRUE" ] ;
+    make "exp" "Exponential function."
+      [ p [ text "Compute the exponential function (as a FLOAT)." ] ]
+      [ [ text "EXP …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      [ "EXP 0", "1" ; "EXP 1", "2.71828182846" ] ;
+    make "log" "Natural logarithm."
+      [ p [ text "Compute the natural logarithm of the argument." ] ;
+        p [ text "Returns NaN on negative arguments." ] ]
+      [ [ text "LOG …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      [ "LOG 1", "0" ] ;
+    make "log10" "Decimal logarithm."
+      [ p [ text "Compute the decimal logarithm of the argument." ] ;
+        p [ text "Returns NaN on negative arguments." ] ]
+      [ [ text "LOG10 …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      [ "LOG10 100", "2" ] ;
+    make "sqrt" "Square root."
+      [ p [ text "Square root function." ] ;
+        p [ text "Returns NULL on negative arguments." ] ]
+      [ [ text "SQRT …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      [ "SQRT 16", "4" ;
+        (* Note: parentheses are required to disambiguate: *)
+        "SQRT(-1)", "NULL" ] ;
+    make "sq" "Square."
+      [ p [ text "Square function." ] ;
+        p [ text "Returns the same type as the argument." ] ]
+      [ [ text "SQ …numeric-expr…" ] ]
+      [ [ text "numeric -> numeric" ] ]
+      [ "SQ 4", "16" ]
 ]

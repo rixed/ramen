@@ -2,14 +2,14 @@
 open Batteries
 open Html
 
-let html_of_example e ex =
+let html_of_limitation l =
+  p l
+
+let html_of_example (input, output) =
   Html.Block [
     p [
-      bold ("SELECT "^ String.uppercase e.Expr.name ^ (
-        if ex.Expr.inputs = [] then ""
-        else ("("^ String.join ", " ex.inputs ^")")
-      ) ^"…") ] ;
-    p [ text ("  "^ ex.output) ] ]
+      bold ("SELECT "^ input ^"…") ] ;
+    p [ text ("  "^ output) ] ]
 
 let of_expr e =
   let name = String.uppercase e.Expr.name in
@@ -29,8 +29,10 @@ let of_expr e =
              For better results, use "^ name ^" as early as possible in the \
              processing stream.") ]
         ]) @
+    (if e.limitations = [] then [] else [ h2 "Limitations" ]) @
+    e.limitations @
     (if e.examples = [] then [] else [ h2 "Examples" ]) @
-    List.map (html_of_example e) e.examples))
+    List.map html_of_example e.examples))
 
 let print_html_of_expr e oc =
   print_xml_head oc ;
@@ -44,8 +46,8 @@ let print_test_of_expr e oc =
   Printf.fprintf oc "    \"%s/f\" => {\n" e.name ;
   Printf.fprintf oc "      timeout = 3;\n" ;
   Printf.fprintf oc "      present = [\n" ;
-  List.mapi (fun i ex ->
-    Printf.sprintf "        { \"output_%d\" => %S }" i ex.Expr.output
+  List.mapi (fun i (_, output) ->
+    Printf.sprintf "        { \"output_%d\" => %S }" i output
   ) e.examples |> String.join ";\n" |> String.print oc ;
   Printf.fprintf oc "\n      ]\n" ;
   Printf.fprintf oc "    }\n" ;
@@ -56,16 +58,8 @@ let print_test_of_expr e oc =
 let print_raql_of_expr e oc =
   Printf.fprintf oc "DEFINE f AS\n" ;
   Printf.fprintf oc "  SELECT\n" ;
-  List.mapi (fun i ex ->
-    Printf.sprintf2 "    %s%a AS output_%d"
-      (String.uppercase e.Expr.name)
-      (fun oc -> function
-        | [] ->
-            ()
-        | lst ->
-            List.print ~first:"(" ~last:")" ~sep:", " String.print oc lst
-      ) ex.Expr.inputs
-      i
+  List.mapi (fun i (input, _) ->
+    Printf.sprintf "    %s AS output_%d" input i
   ) e.Expr.examples |> String.join ",\n" |> String.print oc ;
   Printf.fprintf oc "\n" ;
   Printf.fprintf oc "  EVERY 0.1s;\n"
