@@ -532,9 +532,10 @@ struct
 
   (*$inject
    let test_prog str =
+     let get_program _ = raise Not_found in
      (match test_p p str with
      | Ok (res, rem) ->
-        BatPervasives.Ok (checked res, rem)
+        BatPervasives.Ok (checked get_program (N.program "test") res, rem)
      | x -> x) |>
      TestHelpers.test_printer print
   *)
