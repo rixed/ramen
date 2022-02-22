@@ -1109,8 +1109,10 @@ end
 
 module IntOfArray =
 struct
+  (*$< IntOfArray *)
+
   (* Helps with converting arrays of integers into larger integers, in little
-   * endian *)
+   * and big endian *)
   (* - [arr] is the input array of unsigned integers,
    * - [lshift] the left-shift * operator,
    * - [width] the width in bits of the integers in the array,
@@ -1120,7 +1122,8 @@ struct
    *   that of the result.
    * Reading the array stops when its end is reached or at least res_width
    * bits have been read. *)
-  let little logor lshift width res_width zero enlarge arr =
+
+  let big logor lshift width res_width zero enlarge arr =
     let rec loop accum i read_width =
       if i >= Array.length arr || read_width >= res_width then
         accum
@@ -1129,7 +1132,7 @@ struct
         loop accum (i + 1) (read_width + width) in
     loop zero 0 0
 
-  let big logor lshift width res_width zero enlarge arr =
+  let little logor lshift width res_width zero enlarge arr =
     let rec loop accum i read_width =
       if i < 0 || read_width >= res_width then
         accum
@@ -1137,6 +1140,20 @@ struct
         let accum = logor (lshift accum width) (enlarge arr.(i)) in
         loop accum (i - 1) (read_width + width) in
     loop zero (Array.length arr - 1) 0
+
+  (*$inject
+    let t32 f arr =
+      let open Uint32 in
+      f logor shift_left 8 32 zero of_uint8 arr |>
+      Uint32.to_string *)
+  (*$= t32 & ~printer:identity
+    "16909060" (t32 big Uint8.[| of_int 1; of_int 2; of_int 3; of_int 4 |])
+    "67305985" (t32 little Uint8.[| of_int 1; of_int 2; of_int 3; of_int 4 |])
+    "3232235521" \
+      (t32 big Uint8.[| of_int 0xC0; of_int 0xA8; of_int 0x00; of_int 0x01 |])
+  *)
+
+  (*$>*)
 end
 
 module Globals =
