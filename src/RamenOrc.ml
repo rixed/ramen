@@ -620,7 +620,7 @@ let rec emit_read_value_from_batch
     | TI64 -> emit_read_boxed "caml_int64_ops" 8
     | TU8 -> emit_read_unboxed_unsigned "uint8_t"
     | TU16 -> emit_read_unboxed_unsigned "uint16_t"
-    | TU24 -> emit_read_unboxed_unsigned "uint24_t"
+    | TU24 -> emit_read_unboxed_unsigned "uint32_t"
     | TU32 -> emit_read_boxed "uint32_ops" 4
     | TU40 -> emit_read_boxed64_unsigned 40
     | TU48 -> emit_read_boxed64_unsigned 48
