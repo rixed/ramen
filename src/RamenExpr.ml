@@ -1569,6 +1569,8 @@ struct
         ) +- blanks +- strinG "endian" +- blanks) ++
       highestest_prec >>:
       fun ((typ, endianness), e) ->
+        if not (DT.is_integer typ) then
+          raise (Reject "Cannot only peek into an integer type") ;
         make_stateless (SL1 (Peek ((DT.required typ), endianness), e))
     ) m
 
