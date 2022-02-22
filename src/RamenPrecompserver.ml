@@ -111,7 +111,7 @@ let start conf ~while_ =
     ) in
   let try_after_sync = ref [] in
   let on_synced session =
-    !logger.info "Synced, trying to pre-compile %d sources."
+    !logger.debug "Synced, trying to pre-compile %d sources."
       (List.length !try_after_sync) ;
     List.iter (fun (path, src_ext) ->
       compile session path src_ext

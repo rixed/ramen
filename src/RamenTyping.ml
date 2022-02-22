@@ -1027,9 +1027,10 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_false oc nid
 
   | Stateless (SL1 (Peek (mn, _endianess), x)) ->
-      (* - The only argument (x) can be either a string, or a vector of
+      (* - [mn] has been checked to be an integer type already.
+       * - The only argument (x) can be either a string, or a vector of
        *   unsigned integers;
-       * - The result type is the given integer type typ (mandatory);
+       * - The result type is the given integer type [mn] (mandatory);
        * - Result is always nullable if the argument is a string, as the
        *   string length must match peeked width;
        * - In the case of the vector, the result is nullable iff the vector

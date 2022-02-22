@@ -1741,7 +1741,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
     Stateless (SL1 (Peek (mn, endianness), x)), _
     when E.is_a_string x ->
       (* A full [DT.mn] is used instead of a [DT.t] because of dessserc
-       * but nullability has no business geing here: *)
+       * but nullability has no business to do here: *)
       assert (not mn.DT.nullable) ;
       (* x is a string and typ is some nullable integer. *)
       String.print oc "(try " ;
@@ -1756,7 +1756,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
   (* Similarly to the above, but reading from an array of integers instead
    * of from a string. *)
   | Finalize,
-    Stateless (SL1 ((Peek (mn, endianness)), e)),
+    Stateless (SL1 (Peek (mn, endianness), e)),
     _ ->
       assert (not mn.DT.nullable) ;
       let omod_res = omod_of_type mn.typ in
