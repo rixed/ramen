@@ -59,6 +59,7 @@ autom4te.cache
 config.status
 META
 Makefile
+make.inc
 debian.control
 opam
 _opam
@@ -87,6 +88,7 @@ icon.iconset
 *.info
 tests/archivist/*/configuration
 *.trace
+*.tmp
 tmp
 temp
 src/RamenSourceExamples.ml

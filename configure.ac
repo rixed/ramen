@@ -61,6 +61,7 @@ AC_SUBST([HAVE_ORC])
 
 AC_CONFIG_FILES([
   Makefile
+  make.inc
   opam
   src/RamenVersions.ml
   tests/features/api.feature
