@@ -185,7 +185,96 @@ let exprs =
         p [ text "Returns the same type as the argument." ] ]
       [ [ text "SQ …numeric-expr…" ] ]
       [ [ text "numeric -> numeric" ] ]
-      [ "SQ 4", "16" ]
+      [ "SQ 4", "16" ] ;
+    make "ceil" "Ceiling function."
+      [ p [ text "Return the round value just greater or equal to the argument." ] ;
+        p [ text "The result has the same type than the argument." ] ]
+      [ [ text "CEIL …numeric-expr…" ] ]
+      [ [ text "numeric -> numeric" ] ]
+      [ "CEIL 41.2", "42" ] ;
+    make "floor" "Floor function."
+      [ p [ text "Return the round value just smaller or equal to the argument." ] ;
+        p [ text "The result has the same type than the argument." ] ]
+      [ [ text "FLOOR …numeric-expr…" ] ]
+      [ [ text "numeric -> numeric" ] ]
+      [ "FLOOR 42.7", "42" ] ;
+    make "round" "Rounding."
+      [ p [ text "Return the closest round value." ] ;
+        p [ text "The result has the same type than the argument." ] ]
+      [ [ text "ROUND …numeric-expr…" ] ]
+      [ [ text "numeric -> numeric" ] ]
+      [ "ROUND 42.4", "42" ] ;
+    make "cos" "Cosine."
+      [ p [ text "Return the cosine of the argument." ] ]
+      [ [ text "COS …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      [ "COS PI", "-1" ] ;
+    make "sin" "Sine."
+      [ p [ text "Return the sine of the argument." ] ]
+      [ [ text "SIN …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      [ "SIN PI", "0" ] ;
+    make "tan" "Tangent."
+      [ p [ text "Return the tangent of the argument." ] ]
+      [ [ text "TAN …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      [ "TAN 0", "0" ] ;
+    make "acos" "Arc-Cosine."
+      [ p [ text "Return the arc-cosine of the argument." ] ]
+      [ [ text "ACOS …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      (* Must use parenths: *)
+      [ "ACOS(-1)", "3.14" ] ;
+    make "asin" "Arc-Sine."
+      [ p [ text "Return the arc-sine of the argument." ] ]
+      [ [ text "ASIN …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      [ "2 * ASIN 1", "3.14" ] ;
+    make "atan" "ArcTangent."
+      [ p [ text "Return the arc-tangent of the argument." ] ]
+      [ [ text "ATAN …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      [ "4 * ATAN 1", "3.14" ] ;
+    make "cosh" "Hyperbolic Cosine."
+      [ p [ text "Return the hyperbolic cosine of the argument." ] ]
+      [ [ text "COSH …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      [ "COSH 0", "0" ] ;
+    make "sinh" "Hyperbolic Sine."
+      [ p [ text "Return the hyperbolic sine of the argument." ] ]
+      [ [ text "SINH …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      [ "SINH 0", "0" ] ;
+    make "tanh" "Hyperbolic Tangent."
+      [ p [ text "Return the hyperbolic tangent of the argument." ] ]
+      [ [ text "TANH …numeric-expr…" ] ]
+      [ [ text "numeric -> FLOAT" ] ]
+      [ "TANH 0", "0" ] ;
+    make "hash" "Hash any value."
+      [ p [ text "Compute a integer hash of a value of any type." ] ;
+        p [ text "The hash function is deterministic." ] ]
+      [ [ text "HASH …expr…" ] ]
+      [ [ text "t -> I64" ] ]
+      [ "HASH NULL", "NULL" ;
+        "HASH (\"foo\"; \"bar\")", "731192513" ] ;
+    make "parse_time" "Format a date."
+      [ p [ text "This function takes a date as a string and convert it to a \
+                  timestamp. It accepts various common encodings (similar to \
+                  the UNIX at(1) command." ] ;
+        p [ text "Beware that PARSE_TIME assumes all dates are in the local \
+                  time zone." ] ;
+        p [ text "The result is always nullable." ] ]
+      [ [ text "PARSE_TIME …string-expr…" ] ]
+      [ [ text "STRING -> FLOAT?" ] ]
+      (* Divide by 24 so that this does not depend on the time zone: *)
+      [ "(PARSE_TIME \"1976-01-28 12:00:00.9\") // 24h", "2218" ;
+        "(PARSE_TIME \"12/25/2005\") // 24h", "13141" ] ;
+    make "chr" "ASCII character of a given code."
+      [ p [ text "Convert the given integer (must be below 255) into the \
+                  corresponding ASCII character." ] ]
+      [ [ text "CHR …int-expr…" ]]
+      [ [ text "integer -> CHR" ] ]
+      [ "CHR 65", "#\\A" ]
 ]
 
 let see_also =

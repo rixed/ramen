@@ -964,7 +964,22 @@ GENERATED_PAGES = \
 	doc/raql/log.html \
 	doc/raql/log10.html \
 	doc/raql/sqrt.html \
-	doc/raql/sq.html
+	doc/raql/sq.html \
+	doc/raql/ceil.html \
+	doc/raql/floor.html \
+	doc/raql/round.html \
+	doc/raql/cos.html \
+	doc/raql/sin.html \
+	doc/raql/tan.html \
+	doc/raql/acos.html \
+	doc/raql/asin.html \
+	doc/raql/atan.html \
+	doc/raql/cosh.html \
+	doc/raql/sinh.html \
+	doc/raql/tanh.html \
+	doc/raql/hash.html \
+	doc/raql/parse_time.html \
+	doc/raql/chr.html
 
 doc: $(GENERATED_PAGES)
 
