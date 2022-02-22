@@ -13,6 +13,9 @@ let html_of_example (input, output) =
 
 let of_expr e =
   let name = String.uppercase e.Expr.name in
+  let see_also =
+    try List.find (List.mem e.name) Expr.see_also
+    with Not_found -> [] in
   html [ title (e.name ^ " (RaQL expression)") ] (
     [ h1 name ;
       p [ text e.short_descr ] ;
@@ -32,7 +35,11 @@ let of_expr e =
     (if e.limitations = [] then [] else [ h2 "Limitations" ]) @
     e.limitations @
     (if e.examples = [] then [] else [ h2 "Examples" ]) @
-    List.map html_of_example e.examples))
+    List.map html_of_example e.examples @
+    (if see_also = [] then [] else [ h2 "See Also" ]) @
+    List.map (fun n ->
+      if n <> e.name then p [ text n ] else Block []
+    ) see_also))
 
 let print_html_of_expr e oc =
   print_xml_head oc ;

@@ -187,3 +187,13 @@ let exprs =
       [ [ text "numeric -> numeric" ] ]
       [ "SQ 4", "16" ]
 ]
+
+let see_also =
+  [ [ "now" ; "age" ] ;
+    [ "exp" ; "log" ; "log10" ] ;
+    [ "force" ; "is-null" ; "coalesce" ] ;
+    [ "lower" ; "upper" ] ;
+    [ "sqrt" ; "sq" ] ;
+    [ "ceil" ; "floor" ; "round" ] ;
+    [ "cos" ; "sin" ; "tan" ; "acos" ; "asin" ; "atan" ; "cosh" ; "sinh" ;
+      "tanh" ] ]
