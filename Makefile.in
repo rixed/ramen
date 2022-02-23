@@ -979,7 +979,24 @@ GENERATED_PAGES = \
 	doc/raql/tanh.html \
 	doc/raql/hash.html \
 	doc/raql/parse_time.html \
-	doc/raql/chr.html
+	doc/raql/chr.html \
+	doc/raql/like.html \
+	doc/raql/fit.html \
+	doc/raql/countrycode.html \
+	doc/raql/ipfamily.html \
+	doc/raql/basename.html \
+	doc/raql/min.html \
+	doc/raql/max.html \
+	doc/raql/coalesce.html \
+	doc/raql/add.html \
+	doc/raql/sub.html \
+	doc/raql/mul.html \
+	doc/raql/div.html \
+	doc/raql/idiv.html \
+	doc/raql/mod.html \
+	doc/raql/pow.html \
+	doc/raql/truncate.html \
+	doc/raql/reldiff.html
 
 doc: $(GENERATED_PAGES)
 

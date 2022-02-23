@@ -142,7 +142,7 @@ let exprs =
       [ [ text "-…numerix-expr…" ] ]
       [ [ text "numeric -> signed-numeric" ] ]
       [ "-(1+1)", "-2" ] ;
-    make "is-null" "Check for NULL"
+    make "is-null" "Check for NULL."
       [ p [ text "Test any nullable argument for NULL. Always returns a \
                   non-nullable boolean." ] ;
         p [ text "Notice that this is not equivalent to comparing a value \
@@ -197,7 +197,8 @@ let exprs =
         p [ text "The result has the same type than the argument." ] ]
       [ [ text "FLOOR …numeric-expr…" ] ]
       [ [ text "numeric -> numeric" ] ]
-      [ "FLOOR 42.7", "42" ] ;
+      [ "FLOOR 42.7", "42" ;
+        "FLOOR(-42.7)", "-43" ] ;
     make "round" "Rounding."
       [ p [ text "Return the closest round value." ] ;
         p [ text "The result has the same type than the argument." ] ]
@@ -274,7 +275,212 @@ let exprs =
                   corresponding ASCII character." ] ]
       [ [ text "CHR …int-expr…" ]]
       [ [ text "integer -> CHR" ] ]
-      [ "CHR 65", "#\\A" ]
+      [ "CHR 65", "#\\A" ] ;
+    make "like" "Comparing strings with patterns."
+      [ p [ text "LIKE compares a string expression with a pattern, expressed \
+                  as a string that can contain the special character " ;
+            emph "percent" ;
+            text " ('%') that can replace any substring including \
+                  the empty substring, and the special character " ;
+            emph "underscore" ;
+            text " ('_') that can match any single character." ] ;
+        p [ text "If you need to match precisely for any of those special \
+                  characters you can escape them with the " ;
+            emph "backslach" ;
+            text " prefix ('\\'). Notice though that since backslash is also \
+                  the default escaping character for strings, and pattern is \
+                  written as a string, it has to be doubled in practice to \
+                  serve as a pattern escape character!" ] ;
+        p [ text "The result is true if the left string matches the pattern, \
+                  or false otherwise." ] ;
+        p [ text "Note that the pattern cannot be any string expression but \
+                  must be a string constant." ] ]
+      [ [ text "…string-expr… LIKE \"pattern\"" ] ]
+      [ [ text "STRING -> BOOL" ] ]
+      [ "\"foobar\" LIKE \"foo%\"", "true" ;
+        (* Notice the doubled escape character: *)
+        "\"foobar\" LIKE \"foo\\\\%\"", "false" ;
+        "\"foobar\" LIKE \"f%r\"", "true" ;
+        "\"foobar\" LIKE \"f__b_r\"", "true" ;
+        "\"foobar\" LIKE \"fo_b%\"", "true" ;
+        "\"foobar\" LIKE \"%baz\"", "false" ;
+        "\"foobar\" LIKE \"\"", "false" ] ;
+    make "fit" "(Multi)Linear regression."
+      [ p [ text "General fitting function that takes one arguments: an \
+                  array or vector of observations of either unique numeric \
+                  values or tuples of numeric values." ] ;
+        p [ text "In the former case the unique value is supposed to be the \
+                  value to predict (the " ; emph "dependent variable" ;
+            text " in math jargon), using the start event time as the \
+                  predictor (if available)." ] ;
+        p [ text "In the later case, the first value of the tuple is the \
+                  variable to predict and the others are the predictors \
+                  (aka. the " ; emph "explanatory variables" ; text ")." ] ;
+        p [ text "Notice that the value that is predicted is the last of the \
+                  observations rather than the next observations, which \
+                  makes that function more handy when comparing the last \
+                  observation with the prediction. Obviously, that last \
+                  observed value is not taken into account to compute the \
+                  prediction (but the last predictors are of course)." ] ;
+        p [ text "The result will be the predicted value." ] ]
+      [ [ text "FIT …sequence-expr…" ] ]
+      [ [ text "numeric[] -> FLOAT" ] ;
+        [ text "numeric[n] -> FLOAT" ] ;
+        [ text "(numeric; …; numeric)[] -> FLOAT" ] ;
+        [ text "(numeric; …; numeric)[n] -> FLOAT" ] ]
+      [ "FIT [1; 2; 3; 99]", "4" ;
+        "FIT [(2; 1); (4; 2); (6; 3); (99; 4)]", "8" ] ;
+    make "countrycode" "Country code of an IP."
+      [ p [ text "Return the country-code (as a string) of an IP (v4 or \
+                  v6)." ] ;
+        p [ text "Ramen relies on an embedded, constant database of IP \
+                  geo-locations that's designed for speed. It therefore \
+                  makes no external request. As a downside, the information \
+                  can be outdated or missing (in which case NULL is \
+                  returned)." ] ;
+        p [ text "Given the embedded database might change from one version \
+                  of Ramen to the next, this function is not deterministic \
+                  across upgrades." ] ;
+        p [ text "This function should be only used as a hint." ] ]
+      [ [ text "COUNTRYCODE …ip-expr…" ] ]
+      [ [ text "IPv4 -> STRING?" ] ;
+        [ text "IPv6 -> STRING?" ] ;
+        [ text "Ip -> STRING?" ] ]
+      [ "COUNTRYCODE 5.182.236.0", "\"AT\"" ;
+        "COUNTRYCODE 2a00:1450:400f:804::2004", "\"IE\"" ] ;
+    make "ipfamily" "Returns the version of an IP."
+      [ p [ text "Returns either 4 if the IP is an IPv4 or 6 if the IP is an \
+                  IPv6." ] ]
+      [ [ text "IPFAMILY …ip-expr…" ] ]
+      [ [ text "IPv4 -> unsigned-int" ] ;
+        [ text "IPv6 -> unsigned-int" ] ;
+        [ text "Ip -> unsigned-int" ] ]
+      [ "IPFAMILY 135.181.17.92", "4" ;
+        "IPFAMILY 2a01:4f9:4b:55b0::2", "6" ] ;
+    make "basename" "Strip the directory part of a path."
+      [ p [ text "Similar to the UNIX tool basename, this removes from the \
+                  passed argument everything before the last slash ('/'), \
+                  to keep only the filename portion of a path." ] ;
+        p [ text "Does nothing if the argument contains no slash." ] ]
+      [ [ text "BASENAME …string-expr…" ] ]
+      [ [ text "STRING -> STRING" ] ]
+      [ "BASENAME \"/foo/bar/baz\"", "\"baz\"" ;
+        "BASENAME \"foo\"", "\"foo\"" ] ;
+    make "min" "Minimum."
+      [ p [ text "Return the minimum value of all the arguments." ] ;
+        p [ text "All arguments must have compatible types (ie. it is \
+                  possible to convert one into another)." ] ;
+        p [ text "The result will be NULL if any of the arguments is." ] ]
+      [ [ text "MIN(…expr1…, …expr2…, …)" ] ]
+      [ [ text "t1, t2, … -> largest(t1, t2, …)" ] ]
+      [ "MIN(1, 2, 3)", "1" ;
+        "MIN(\"foo\", \"bar\")", "\"bar\"" ;
+        "MIN([5; 6], [3; 9])", "[3; 9]" ] ;
+    make "max" "Maximum."
+      [ p [ text "Return the maximum value of all the arguments." ] ;
+        p [ text "All arguments must have compatible types (ie. it is \
+                  possible to convert one into another)." ] ;
+        p [ text "The result will be NULL if any of the arguments is." ] ]
+      [ [ text "MAX(…expr1…, …expr2…, …)" ] ]
+      [ [ text "t1, t2, … -> largest(t1, t2, …)" ] ]
+      [ "MAX(1, 2, 3)", "3" ;
+        "MAX(\"foo\", \"bar\")", "\"foo\"" ;
+        "MAX([5; 6], [3; 9])", "[5; 6]" ] ;
+    make "coalesce" "Selects the first non null argument."
+      [ p [ text "Accept a list of alternative values of the same type and \
+                  returns the first one that is not NULL." ] ;
+        p [ text "All alternatives but the last must be nullable." ] ;
+        p [ text "If all alternatives are NULL then returns NULL." ] ]
+      [ [ text "COALESCE(…expr1…, …expr2…, …)" ] ]
+      [ [ text "(t?, t?, …, t?) -> t?" ] ;
+        [ text "(t?, t?, …, t) -> t" ] ]
+      [ "COALESCE(NULL, 1)", "1" ;
+        "COALESCE(IF RANDOM > 1 THEN \"can't happen\", \"ok\")", "\"ok\"" ] ;
+    make "add" "Addition."
+      [ p [ text "Adds two numeric values." ] ;
+        p [ text "The result have the type of the largest argument." ] ]
+      [ [ text "…num-expr… + …num-expr…" ] ]
+      [ [ text "num1, num2 -> largest(num1, num2)" ] ]
+      [ "27 + 15", "42" ;
+        "1.5 + 1u8", "2.5" ] ;
+    make "sub" "Subtraction."
+      [ p [ text "Subtracts two numeric values." ] ;
+        p [ text "The result type is the largest of the argument types, and \
+                  always signed." ] ]
+      [ [ text "…num-expr… - …num-expr…" ] ]
+      [ [ text "num1, num2 -> signed(largest(num1, num2))" ] ]
+      [ "1u8 - 2u8", "-1" ] ;
+    make "mul" "Multiplication."
+      [ p [ text "Multiplies two numeric values, or repeat a string." ] ;
+        p [ text "If the two arguments are numeric, then the result type \
+                  is the largest of the argument types." ] ;
+        p [ text "Alternatively, can also be used to repeat a string if the \
+                  first argument is an integer and the second a string. In \
+                  that case the return type is a string." ] ]
+      [ [ text "…num-expr… * …num-expr…" ] ;
+        [ text "…int-expr… * …string-expr…" ] ]
+      [ [ text "num1, num2 -> largest(num1, num2)" ] ;
+        [ text "int, STRING -> STRING" ] ]
+      [ "6 * 7", "42" ;
+        "2 * \"foo\"", "\"foofoo\"" ] ;
+    make "div" "Division."
+      [ p [ text "Divides two numeric values." ] ;
+        p [ text "The result is always a FLOAT. If the divisor and dividend \
+                  are non-zero constants then the result is not nullable, \
+                  otherwise it is, and the result of 0/0 is NULL." ] ]
+      [ [ text "…num-expr… / …num-expr…" ] ]
+      [ [ text "num1, num2 -> FLOAT?" ] ;
+        [ text "num1, non-zero-const -> FLOAT" ] ]
+      [ "84/2", "42" ;
+        "1/0", "Inf" ;
+        "0/0", "NULL" ] ;
+    make "idiv" "Integer division."
+      [ p [ text "Divides two numeric values, truncating toward zero." ] ;
+        p [ text "The result type is the largest of the argument types." ] ;
+        p [ text "For FLOAT arguments the result will still be a FLOAT, \
+                  floored." ] ]
+      [ [ text "…num-expr… // …num-expr…" ] ]
+      [ [ text "num1, num2 -> largest(num1, num2)" ] ]
+      [ "10//3", "3" ;
+        "-10//3", "-3" ;
+        "10.5//3.1", "3" ] ;
+    make "mod" "Modulo."
+      [ p [ text "Compute the modolus of the two given arguments." ] ;
+        p [ text "The result type is the largest of the argument types." ] ]
+      [ [ text "…num-expr… % …num-expr…" ] ]
+      [ [ text "num1, num2 -> largest(num1, num2)" ] ]
+      [ "3 % 2", "1" ;
+        "-3 % 2", "-1" ;
+        "3 % -2", "1" ] ;
+    make "pow" "Power."
+      [ p [ text "Compute the first argument to the power of the second." ] ;
+        p [ text "The result type is the largest of the argument types." ] ]
+      [ [ text "…num-expr… ^ …num-expr…" ] ]
+      [ [ text "num1, num2 -> largest(num1, num2)" ] ]
+      [ "2 ^ 3", "8" ;
+        "PI ^ PI", "36.4621596072079" ] ;
+    make "truncate" "Rounding to selected precision."
+      [ p [ text "Truncate the first argument to the nearest (from below) \
+                  multiple of the second, or to the nearest integer if no \
+                  second argument is provided (it is then equivalent to " ;
+            bold "floor" ; text "." ] ]
+      [ [ text "TRUNCATE(…num-expr…, …num-expr…)" ] ;
+        [ text "TRUNCATE …num-expr…" ] ]
+      [ [ text "num1, num2 -> largest(num1, num2)" ] ]
+      [ "TRUNCATE(153.6, 10)", "150" ;
+        "TRUNCATE 5.8", "5" ;
+        "TRUNCATE(-2.3)", "-3" ] ;
+    make "reldiff" "Relative difference."
+      [ p [ text "Compare the two arguments A and B by computing:" ] ;
+        p [ text "MIN(ABS(A-B), MAX(A, B)) / MAX(ABS(A-B), MAX(A, B))" ] ;
+        p [ text "Returns 0 when A = B." ] ]
+      [ [ text "RELDIFF(…num-expr…, …num-expr…)" ] ]
+      [ [ text "num1, num2 -> FLOAT" ] ]
+      [ "RELDIFF(1, 1)", "0" ;
+        "RELDIFF(10, 9)", "0.1" ;
+        "RELDIFF(9, 10)", "0.1" ;
+        "RELDIFF(-9, -10)", "0.1" ;
+        "RELDIFF(1, -10)", "1.1" ]
 ]
 
 let see_also =
@@ -283,6 +489,14 @@ let see_also =
     [ "force" ; "is-null" ; "coalesce" ] ;
     [ "lower" ; "upper" ] ;
     [ "sqrt" ; "sq" ] ;
-    [ "ceil" ; "floor" ; "round" ] ;
+    [ "ceil" ; "floor" ; "round" ; "truncate" ] ;
     [ "cos" ; "sin" ; "tan" ; "acos" ; "asin" ; "atan" ; "cosh" ; "sinh" ;
-      "tanh" ] ]
+      "tanh" ] ;
+    [ "fit" ; "group" ; "past" ] ;
+    [ "countrycode" ; "ipfamily" ] ;
+    [ "min" ; "max" ] ;
+    [ "floor" ; "idiv" ] ;
+    [ "add" ; "sub" ; "mul" ; "div" ; "idiv" ] ;
+    [ "div" ; "idiv" ; "mod" ] ;
+    [ "mul" ; "pow" ] ;
+    [ "reldiff" ; "sub" ] ]

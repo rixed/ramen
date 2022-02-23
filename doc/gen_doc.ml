@@ -14,8 +14,12 @@ let html_of_example (input, output) =
 let of_expr e =
   let name = String.uppercase e.Expr.name in
   let see_also =
-    try List.find (List.mem e.name) Expr.see_also
+    try List.find_all (List.mem e.name) Expr.see_also |> List.flatten |>
+        List.sort String.compare |> List.unique
     with Not_found -> [] in
+  if not (String.ends_with e.short_descr ".") then
+    Printf.eprintf "WARNING: %s: short description does not end with '.'!\n"
+      name ;
   html [ title (e.name ^ " (RaQL expression)") ] (
     [ h1 name ;
       p [ text e.short_descr ] ;
