@@ -28,6 +28,6 @@ let () =
   let csv = Csv.of_channel ~separator:',' ~strip:true ~backslash_escape:false file in
   let f = f1 r in
   Printf.printf "#include \"db.h\"\n" ;
-  Printf.printf "struct db_entry_v6 db_v6_v2[] = {\n" ;
+  Printf.printf "struct db_entry_v6 db_v6[] = {\n" ;
   Csv.iter ~f csv ;
   Printf.printf "};"

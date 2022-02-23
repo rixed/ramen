@@ -28,7 +28,7 @@ src/country_of_ip/db_v4.h: src/country_of_ip/db_v4.c make.inc
 	@echo '#define DB_V4_h_200417' >> $@
 	@echo '#include "db.h"' >> $@
 	@echo >> $@
-	@echo 'struct db_entry_v4 db_v4[' $$(grep -c '^  {' $<) '];' >> $@
+	@echo 'extern struct db_entry_v4 db_v4[' $$(grep -c '^  {' $<) '];' >> $@
 	@echo >> $@
 	@echo '#endif' >> $@
 
@@ -43,7 +43,7 @@ src/country_of_ip/db_v6.h: src/country_of_ip/db_v6.c make.inc
 	@echo '#define DB_V6_h_200417' >> $@
 	@echo '#include "db.h"' >> $@
 	@echo >> $@
-	@echo 'struct db_entry_v6 db_v6[' $$(grep -c '^  {' $<) '];' >> $@
+	@echo 'extern struct db_entry_v6 db_v6[' $$(grep -c '^  {' $<) '];' >> $@
 	@echo >> $@
 	@echo '#endif' >> $@
 
