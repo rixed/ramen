@@ -1327,7 +1327,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
     Stateless (SL1 (Strptime, e)),
     TFloat ->
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-        "(fun t_ -> time_of_abstime t_)"
+        "time_of_abstime"
         [ ConvTo TString, PropagateNull ] oc [ e ]
   | Finalize,
     Stateless (SL1 (Variant, e)),

@@ -1329,10 +1329,10 @@ GENERATED_DOC_TESTS = \
 	  $(addsuffix .test, $(basename $(GENERATED_PAGES))))
 
 doc/raql/%.test: doc/gen_doc.byte
-	@doc/gen_doc.byte $@
+	doc/gen_doc.byte $@
 
 doc/raql/%.ramen: doc/gen_doc.byte
-	@doc/gen_doc.byte $@
+	doc/gen_doc.byte $@
 
 # There is one ramen file per test file:
 doc/raql/%.success: doc/raql/%.test doc/raql/%.ramen src/ramen

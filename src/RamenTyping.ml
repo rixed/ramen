@@ -2117,7 +2117,7 @@ let emit_constraints tuple_sizes records field_names
 
   | Stateless (SL1 (Fit, e1)) ->
       (* Typing rules:
-       * - e1 must be a vector or a list of either numerics or tuples of
+       * - e1 must be a vector or an array of either numerics or tuples of
        *   numerics;
        * - the result is a float;
        * - the result is always nullable and will be null whenever e1 is null
