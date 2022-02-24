@@ -108,7 +108,7 @@ let compile ?(star='*') ?(placeholder='?') ?(escape='\\') =
 
 (*$= compile & ~printer:(BatIO.to_string (BatList.print print_chunk_ocaml))
   [ String "glop" ; AnyString 0 ] (compile "glop*").chunks
-  [ String "glop*" ] (compile "glop\*").chunks
+  [ String "glop*" ] (compile "glop\\*").chunks
   [ String "pas" ; AnyString 0 ; String "glop" ] (compile "pas*glop").chunks
   [ String "zzz" ; AnyString 0 ] (compile "zzz**").chunks
   [ String "glop" ; AnyString 0 ; String "glop" ] (compile "glop**glop").chunks
