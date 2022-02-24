@@ -1211,9 +1211,9 @@ and expression ?(depth=0) ~r_env e =
     | Stateless (SL2 (Strftime, fmt, time)) ->
         apply_2 (expr fmt) (expr time) (fun fmt time ->
           strftime fmt (to_float time))
-    | Stateless (SL2 (Index, str, chr)) ->
+    | Stateless (SL2 (Index from_start, str, chr)) ->
         apply_2 (expr str) (expr chr) (fun str chr ->
-          let res = find_substring true_ (string_of_char chr) str in
+          let res = find_substring (bool from_start) (string_of_char chr) str in
           let_ ~name:"index_" res (fun res ->
             if_null res
               ~then_:(i32_of_int ~-1)

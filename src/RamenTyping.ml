@@ -1584,7 +1584,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_eq (t_of_expr lst) oc eid ;
       emit_assert_eq (n_of_expr lst) oc nid
 
-  | Stateless (SL2 (Index, s, c)) ->
+  | Stateless (SL2 (Index _, s, c)) ->
       (* - s must be a string;
          - c must be a char;
          - the result is an integer, always nullable;

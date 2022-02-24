@@ -199,7 +199,7 @@
         // Takes format then time:
         | Strftime
         // Returns the first position of a char in a String, or -1
-        | Index // bool, string, char
+        | Index bool // true=from start, then string and char
         // Takes an expression and a vector of desired percentiles
         | Percentile ]; this; this)
       | SL3 (

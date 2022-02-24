@@ -292,6 +292,9 @@ end
 let index s c =
   Int32.of_int (try String.index s c with Not_found -> -1)
 
+let rindex s c =
+  Int32.of_int (try String.rindex s c with Not_found -> -1)
+
 let chr i =
   (Uint32.to_int i land 255) |> Char.chr
 

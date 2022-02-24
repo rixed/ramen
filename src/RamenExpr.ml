@@ -315,8 +315,10 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "(%a) %% (%a)" p e1 p e2
   | Stateless (SL2 (Pow, e1, e2)) ->
       Printf.fprintf oc "(%a) ^ (%a)" p e1 p e2
-  | Stateless (SL2 (Index, e1, e2)) ->
+  | Stateless (SL2 (Index true, e1, e2)) ->
       Printf.fprintf oc "INDEX (%a, %a)" p e1 p e2
+  | Stateless (SL2 (Index false, e1, e2)) ->
+      Printf.fprintf oc "INDEX FROM END (%a, %a)" p e1 p e2
   | Stateless (SL3 (SubString, e1, e2, e3)) ->
       Printf.fprintf oc "SUBSTRING (%a, %a, %a)" p e1 p e2 p e3
   | Stateless (SL3 (MapSet, e1, e2, e3)) ->
@@ -1223,11 +1225,11 @@ struct
   *)
 
   (* "sf" stands for "stateful" *)
-  and afunv_sf a n m =
+  and afunv_sf a n ?(pn=strinG n) m =
     let sep = list_sep in
     let m = n :: m in
     (
-      strinG n -+
+      pn -+
       state_and_nulls +-
       opt_blanks +- char '(' +- opt_blanks ++ (
         if a > 0 then
@@ -1239,47 +1241,47 @@ struct
       ) +- opt_blanks +- char ')'
     ) m
 
-  and afun_sf a n =
-    afunv_sf a n >>: fun (g, (a, r)) ->
+  and afun_sf a ?pn n =
+    afunv_sf a ?pn n >>: fun (g, (a, r)) ->
       if r = [] then g, a else
       raise (Reject "too many arguments")
 
-  and afun1_sf n =
+  and afun1_sf n ?(pn=strinG n) =
     let sep = check (char '(') |<| blanks in
-    (strinG n -+ state_and_nulls +- sep ++ highestest_prec)
+    (pn -+ state_and_nulls +- sep ++ highestest_prec)
 
-  and afun2_sf n =
-    afun_sf 2 n >>: function (g, [a;b]) -> g, a, b | _ -> assert false
+  and afun2_sf ?pn n =
+    afun_sf 2 ?pn n >>: function (g, [a;b]) -> g, a, b | _ -> assert false
 
-  and afun0v_sf n =
+  and afun0v_sf n ?(pn=strinG n) =
     (* afunv_sf takes parentheses but it's nicer to also accept non
      * parenthesized highestest_prec, but then there would be 2 ways to
      * parse "distinct (x)" as highestest_prec also accept parenthesized
      * lower precedence expressions. Thus the "highestest_prec_no_parenthesis": *)
-    (strinG n -+ state_and_nulls +-
+    (pn -+ state_and_nulls +-
      blanks ++ highestest_prec_no_parenthesis >>: fun (f, e) -> f, [e]) |<|
-    (afunv_sf 0 n >>:
+    (afunv_sf 0 n ~pn >>:
      function (g, ([], r)) -> g, r | _ -> assert false)
 
-  and afun2v_sf n =
-    afunv_sf 2 n >>: function (g, ([a;b], r)) -> g, a, b, r | _ -> assert false
+  and afun2v_sf n ?pn =
+    afunv_sf 2 n ?pn >>: function (g, ([a;b], r)) -> g, a, b, r | _ -> assert false
 
-  and afun3_sf n =
-    afun_sf 3 n >>: function (g, [a;b;c]) -> g, a, b, c | _ -> assert false
+  and afun3_sf n ?pn =
+    afun_sf 3 n ?pn >>: function (g, [a;b;c]) -> g, a, b, c | _ -> assert false
 
-  and afun3v_sf n =
-    afunv_sf 3 n >>: function (g, ([a;b;c], r)) -> g, a, b, c, r | _ -> assert false
+  and afun3v_sf n ?pn =
+    afunv_sf 3 n ?pn >>: function (g, ([a;b;c], r)) -> g, a, b, c, r | _ -> assert false
 
-  and afun4_sf n =
-    afun_sf 4 n >>: function (g, [a;b;c;d]) -> g, a, b, c, d | _ -> assert false
+  and afun4_sf n ?pn =
+    afun_sf 4 n ?pn >>: function (g, [a;b;c;d]) -> g, a, b, c, d | _ -> assert false
 
-  and afun6_sf n =
-    afun_sf 6 n >>: function (g, [a;b;c;d;e;f]) -> g, a, b, c, d, e, f | _ -> assert false
+  and afun6_sf n ?pn =
+    afun_sf 6 n ?pn >>: function (g, [a;b;c;d;e;f]) -> g, a, b, c, d, e, f | _ -> assert false
 
-  and afunv a n m =
+  and afunv a n ?(pn=strinG n) m =
     let m = n :: m in
     let sep = list_sep in
-    (strinG n -- opt_blanks -- char '(' -- opt_blanks -+
+    (pn -- opt_blanks -- char '(' -- opt_blanks -+
      (if a > 0 then
        repeat ~what:"mandatory arguments" ~min:a ~max:a ~sep p ++
        optional ~def:[] (sep -+ repeat ~what:"variadic arguments" ~sep p)
@@ -1288,38 +1290,38 @@ struct
        repeat ~what:"variadic arguments" ~sep p) +-
      opt_blanks +- char ')') m
 
-  and afun a n =
-    afunv a n >>: fun (a, r) ->
+  and afun a n ?pn =
+    afunv a n ?pn >>: fun (a, r) ->
       if r = [] then a else
       raise (Reject "too many arguments")
 
-  and afun1 n =
+  and afun1 n ?(pn=strinG n) =
     let sep = check (char '(') |<| blanks in
-    strinG n -- sep -+ highestest_prec
+    pn -- sep -+ highestest_prec
 
-  and afun2 n =
-    afun 2 n >>: function [a;b] -> a, b | _ -> assert false
+  and afun2 n ?pn =
+    afun 2 n ?pn >>: function [a;b] -> a, b | _ -> assert false
 
-  and afun3 n =
-    afun 3 n >>: function [a;b;c] -> a, b, c | _ -> assert false
+  and afun3 n ?pn =
+    afun 3 n ?pn >>: function [a;b;c] -> a, b, c | _ -> assert false
 
-  and afun4 n =
-    afun 4 n >>: function [a;b;c;d] -> a, b, c, d | _ -> assert false
+  and afun4 n ?pn =
+    afun 4 n ?pn >>: function [a;b;c;d] -> a, b, c, d | _ -> assert false
 
-  and afun5 n =
-    afun 5 n >>: function [a;b;c;d;e] -> a, b, c, d, e | _ -> assert false
+  and afun5 n ?pn =
+    afun 5 n ?pn >>: function [a;b;c;d;e] -> a, b, c, d, e | _ -> assert false
 
-  and afun0v n =
-    afunv 0 n >>: function ([], r) -> r | _ -> assert false
+  and afun0v n ?pn =
+    afunv 0 n ?pn >>: function ([], r) -> r | _ -> assert false
 
-  and afun1v n =
-    afunv 1 n >>: function ([a], r) -> a, r | _ -> assert false
+  and afun1v n ?pn =
+    afunv 1 n ?pn >>: function ([a], r) -> a, r | _ -> assert false
 
-  and afun2v n =
-    afunv 2 n >>: function ([a;b], r) -> a, b, r | _ -> assert false
+  and afun2v n ?pn =
+    afunv 2 n ?pn >>: function ([a;b], r) -> a, b, r | _ -> assert false
 
-  and afun3v n =
-    afunv 3 n >>: function ([a;b;c], r) -> a, b, c, r | _ -> assert false
+  and afun3v n ?pn =
+    afunv 3 n ?pn >>: function ([a;b;c], r) -> a, b, c, r | _ -> assert false
 
   and func m =
     let m = "function" :: m in
@@ -1484,7 +1486,13 @@ struct
       (afun2_sf "sample" >>: fun ((g, n), c, e) ->
         make_stateful g n (SF2 (Sample, c, e))) |<|
       (afun2 "index" >>: fun (s, a) ->
-        make_stateless (SL2 (Index, s, a))) |<|
+        make_stateless (SL2 (Index true, s, a))) |<|
+      (afun2 ~pn:(strinG "index" -- blanks -- strinG "from" -- blanks --
+                  strinG "start") "index" >>: fun (s, a) ->
+        make_stateless (SL2 (Index true, s, a))) |<|
+      (afun2 ~pn:(strinG "index" -- blanks -- strinG "from" -- blanks --
+                  strinG "end") "index" >>: fun (s, a) ->
+        make_stateless (SL2 (Index false, s, a))) |<|
       (afun3 "substring" >>: fun (s, a, b) ->
         make_stateless (SL3 (SubString, s, a, b))) |<|
       (afun3 "mapadd" >>: fun (m, k, v) ->

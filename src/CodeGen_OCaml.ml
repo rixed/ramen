@@ -1983,9 +1983,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo TFloat, PropagateNull ;
           NoConv, PropagateNull ] oc [ percs ; lst ]
   | Finalize,
-    Stateless (SL2 (Index, s, a)),
+    Stateless (SL2 (Index from_start, s, a)),
     _ ->
-      emit_functionN ~env ~opc ~nullable "CodeGenLib.index"
+      emit_functionN ~env ~opc ~nullable
+        ("CodeGenLib."^ if from_start then "index" else "rindex")
         [ ConvTo TString, PropagateNull ;
           ConvTo TChar, PropagateNull ] oc [ s ; a ]
   | Finalize,
