@@ -160,26 +160,26 @@ include make.inc
 
 %.cmi: %.mli
 	@echo 'Compiling $@ (interface)'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c '$<'
 
 %.cmi: %.cmx
 	@true
 
 #src/RamenName.cmi: src/RamenName.mli
 #	@echo 'Compiling $@ (interface)'
-#	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+#	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c '$<'
 
 %.cmx %.cmt: %.ml
 	@echo 'Compiling $@ (native)'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c $<
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package "$(PACKAGES)" -c '$<'
 
 %.cmo %.cmt: %.ml
 	@echo 'Compiling $@ (bytecode)'
-	$(OCAMLC) $(OCAMLCFLAGS) -package "$(PACKAGES)" -c $<
+	$(OCAMLC) $(OCAMLCFLAGS) -package "$(PACKAGES)" -c '$<'
 
 %.html: %.adoc
 	@echo 'Building documentation $@'
-	asciidoc -a data-uri -a icons -a toc -a max-width=55em --theme volnitsky -o $@ $<
+	asciidoc -a data-uri -a icons -a toc -a max-width=55em --theme volnitsky -o '$@' '$<'
 
 %.ml: %.type
 	@echo 'Generating code for type $<'
@@ -192,9 +192,9 @@ include make.inc
 	fi ;\
 	ocamlfind dessser/dessserc lib --quiet --fieldmask=both -O3 \
 	  --input-encoding row-binary --output-encoding row-binary \
-	  --language=OCaml --schema=@$< \
-	  $$extra -o $@ ;\
-	$(RM) $(basename $@).mli
+	  --language=OCaml --schema='@$<' \
+	  $$extra -o '$@' ;\
+	$(RM) '$(basename $@).mli'
 
 # BEWARE that raql_type is not automatically generated
 TYPE_SOURCES = \
@@ -697,62 +697,62 @@ tests/func/tuples.x: tests/func/fixtures/n123.x
 
 IpToCountry.csv.gz:
 	@echo 'Downloading $@'
-	$(WGET) 'http://software77.net/geo-ip/?DL=1' -O $@.tmp && mv $@.tmp $@
+	$(WGET) 'http://software77.net/geo-ip/?DL=1' -O '$@.tmp' && mv '$@.tmp' '$@'
 
 IpToCountry.csv: IpToCountry.csv.gz
 	@echo 'Uncompressing $@'
-	gunzip --keep $< && touch $@
+	gunzip --keep '$<' && touch '$@'
 
 IpToCountry.6R.csv.gz:
 	@echo 'Downloading $@'
-	$(WGET) 'http://software77.net/geo-ip/?DL=7' -O $@.tmp && mv $@.tmp $@
+	$(WGET) 'http://software77.net/geo-ip/?DL=7' -O '$@.tmp' && mv '$@.tmp' '$@'
 
 IpToCountry.6R.csv: IpToCountry.6R.csv.gz
 	@echo 'Uncompressing $@'
-	gunzip --keep $< && touch $@
+	gunzip --keep '$<' && touch '$@'
 
 tools/ipcsv.opt: tools/ipcsv.ml
 	@echo 'Compiling $@'
-	$(OCAMLOPT) -linkpkg -package ipaddr,csv,str -o $@ $<
+	$(OCAMLOPT) -linkpkg -package ipaddr,csv,str -o '$@' '$<'
 
 
 # Compile Ramen
 
 src/RamenFileNotify.ml: $(FILE_NOTIFIER)
 	@echo 'Using implementation $(FILE_NOTIFIER) for new file notifications'
-	@ln -sf $(notdir $<) $@
-	@touch $@
+	@ln -sf '$(notdir $<)' '$@'
+	@touch '$@'
 
 src/libringbuf.a: $(patsubst %.c,%.o,$(filter %.c, $(LIBRINGBUF_SOURCES)))
 	@echo 'Building ringbuf library'
 	@sleep 1 # ar truncate mtime !?
-	@$(AR) rs $@ $^ >/dev/null
+	@$(AR) rs '$@' $^ >/dev/null
 
 src/libcollectd.a: $(patsubst %.c,%.o,$(filter %.c, $(LIBCOLLECTD_SOURCES)))
 	@echo 'Building collectd library'
 	@sleep 1 # ar truncate mtime !?
-	@$(AR) rs $@ $^ >/dev/null
+	@$(AR) rs '$@' $^ >/dev/null
 
 src/libnetflow.a: $(patsubst %.c,%.o,$(filter %.c, $(LIBNETFLOW_SOURCES)))
 	@echo 'Building netflow library'
 	@sleep 1 # ar truncate mtime !?
-	@$(AR) rs $@ $^ >/dev/null
+	@$(AR) rs '$@' $^ >/dev/null
 
 src/liborchelp.a: $(patsubst %.cc,%.o,$(filter %.cc, $(LIBORC_SOURCES)))
 	@echo 'Building orc helper library'
 	@sleep 1 # ar truncate mtime !?
-	@$(AR) rs $@ $^ >/dev/null
+	@$(AR) rs '$@' $^ >/dev/null
 
 src/libcountry.a: $(patsubst %.c,%.o,$(filter %.c, $(LIBCOUNTRY_SOURCES)))
 	@echo 'Building geolocation library'
 	@sleep 1 # ar truncate mtime !?
-	@$(AR) rs $@ $^ >/dev/null
+	@$(AR) rs '$@' $^ >/dev/null
 
 submodules/orc/NOTICE: .gitmodules
 	@echo "Getting submodules"
 	@git submodule init
 	@git submodule update --depth 1
-	@touch $@
+	@touch '$@'
 
 ifneq (@HAVE_ORC@,1)
 # We need the ORC include files to be installed for that one:
@@ -771,18 +771,18 @@ $(BUNDLE_DIR)/lib/liborc.a: $(BUNDLE_DIR)/date submodules/orc/NOTICE
 	    -DCMAKE_INSTALL_PREFIX:PATH=$(CURDIR)/$(BUNDLE_DIR) \
 	    -DSTOP_BUILD_ON_WARNING=OFF &&\
 	 make install
-	@touch $@
+	@touch '$@'
 endif
 
 $(BUNDLE_DIR)/include/caml:
 	@echo 'Copying OCaml headers'
-	@install -d $(BUNDLE_DIR)/include
-	@cp -r $(shell ocamlfind ocamlc -where)/caml $(BUNDLE_DIR)/include
+	@install -d '$(BUNDLE_DIR)/include'
+	@cp -r '$(shell ocamlfind ocamlc -where)/caml' '$(BUNDLE_DIR)/include'
 
 $(BUNDLE_DIR)/include/dessser:
 	@echo 'Copying Dessser headers'
-	@install -d $(BUNDLE_DIR)/include/dessser
-	@cp $(wildcard $(shell ocamlfind query dessser)/*.h) $(BUNDLE_DIR)/include/dessser/
+	@install -d '$(BUNDLE_DIR)/include/dessser'
+	@cp '$(wildcard $(shell ocamlfind query dessser)/*.h)' '$(BUNDLE_DIR)/include/dessser/'
 
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
 # otherwise -package stdint would put it before and gcc would not include the
@@ -824,7 +824,7 @@ src/orc/orc_writer: \
 		$(BUNDLE_DIR)/include/caml \
 		$(BUNDLE_LIBORC)
 	@echo 'Linking $@'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o '$@'
 
 src/ramen: \
 		$(patsubst %.mli,%.cmi,$(filter %.mli, $(RAMEN_SOURCES))) \
@@ -837,7 +837,7 @@ src/ramen: \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_LIBORC)
 	@echo 'Linking $@'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg $(MOREFLAGS) $(filter %.cmx, $^) -o '$@'
 
 src/ramen.byte: \
 		$(patsubst %.mli,%.cmi,$(filter %.mli, $(RAMEN_SOURCES))) \
@@ -848,7 +848,7 @@ src/ramen.byte: \
 		src/liborchelp.a \
 		src/libcountry.a
 	@echo 'Linking $@'
-	$(OCAMLC) $(OCAMLCFLAGS) -linkpkg $(MOREFLAGS) -cclib -lsodium -cclib -lsodium_stubs $(filter %.cmo, $^) -o $@
+	$(OCAMLC) $(OCAMLCFLAGS) -linkpkg $(MOREFLAGS) -cclib -lsodium -cclib -lsodium_stubs $(filter %.cmo, $^) -o '$@'
 
 src/codegen.cmxa: \
 		$(filter %.cmx,$(CODEGENLIB_SOURCES:.ml=.cmx)) \
@@ -859,7 +859,7 @@ src/codegen.cmxa: \
 		src/liborchelp.a \
 		src/libcountry.a
 	@echo 'Linking runtime library $@'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -a $(MOREFLAGS) $(filter %.cmx, $^) -o '$@'
 
 src/codegen.cma: \
 		$(filter %.cmo,$(CODEGENLIB_SOURCES:.ml=.cmo)) \
@@ -870,7 +870,7 @@ src/codegen.cma: \
 		src/liborchelp.a \
 		src/libcountry.a
 	@echo 'Linking runtime library $@'
-	$(OCAMLC) $(OCAMLCFLAGS) -a $(MOREFLAGS) $(filter %.cmo, $^) -o $@
+	$(OCAMLC) $(OCAMLCFLAGS) -a $(MOREFLAGS) $(filter %.cmo, $^) -o '$@'
 
 src/codegen.a: src/codegen.cmxa
 
@@ -886,7 +886,7 @@ $(BUNDLE_DIR)/date:
 	@echo '!!! REBUILDING $(BUNDLE_DIR) !!!'
 	$(RM) -r '$(BUNDLE_DIR)'
 	mkdir -p '$(BUNDLE_DIR)'
-	touch $@
+	touch '$@'
 
 $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	@echo 'Bundling libs together into $(BUNDLE_DIR)'
@@ -898,34 +898,34 @@ $(BUNDLE_DIR)/ramen/codegen.a: $(BUNDLE_DIR)/date $(INSTALLED_LIB)
 	     ocamlfind query -recursive -predicates native,mt -format '%d' $$p ;\
 	   done | sort -u | grep -v /findlib) ;\
 	 for d in $$deps ; do cp -r "$$d" '$(BUNDLE_DIR).tmp/' ; done
-	mkdir $(BUNDLE_DIR).tmp/ramen
-	cp $(INSTALLED_LIB) $(BUNDLE_DIR).tmp/ramen
+	mkdir '$(BUNDLE_DIR).tmp/ramen'
+	cp $(INSTALLED_LIB) '$(BUNDLE_DIR).tmp/ramen'
 	find '$(BUNDLE_DIR).tmp' -type f -not '(' \
 	    -name '*.cmx*' -o -name '*.cmi' -o -name '*.a' -o \
 	    -name '*.so' -o -name '*.o' -o -name META \
 	  ')' -delete
 	find '$(BUNDLE_DIR).tmp' -empty -delete
 	@# Delete some of the biggest unused files:
-	$(RM) $(BUNDLE_DIR).tmp/batteries/batteriesExceptionless.cm*
-	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/compiler-libs
-	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/camlp4
-	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocamldoc
-	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/thread
-	$(RM) -r $(BUNDLE_DIR).tmp/ocaml/ocplib*
-	$(RM) $(BUNDLE_DIR).tmp/ocaml/camlinternalFormat.*
-	$(RM) $(BUNDLE_DIR).tmp/ocaml/*spacetime*
+	$(RM) '$(BUNDLE_DIR).tmp'/batteries/batteriesExceptionless.cm*
+	$(RM) -r '$(BUNDLE_DIR).tmp'/ocaml/compiler-libs
+	$(RM) -r '$(BUNDLE_DIR).tmp'/ocaml/camlp4
+	$(RM) -r '$(BUNDLE_DIR).tmp'/ocaml/ocamldoc
+	$(RM) -r '$(BUNDLE_DIR).tmp'/ocaml/thread
+	$(RM) -r '$(BUNDLE_DIR).tmp'/ocaml/ocplib*
+	$(RM) '$(BUNDLE_DIR).tmp'/ocaml/camlinternalFormat.*
+	$(RM) '$(BUNDLE_DIR).tmp'/ocaml/*spacetime*
 	@# Delete everything that's not from liborc:
 	mkdir -p '$(BUNDLE_DIR)'
 	find '$(BUNDLE_DIR)' -maxdepth 1 -mindepth 1 -type d -not '(' \
 	    -name lib -o -name include \
 		')' -exec rm -rf '{}' \;
-	mv $(BUNDLE_DIR).tmp/* $(BUNDLE_DIR)/
-	$(RM) -r $(BUNDLE_DIR).tmp
-	touch $@
+	mv '$(BUNDLE_DIR).tmp'/* '$(BUNDLE_DIR)/'
+	$(RM) -r '$(BUNDLE_DIR).tmp'
+	touch '$@'
 
 src/RamenSubcommands.ml: genRamenSubcommands.opt
 	@echo 'Generating $@'
-	./genRamenSubcommands.opt > $@.tmp && mv $@.tmp $@
+	./genRamenSubcommands.opt > '$@.tmp' && mv '$@.tmp' '$@'
 
 # Not taken care of by `make dep`:
 src/RamenSubcommands.cmx: src/RamenName.cmx src/RamenProcesses.cmx
@@ -937,7 +937,7 @@ genRamenSubcommands.opt: \
 		src/RamenConstsCliInfo.cmx \
 		src/genRamenSubcommands.ml
 	@echo 'Linking $@'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package batteries,dessser,stdint,binocle $^ -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package batteries,dessser,stdint,binocle $^ -o '$@'
 
 
 #
@@ -1001,13 +1001,13 @@ GENERATED_PAGES = \
 doc: $(GENERATED_PAGES)
 
 doc/gen_doc.cmo: doc/gen_doc.ml doc/raql/expr.cmo
-	ocamlfind ocamlc -annot -package batteries,owww -I doc/raql -c $< -o $@
+	ocamlfind ocamlc -annot -package batteries,owww -I doc/raql -c '$<' -o '$@'
 
 doc/raql/expr.cmo: doc/raql/expr.ml
-	ocamlfind ocamlc -annot -package batteries,owww -I doc/raql -c $< -o $@
+	ocamlfind ocamlc -annot -package batteries,owww -I doc/raql -c '$<' -o '$@'
 
 doc/gen_doc.byte: doc/raql/expr.cmo doc/gen_doc.cmo
-	ocamlfind ocamlc -annot -package batteries,owww -linkpkg $^ -o $@
+	ocamlfind ocamlc -annot -package batteries,owww -linkpkg $^ -o '$@'
 
 clean-doc:
 	for d in doc doc/raql; do $(RM) $$d/*.cmo $$d/*.o $$d/*.cmt $$d/*.cmi; done
@@ -1017,7 +1017,7 @@ clean-dist-doc:
 	$(RM) $(GENERATED_PAGES)
 
 doc/raql/%.html: doc/gen_doc.byte
-	@doc/gen_doc.byte $@
+	@doc/gen_doc.byte '$@'
 
 
 #
@@ -1026,7 +1026,7 @@ doc/raql/%.html: doc/gen_doc.byte
 
 tools/ip2num_csv.opt: tools/ip2num_csv.ml
 	@echo 'Compiling $@'
-	$(OCAMLOPT) -linkpkg -package batteries -o $@ $<
+	$(OCAMLOPT) -linkpkg -package batteries -o '$@' '$<'
 
 TESTABLE_SOURCES = \
 	src/RamenParsing.ml \
@@ -1203,7 +1203,7 @@ LINKED_FOR_TESTS = \
 
 src/all_tests.ml: $(TESTABLE_SOURCES)
 	@echo 'Generating unit tests into $@'
-	$(QTEST) --shuffle -o $@ extract $^
+	$(QTEST) --shuffle -o '$@' extract $^
 
 all_tests.opt: \
 		src/libringbuf.a \
@@ -1258,7 +1258,7 @@ ringbuf_test.opt: \
 
 src/ringbuf/test: src/ringbuf/test.c src/libringbuf.a
 	@echo 'Building ringbuf load test into $@'
-	$(CC) $(CFLAGS) $(CPPFLAGS) -O0 -g $^ -o $@
+	$(CC) $(CFLAGS) $(CPPFLAGS) -O0 -g $^ -o '$@'
 
 heavyhitters_test.opt: \
 		src/RamenAtomic.cmx \
@@ -1267,7 +1267,7 @@ heavyhitters_test.opt: \
 		src/HeavyHitters.cmx \
 		src/heavyhitters_test.cmx
 	@echo 'Building $@'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package "$(PACKAGES)" $(filter %.cmx, $^) -o '$@'
 
 check: \
 		unit-check ringbuf-check cli-check func-check comp-check arc-check \
@@ -1329,18 +1329,18 @@ GENERATED_DOC_TESTS = \
 	  $(addsuffix .test, $(basename $(GENERATED_PAGES))))
 
 doc/raql/%.test: doc/gen_doc.byte
-	doc/gen_doc.byte $@
+	doc/gen_doc.byte '$@'
 
 doc/raql/%.ramen: doc/gen_doc.byte
-	doc/gen_doc.byte $@
+	doc/gen_doc.byte '$@'
 
 # There is one ramen file per test file:
 doc/raql/%.success: doc/raql/%.test doc/raql/%.ramen src/ramen
 	@echo 'Running doc test $(basename $< .test)'
-	@$(RM) $@
+	@$(RM) '$@'
 	RAMEN_DESSSER_CODE_GENERATOR=never \
 	RAMEN_OPTIMIZATION_LEVEL=3 \
-	src/ramen test --bundle-dir=bundle '$<' && touch $@
+	src/ramen test --bundle-dir=bundle '$<' && touch '$@'
 
 doc-check: $(addsuffix .success, $(basename $(GENERATED_DOC_TESTS)))
 
@@ -1358,7 +1358,7 @@ RAMEN_ALERTER_TESTS = $(wildcard tests/alerter/*.test)
 		src/ramen \
 		src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
+	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func '$<' -o '$@'
 
 %.x: \
 		%.alert \
@@ -1368,7 +1368,7 @@ RAMEN_ALERTER_TESTS = $(wildcard tests/alerter/*.test)
 		src/ramen \
 		src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
+	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func '$<' -o '$@'
 
 %.x: \
 		%.pivot \
@@ -1378,29 +1378,29 @@ RAMEN_ALERTER_TESTS = $(wildcard tests/alerter/*.test)
 		src/ramen \
 		src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func $< -o $@
+	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func '$<' -o '$@'
 
 # Special generated test to check the speed of CSV parsing:
 
 tools/gen_reader_test.opt: src/codegen.cmxa tools/gen_reader_test.ml
 	@echo 'Compiling $@'
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package cmdliner,batteries,binocle,dessser,ppp,qcheck,syslog $^ -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -linkpkg -package cmdliner,batteries,binocle,dessser,ppp,qcheck,syslog $^ -o '$@'
 
 tests/func/generated.type: tools/gen_reader_test.opt
 	@echo 'Generating a random type for CSV reader speed test'
-	@tools/gen_reader_test.opt type --max-depth=3 --format=CSV > $@.tmp && mv $@.tmp $@
+	@tools/gen_reader_test.opt type --max-depth=3 --format=CSV > '$@.tmp' && mv '$@.tmp' '$@'
 
 tests/func/generated.ramen: tests/func/generated.type tools/gen_reader_test.opt
 	@echo 'Generating a random CSV reader'
-	@tools/gen_reader_test.opt reader --format=CSV --files=fixtures/generated.csv "$$(cat $<)" > $@.tmp &&\
-	 echo >> $@.tmp &&\
+	@tools/gen_reader_test.opt reader --format=CSV --files=fixtures/generated.csv "$$(cat $<)" > '$@.tmp' &&\
+	 echo >> '$@.tmp' &&\
 	 echo 'DEFINE counter AS SELECT *, SUM globally 1 AS count FROM reader;' \
-	   >> $@.tmp &&\
-	 mv $@.tmp $@
+	   >> '$@.tmp' &&\
+	 mv '$@.tmp' '$@'
 
 tests/func/fixtures/generated.csv: tests/func/generated.type tools/gen_reader_test.opt
 	@echo 'Generating a random CSV file'
-	@tools/gen_reader_test.opt data --format=CSV --length=100000 "$$(cat $<)" > $@.tmp && mv $@.tmp $@
+	@tools/gen_reader_test.opt data --format=CSV --length=100000 "$$(cat $<)" > '$@.tmp' && mv '$@.tmp' '$@'
 
 tests/func/generated.success: tests/func/generated.test tests/func/fixtures/generated.csv tests/func/generated.ramen
 
@@ -1416,15 +1416,15 @@ FORCED_DESSSER = \
 # FIXME: Missing deps on some sources. `ramen test -MM` should output those.
 tests/func/%.success: tests/func/%.test src/ramen
 	@echo 'Running RaQL test $(basename $< .test)'
-	@$(RM) $@
+	@$(RM) '$@'
 	RAMEN_DESSSER_CODE_GENERATOR=$(if $(findstring ;$(notdir $(basename $< .test));,$(FORCED_DESSSER)),force,never) \
 	RAMEN_OPTIMIZATION_LEVEL=3 \
-	src/ramen test --bundle-dir=bundle '$<' && touch $@
+	src/ramen test --bundle-dir=bundle '$<' && touch '$@'
 
 tests/alerter/%.success: tests/alerter/%.test src/ramen
 	@echo 'Running alerter test $(basename $< .test)'
-	@$(RM) $@
-	src/ramen test-alert '$<' && touch $@
+	@$(RM) '$@'
+	src/ramen test-alert '$<' && touch '$@'
 
 func-check: \
 	$(RAMEN_FUNC_TESTS:.test=.success) \
@@ -1447,7 +1447,7 @@ comp-check: \
 	@set -e; \
 	for f in $(COMPTEST_PROGRAMS); do \
 	  echo "  Compiling $$f..." ;\
-	  RAMEN_CONFSERVER= src/ramen compile --quiet --bundle=bundle -L tests/programs $$f ;\
+	  RAMEN_CONFSERVER= src/ramen compile --quiet --bundle=bundle -L tests/programs "$$f" ;\
 	done ;\
 	echo "\033[1;32mSUCCESS\033[0m"
 
@@ -1460,12 +1460,12 @@ err-check: \
 	@echo 'Running parsing/typing error tests'
 	@for f in $(wildcard tests/errors/*.ramen); do \
 	  t=$$(mktemp) ;\
-	  RAMEN_CONFSERVER= src/ramen compile --quiet --bundle=bundle -L tests/errors $$f 2>$$t >/dev/null ;\
-	  if ! diff -q $$f.err $$t ; then \
+	  RAMEN_CONFSERVER= src/ramen compile --quiet --bundle=bundle -L tests/errors "$$f" 2>"$$t" >/dev/null ;\
+	  if ! diff -q "$$f.err" "$$t" ; then \
 	    echo "\033[1;31mFAILURE\033[0m: $$f" ;\
 	    exit 1 ;\
 	  fi ;\
-	  $(RM) $$t ;\
+	  $(RM) "$$t" ;\
 	done ;\
 	echo "\033[1;32mSUCCESS\033[0m"
 
@@ -1535,7 +1535,7 @@ benchmarks.opt: \
 		$(filter %.cmx,$(LINKED_FOR_BENCH:.ml=.cmx))
 	$(OCAMLOPT) $(OCAMLOPTFLAGS) \
 		-package batteries,benchmark,binocle,dessser,lacaml,parsercombinator,ppp,stdint,syslog \
-		-linkpkg -cclib -lringbuf $(filter %.cmx, $^) src/benchmarks.ml -o $@
+		-linkpkg -cclib -lringbuf $(filter %.cmx, $^) src/benchmarks.ml -o '$@'
 
 bench: benchmarks.opt
 	./benchmarks.opt
@@ -1545,11 +1545,11 @@ bench: benchmarks.opt
 install: $(INSTALLED) install-bundle
 	ocamlfind install ramen $(INSTALLED_LIB) META
 	@echo 'Installing binaries into $(bin_dir)'
-	install -d $(bin_dir)
-	install $(INSTALLED_BIN) $(bin_dir)/
+	install -d '$(bin_dir)'
+	install $(INSTALLED_BIN) '$(bin_dir)/'
 ifdef STRIP_BIN
 	for f in $(INSTALLED_BIN); do \
-	   strip $(bin_dir)/$$(basename $$f) || true ;\
+	   strip '$(bin_dir)'/$$(basename $$f) || true ;\
 	done
 endif
 
@@ -1558,23 +1558,23 @@ endif
 # required if you intend to use the embedded compiler).
 install-bundle: bundle
 	@echo 'Installing libraries bundle into $(DESTDIR)$(lib_dir)'
-	install -d $(DESTDIR)$(lib_dir)
-	cp -r $(BUNDLE_DIR) $(DESTDIR)$(lib_dir)/
+	install -d '$(DESTDIR)$(lib_dir)'
+	cp -r '$(BUNDLE_DIR)' '$(DESTDIR)$(lib_dir)/'
 
 install-examples:
 	@echo 'Installing examples into $(DESTDIR)$(sample_dir)'
-	install -d $(DESTDIR)$(sample_dir)
+	install -d '$(DESTDIR)$(sample_dir)'
 	cd examples &&\
 	 find . -type f -name '*.ramen' \
-	   -exec sh -c 'mkdir -p $(DESTDIR)$(sample_dir)/$$(dirname {})' \; \
-	   -exec sh -c 'cp {} $(DESTDIR)$(sample_dir)/$$(dirname {})' \;
+	   -exec sh -c 'mkdir -p '$(DESTDIR)$(sample_dir)'/$$(dirname {})' \; \
+	   -exec sh -c 'cp {} '$(DESTDIR)$(sample_dir)'/$$(dirname {})' \;
 
 install-systemd:
 	@echo 'Installing systemd configuration into $(DESTDIR)$(systemd_dir)'
-	install -d $(DESTDIR)$(systemd_dir)
-	install -d $(DESTDIR)$(sysconf_dir)
-	cp systemd/*.target systemd/*.service $(DESTDIR)$(systemd_dir)
-	cp systemd/ramen $(DESTDIR)$(sysconf_dir)
+	install -d '$(DESTDIR)$(systemd_dir)'
+	install -d '$(DESTDIR)$(sysconf_dir)'
+	cp systemd/*.target systemd/*.service '$(DESTDIR)$(systemd_dir)'
+	cp systemd/ramen '$(DESTDIR)$(sysconf_dir)'
 
 uninstall: uninstall-bundle
 	@echo 'Uninstalling binaries'
@@ -1582,11 +1582,11 @@ uninstall: uninstall-bundle
 	# `ocamlfind remove` to fail:
 	$(RM) -r $(shell ocamlfind query ramen)/bundle
 	ocamlfind remove ramen
-	$(RM) $(bin_dir)/ramen
+	$(RM) '$(bin_dir)/ramen'
 
 uninstall-bundle:
 	@echo 'Uninstalling libraries bundle'
-	$(RM) -r $(DESTDIR)$(lib_dir)/$(BUNDLE_DIR)
+	$(RM) -r '$(DESTDIR)$(lib_dir)/$(BUNDLE_DIR)'
 
 reinstall:
 	$(MAKE) uninstall && \
@@ -1617,7 +1617,7 @@ endif
 	cp debian.control debtmp/DEBIAN/control
 	chmod -R a+x debtmp/usr
 	fakeroot dpkg --build debtmp
-	mv debtmp.deb $@
+	mv debtmp.deb '$@'
 	$(RM) -r debtmp
 
 ramen.$(VERSION).tgz: \
@@ -1645,7 +1645,7 @@ endif
 
 docker: docker/Dockerfile
 	@echo 'Building docker image'
-	$(DOCKER_BUILD) --squash -t rixed/ramen:latest -f $< docker/
+	$(DOCKER_BUILD) --squash -t rixed/ramen:latest -f '$<' docker/
 	@echo 'Pushing to local hub as localhost:5000/ramen'
 	docker tag rixed/ramen localhost:5000/ramen
 	docker push localhost:5000/ramen
@@ -1684,12 +1684,12 @@ docker-dev-push:
 # The docker image is build from the debian package:
 docker/ramen.$(VERSION).deb: ramen.$(VERSION).deb
 	@echo 'Copying debian package into docker/'
-	cp $< $@
+	cp '$<' '$@'
 
 # Also for the docker image only. docker-dev builds its own z3.
 docker/z3: @Z3@
 	@echo 'Copying z3 from system into docker/'
-	cp $< $@
+	cp '$<' '$@'
 
 # Cleaning
 
@@ -1707,7 +1707,7 @@ clean-dist: clean clean-temp clean-dist-doc
 	@echo 'Cleaning all build files'
 	$(RM) doc/tutorial.html doc/manual.html doc/roadmap.html
 	find tests -name '*.success' -delete
-	$(RM) -r $(BUNDLE_DIR)
+	$(RM) -r '$(BUNDLE_DIR)'
 	$(RM) -r debtmp
 	$(RM) -r tmp
 	$(RM) -r submodules/orc
@@ -1741,4 +1741,4 @@ clean-dessserc-gen:
 	$(RM) $(patsubst %.type, %.ml, $(filter %.type, $(TYPE_SOURCES)))
 
 authn: src/RamenAuthn.cmx
-	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package batteries,sodium -linkpkg $(filter %.cmx, $^) -o $@
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -package batteries,sodium -linkpkg $(filter %.cmx, $^) -o '$@'
