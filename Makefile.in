@@ -952,7 +952,7 @@ GENERATED_EXPRS = \
 	and or comparison strict-comparison equality concat startswith endswith \
 	bit-and bit-or bit-xor bit-shift in format_time index percentile substring \
 	aggrmin aggrmax aggrsum aggravg aggrand aggror aggrbitand aggrbitor \
-	aggrbitxor
+	aggrbitxor aggrfirst aggrlast aggrhistogram group count distinct
 
 GENERATED_PAGES = $(addprefix doc/raql/, $(addsuffix .html, $(GENERATED_EXPRS)))
 
@@ -1283,8 +1283,8 @@ examples-check:
 		examples/tests/simplest.x
 
 GENERATED_DOC_TESTS = \
-	$(filter-out %/now.test %/random.test %/age.test, \
-	  $(addsuffix .test, $(basename $(GENERATED_PAGES))))
+	$(addsuffix .test, $(addprefix doc/raql/, \
+		$(filter-out now random age group distinct, $(GENERATED_EXPRS))))
 
 doc/raql/%.test: doc/gen_doc.byte
 	doc/gen_doc.byte '$@'

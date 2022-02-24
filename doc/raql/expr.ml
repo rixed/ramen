@@ -226,22 +226,22 @@ let exprs =
       [ [ cdata "ACOS …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       (* Must use parenths: *)
-      [ "ACOS(-1)", "3.14" ] ;
+      [ "ACOS(-1)", "3.14159265359" ] ;
     make "asin" "Arc-Sine"
       [ p [ cdata "Return the arc-sine of the operand." ] ]
       [ [ cdata "ASIN …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
-      [ "2 * ASIN 1", "3.14" ] ;
+      [ "2 * ASIN 1", "3.14159265359" ] ;
     make "atan" "ArcTangent"
       [ p [ cdata "Return the arc-tangent of the operand." ] ]
       [ [ cdata "ATAN …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
-      [ "4 * ATAN 1", "3.14" ] ;
+      [ "4 * ATAN 1", "3.14159265359" ] ;
     make "cosh" "Hyperbolic Cosine"
       [ p [ cdata "Return the hyperbolic cosine of the operand." ] ]
       [ [ cdata "COSH …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
-      [ "COSH 0", "0" ] ;
+      [ "COSH 0", "1" ] ;
     make "sinh" "Hyperbolic Sine"
       [ p [ cdata "Return the hyperbolic sine of the operand." ] ]
       [ [ cdata "SINH …numeric-expr…" ] ]
@@ -720,17 +720,70 @@ let exprs =
       [ p [ cdata "Bitwise AND all values together." ] ]
       [ [ cdata "BITAND …int-expr…" ] ]
       [ [ cdata "int sequence -> int" ] ]
-      [ "BITAND [ 12; 5; 4]", "4" ] ;
+      [ "BITAND [ 12; 5; 4 ]", "4" ] ;
     make "aggrbitor" "Bitwise OR (aggregate)" ~has_state:true
       [ p [ cdata "Bitwise OR all values together." ] ]
       [ [ cdata "BITOR …int-expr…" ] ]
       [ [ cdata "int sequence -> int" ] ]
-      [ "BITOR [ 3; 2; 4]", "7" ] ;
+      [ "BITOR [ 3; 2; 4 ]", "7" ] ;
     make "aggrbitxor" "Bitwise XOR (aggregate)" ~has_state:true
       [ p [ cdata "Bitwise XOR all values together." ] ]
       [ [ cdata "BITXOR …int-expr…" ] ]
       [ [ cdata "int sequence -> int" ] ]
-      [ "BITXOR [ 1; 2; 5]", "6" ] ;
+      [ "BITXOR [ 1; 2; 5 ]", "6" ] ;
+    make "aggrfirst" "First value" ~has_state:true
+      [ p [ cdata "Selects the first value of a sequence." ] ]
+      [ [ cdata "FIRST …expr…" ] ]
+      [ [ cdata "t sequence -> t" ] ]
+      [ "FIRST [ 1; 2; 3 ]", "1" ] ;
+    make "aggrlast" "Last value" ~has_state:true
+      [ p [ cdata "Selects the last value of a sequence." ] ]
+      [ [ cdata "LAST …expr…" ] ]
+      [ [ cdata "t sequence -> t" ] ]
+      [ "LAST [ 1; 2; 3 ]", "3" ] ;
+    make "aggrhistogram" "Build an histogram" ~has_state:true
+      [ p [ cdata "Given a sequence of numeric values, build an histogram \
+                   for values between the provided minimum and maximum \
+                   values." ] ;
+        p [ cdata "The third operand is the number of buckets." ] ;
+        p [ cdata "The operation returns a vector of this number of buclets \
+                   unsigned counters, with one extra bucket at each end to \
+                   account for values respectively lesser and greater than \
+                   the limits." ] ]
+      ~limitations:[ p [ cdata "The histogram limits and number of nuckets \
+                                must be constants." ] ]
+      [ [ cdata "HISTOGRAM(…expr…, …const-float…, …const-float…, …const-int…)" ] ]
+      [ [ cdata "t, FLOAT, FLOAT, N:uint -> u32[N+2]" ] ]
+      [ "HISTOGRAM([ 5.1; 5.3; 3.2; 2.1; 3.7; 5.6; 1.4 ], 0, 6, 6)",
+        "[ 0; 0; 1; 1; 2; 0; 3; 0 ]" ] ;
+    make "group" "Collect values into an array" ~has_state:true
+      [ p [ cdata "This operator aggregates all values into an array." ] ]
+      ~limitations:[ p [ cdata "The order of values in the array is undefined." ] ]
+      [ [ cdata "GROUP …expr…" ] ]
+      [ [ cdata "t sequence -> t[]" ] ]
+      (* Note: non-working examples because Group cannot distinguish between
+       * item value and sequence of items *)
+      [ "GROUP([1; 2; 3])", "[1; 2; 3]" ] ;
+    make "count" "Count" ~has_state:true
+      [ p [ cdata "If the counted expression is a boolean, count how many are \
+                   true. Otherwise, is equivalent to " ; bold "SUM 1" ;
+            cdata "." ] ]
+      [ [ cdata "COUNT …expr…" ] ]
+      [ [ cdata "t sequence -> u32" ] ]
+      [ "COUNT [ 1; 1; 1 ]", "3" ;
+        "COUNT [ TRUE ; FALSE ; TRUE ]", "2" ] ;
+    make "distinct" "Tells if each item is distinct" ~has_state:true
+      [ p [ cdata "Accurately tells if the same item was already met in \
+                   the aggregate." ] ;
+        p [ cdata "See " ; bold "REMEMBER" ;
+            cdata " for a safer approximation of this." ] ]
+      [ [ cdata "DISTINCT …expr…" ] ]
+      [ [ cdata "t sequence -> BOOL" ] ]
+      (* Note: non-working examples because Distinct cannot distinguish between
+       * item value and sequence of items *)
+      [ "DISTINCT [ 1; 2; 3 ]", "TRUE" ;
+        "DISTINCT [ 1; 2; 1 ]", "FALSE" ;
+        "COUNT DISTINCT [ 1; 2; 1 ]", "2" ]
 ]
 
 let see_also =
@@ -758,4 +811,14 @@ let see_also =
     [ "index" ; "startswith" ; "endswith" ] ;
     [ "min" ; "aggrmin" ] ;
     [ "max" ; "aggrmax" ] ;
+    [ "aggrsum" ; "aggravg" ] ;
+    [ "aggrand" ; "aggror" ] ;
+    [ "aggrand" ; "and" ] ;
+    [ "aggror" ; "or" ] ;
+    [ "aggrbitand" ; "aggrbitor" ; "aggrbitxor" ] ;
+    [ "aggrbitand" ; "bit-and" ] ;
+    [ "aggrbitor" ; "bit-or" ] ;
+    [ "aggrbitxor" ; "bit-xor" ] ;
+    [ "aggrfirst" ; "aggrlast" ] ;
+    [ "count" ; "distinct" ; (* "remember" *) ] ;
   ]
