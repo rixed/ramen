@@ -1243,11 +1243,11 @@ let emit_constraints tuple_sizes records field_names
         (emit_eq nid)
 
   | Stateless (SL2 (Strftime, e1, e2)) ->
-      (* - e1 must be a string and e2 a float (ideally, a time);
+      (* - e1 must be a string and e2 a numeric (ideally, a time);
        * - Then result will be a string;
        * - Its nullability propagates from arguments. *)
       emit_assert_string oc e1 ;
-      emit_assert_float oc e2 ;
+      emit_assert_numeric oc e2 ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TString ;
       emit_assert_let oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
