@@ -203,7 +203,7 @@
         // Takes an expression and a vector of desired percentiles
         | Percentile ]; this; this)
       | SL3 (
-        [ SubString
+        [ SubString // string, start, stop
         // Sore a value in a map at a given key (also return that value):
         | MapSet ]; this; this; this) ]
     | Stateful {

@@ -303,8 +303,8 @@ let substring s a b =
   and b = Int32.to_int b in
   let l = String.length s in
   let a, b = min a l, min b l in
-  let a = if a < 0 then a + l else a
-  and b = if b < 0 then b + l else b in
+  let a = if a < 0 then max (a + l) 0 else a
+  and b = if b < 0 then max (b + l) 0 else b in
   if a >= b then "" else
   String.sub s a (b - a)
 
