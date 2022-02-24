@@ -2112,7 +2112,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
       Printf.fprintf oc "\t\t%a <- %a ;\n"
         (emit_expr ~env ~context:Finalize ~opc) my_state
         (emit_expr ~env ~context:InitState ~opc) expr ;
-      Printf.fprintf oc "\t\t%a_empty_ <- false ;\n"
+      Printf.fprintf oc "\t\t%a_empty_ <- true ;\n"
         (emit_expr ~env ~context:Finalize ~opc) my_state ;
       Printf.fprintf oc "(match %a with "
         (emit_expr ~env ~context:Finalize ~opc) e ;
