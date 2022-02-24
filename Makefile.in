@@ -944,59 +944,17 @@ genRamenSubcommands.opt: \
 # Documentation
 #
 
-GENERATED_PAGES = \
-	doc/raql/now.html \
-	doc/raql/random.html \
-	doc/raql/pi.html \
-	doc/raql/age.html \
-	doc/raql/cast.html \
-	doc/raql/force.html \
-	doc/raql/peek.html \
-	doc/raql/length.html \
-	doc/raql/lower.html \
-	doc/raql/upper.html \
-	doc/raql/uuid_of_u128.html \
-	doc/raql/not.html \
-	doc/raql/abs.html \
-	doc/raql/neg.html \
-	doc/raql/is-null.html \
-	doc/raql/exp.html \
-	doc/raql/log.html \
-	doc/raql/log10.html \
-	doc/raql/sqrt.html \
-	doc/raql/sq.html \
-	doc/raql/ceil.html \
-	doc/raql/floor.html \
-	doc/raql/round.html \
-	doc/raql/cos.html \
-	doc/raql/sin.html \
-	doc/raql/tan.html \
-	doc/raql/acos.html \
-	doc/raql/asin.html \
-	doc/raql/atan.html \
-	doc/raql/cosh.html \
-	doc/raql/sinh.html \
-	doc/raql/tanh.html \
-	doc/raql/hash.html \
-	doc/raql/parse_time.html \
-	doc/raql/chr.html \
-	doc/raql/like.html \
-	doc/raql/fit.html \
-	doc/raql/countrycode.html \
-	doc/raql/ipfamily.html \
-	doc/raql/basename.html \
-	doc/raql/min.html \
-	doc/raql/max.html \
-	doc/raql/coalesce.html \
-	doc/raql/add.html \
-	doc/raql/sub.html \
-	doc/raql/mul.html \
-	doc/raql/div.html \
-	doc/raql/idiv.html \
-	doc/raql/mod.html \
-	doc/raql/pow.html \
-	doc/raql/truncate.html \
-	doc/raql/reldiff.html
+GENERATED_EXPRS = \
+	now random pi age cast force peek length lower upper uuid_of_u128 not abs \
+	neg is-null exp log log10 sqrt sq ceil floor round cos sin tan acos asin \
+	atan cosh sinh tanh hash parse_time chr like fit countrycode ipfamily \
+	basename min max coalesce add sub mul div idiv mod pow truncate reldiff \
+	and or comparison strict-comparison equality concat startswith endswith \
+	bit-and bit-or bit-xor bit-shift in format_time index percentile substring \
+	aggrmin aggrmax aggrsum aggravg aggrand aggror aggrbitand aggrbitor \
+	aggrbitxor
+
+GENERATED_PAGES = $(addprefix doc/raql/, $(addsuffix .html, $(GENERATED_EXPRS)))
 
 doc: $(GENERATED_PAGES)
 

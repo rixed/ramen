@@ -9,28 +9,69 @@ let html_of_example (input, output) =
   Html.Block [
     p [
       bold ("SELECT "^ input ^"…") ] ;
-    p [ text ("  "^ output) ] ]
+    p [ cdata ("  "^ output) ] ]
+
+let expr_of_name name =
+  let filenamify s =
+    String.map (fun c ->
+      if Char.is_whitespace c then '_' else c
+    ) s in
+  try
+    List.find (fun e -> filenamify e.Expr.name = name) Expr.exprs
+  with Not_found ->
+    Printf.eprintf "No such expression: %S\n" name ;
+    exit 1
 
 let of_expr e =
   let name = String.uppercase e.Expr.name in
+  let state_expl =
+    [ p [ cdata "this is an aggregate function. As such, it accepts a \
+                 single operand which can wither be a scalar, in which \
+                 case it will operate in turn on each item of the group, \
+                 or an array or a vector in which case it will operate on \
+                 each value in sequence and return the result (in practice, \
+                 this process is delayed until the group is submitted for \
+                 performance reasons)" ] ;
+      p [ cdata "User can choose to skip over NULL values or to include \
+                 them in the computation with one of the modifiers " ;
+          emph "SKIP NULLS" ; cdata " to skip NULL values (the default) and " ;
+          emph "KEEP NULLS" ; cdata " to include them." ] ;
+      p [ cdata "In the first case the result will still be NULL if all input \
+                 values are NULL, and in the last case any NULL value will
+                 make the result NULL." ] ;
+      p [ cdata "The other modifier tells whether the state used to compute \
+                 the aggregate must be local (each group has its own \
+                 independent state) or global (all groups share a single \
+                 state). In general when using a GROUP-BY clause the former \
+                 behavior is intended, and it is thus the default when an \
+                 explicit GROUP-BY clause is present. Otherwise, the default \
+                 is to use only one global state." ] ;
+      p [ cdata "One can choose between those two with the modifier " ;
+          emph "LOCALLY" ; cdata " to force a group-wise state and " ;
+          emph "GLOBALLY" ; cdata " to force a global state." ] ;
+      p [ cdata "This choice of the state lifespan is only meaningful when \
+                 the operation is applied to a single scalar value, since \
+                 the state required to compute the end result over a \
+                 literal array or vector lives only as long as that \
+                 computation." ] ] in
   let see_also =
     try List.find_all (List.mem e.name) Expr.see_also |> List.flatten |>
         List.sort String.compare |> List.unique
     with Not_found -> [] in
-  if not (String.ends_with e.short_descr ".") then
-    Printf.eprintf "WARNING: %s: short description does not end with '.'!\n"
+  if String.ends_with e.short_descr "." then
+    Printf.eprintf "WARNING: %s: short description ends with '.'!\n"
       name ;
   html [ title (e.name ^ " (RaQL expression)") ] (
-    [ h1 name ;
-      p [ text e.short_descr ] ;
-      h2 "Syntax" ] @
+    ( h1 e.short_descr ::
+      if e.has_state then state_expl else [] ) @
+    [ h2 "Syntax" ] @
     List.map (fun s -> p s) e.syntaxes @
     [ h2 "Typing" ] @
     List.map (fun s -> p s) e.typing @
     ( h2 "Description" ::
       e.long_descr @ (
         if e.deterministic then [] else [
-          p [ text (
+          p [ cdata (
             "Warning: Parents of a function using "^ name ^" can not be \
              archived, as the "^ name ^" function is not deterministic. \
              For better results, use "^ name ^" as early as possible in the \
@@ -42,7 +83,8 @@ let of_expr e =
     List.map html_of_example e.examples @
     (if see_also = [] then [] else [ h2 "See Also" ]) @
     List.map (fun n ->
-      if n <> e.name then p [ text n ] else Block []
+      let e' = expr_of_name n in
+      if e'.name <> e.name then p [ cdata e'.short_descr ] else Block []
     ) see_also))
 
 let print_html_of_expr e oc =
@@ -78,13 +120,6 @@ let print_raql_of_expr e oc =
 let with_file target f =
   Printf.printf "Generating %s...\n" target ;
   File.with_file_out target f
-
-let expr_of_name name =
-  try
-    List.find (fun e -> e.Expr.name = name) Expr.exprs
-  with Not_found ->
-    Printf.eprintf "No such expression: %S\n" name ;
-    exit 1
 
 let process source filename ext target =
   match source, ext with
