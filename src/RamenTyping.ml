@@ -944,33 +944,33 @@ let emit_constraints tuple_sizes records field_names
         ()
       | _ -> ())
 
-  | Stateful { skip_nulls = n ; operation = SF1 (AggrAvg, x) } ->
+  | Stateful { operation = SF1 (AggrAvg, x) ; _ } ->
       (* - x must be numeric or a list/vector of numerics;
        * - The result is a float;
-       * - The result is nullable if x or its elements are, or if skip_null. *)
+       * - The result is nullable if x or its elements are. *)
       let name = expr_err x Err.Numeric_Or_Numerics in
       emit_assert ~name oc (fun oc ->
-        let xid = t_of_expr x in
+        let xtid = t_of_expr x in
+        let xnid = n_of_expr x in
         Printf.fprintf oc
           "(xor (and ((_ is list) %s) \
                      %a \
-                     %a) \
+                     (= %s (or %s (list-nullable %s)))) \
                 (and ((_ is vector) %s) \
                      %a \
-                     %a) \
-                (and %a))"
-          xid
-            emit_numeric ("(list-type "^ xid ^")")
-            (emit_imply ("(list-nullable "^ xid ^")")) nid
-          xid
-            emit_numeric ("(vector-type "^ xid ^")")
-            (emit_imply ("(vector-nullable "^ xid ^")")) nid
-          emit_numeric xid) ;
+                     (= %s (or %s (vector-nullable %s)))) \
+                (and %a \
+                     (= %s %s)))"
+          xtid
+            emit_numeric ("(list-type "^ xtid ^")")
+            nid xnid xtid
+          xtid
+            emit_numeric ("(vector-type "^ xtid ^")")
+            nid xnid xtid
+          emit_numeric xtid
+            nid xnid) ;
 
-      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
-      emit_assert oc (fun oc ->
-        Printf.fprintf oc "(= %s (or %s %s))"
-          nid (n_of_expr x) (if n then "true" else "false"))
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat
 
   | Stateless (SL1 (Minus, x)) ->
       (* - The only argument must be numeric;
