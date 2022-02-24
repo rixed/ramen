@@ -490,6 +490,32 @@ let emit_assert_numeric oc e =
   emit_assert ~name oc (fun oc ->
     emit_numeric oc (t_of_expr e))
 
+let emit_numerics_or_numeric oc xtid xnid nid =
+  Printf.fprintf oc
+    "(xor (and ((_ is list) %s) \
+               %a \
+               (= %s (or %s (list-nullable %s)))) \
+          (and ((_ is vector) %s) \
+               %a \
+               (= %s (or %s (vector-nullable %s)))) \
+          (and %a \
+               (= %s %s)))"
+    xtid
+      emit_numeric ("(list-type "^ xtid ^")")
+      nid xnid xtid
+    xtid
+      emit_numeric ("(vector-type "^ xtid ^")")
+      nid xnid xtid
+    emit_numeric xtid
+      nid xnid
+
+let emit_assert_numerics_or_numeric oc x nid =
+  let name = expr_err x Err.Numeric_Or_Numerics in
+  emit_assert ~name oc (fun oc ->
+    let xtid = t_of_expr x in
+    let xnid = n_of_expr x in
+    emit_numerics_or_numeric oc xtid xnid nid)
+
 let emit_assert_ip oc e =
   let name = expr_err e Err.AnyIp in
   let id = t_of_expr e in
@@ -945,31 +971,10 @@ let emit_constraints tuple_sizes records field_names
       | _ -> ())
 
   | Stateful { operation = SF1 (AggrAvg, x) ; _ } ->
-      (* - x must be numeric or a list/vector of numerics;
+      (* - x must be numeric or an array/vector of numerics;
        * - The result is a float;
        * - The result is nullable if x or its elements are. *)
-      let name = expr_err x Err.Numeric_Or_Numerics in
-      emit_assert ~name oc (fun oc ->
-        let xtid = t_of_expr x in
-        let xnid = n_of_expr x in
-        Printf.fprintf oc
-          "(xor (and ((_ is list) %s) \
-                     %a \
-                     (= %s (or %s (list-nullable %s)))) \
-                (and ((_ is vector) %s) \
-                     %a \
-                     (= %s (or %s (vector-nullable %s)))) \
-                (and %a \
-                     (= %s %s)))"
-          xtid
-            emit_numeric ("(list-type "^ xtid ^")")
-            nid xnid xtid
-          xtid
-            emit_numeric ("(vector-type "^ xtid ^")")
-            nid xnid xtid
-          emit_numeric xtid
-            nid xnid) ;
-
+      emit_assert_numerics_or_numeric oc x nid ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat
 
   | Stateless (SL1 (Minus, x)) ->
@@ -2048,14 +2053,13 @@ let emit_constraints tuple_sizes records field_names
           (emit_eq nid)
 
   | Stateful { operation = SF1 (AggrHistogram (_, _, n), x) ; _ } ->
-      (* - x must be numeric;
+      (* - x must be numeric or a vector/array of numerics;
        * - The result is a vector of size n+2, of non nullable U32;
        * - The result itself is as nullable as x. *)
+      emit_assert_numerics_or_numeric oc x nid ;
       let n = Uint32.to_int n in
-      emit_assert_numeric oc x ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc
         (TVec (n+2, DT.required TU32)) ;
-      emit_assert_eq (n_of_expr x) oc nid
 
   | Stateless (SL2 (In, e1, e2)) ->
       (* Typing rule:

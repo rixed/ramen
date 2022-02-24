@@ -2107,10 +2107,6 @@ and emit_expr_ ~env ~context ~opc oc expr =
         E.{ expr with text =
               Stateful { lifespan ; skip_nulls ; operation = SF1 (aggr, e') } }
       in
-      (* FIXME: That the element is scalar should be enforced by type checking
-       * but is not ; and actually, there are some aggregation function that
-       * does not care (such as First). *)
-      assert (not (E.is_a_list expr')) ;
       (* Start by resetting the state: *)
       Printf.fprintf oc "(" ;
       Printf.fprintf oc "\t\t%a <- %a ;\n"

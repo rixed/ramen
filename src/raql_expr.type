@@ -229,7 +229,7 @@
           // Returns the first/last value in the aggregation:
           | AggrFirst
           | AggrLast
-          // FIXME: those float should be expressions so we could use params
+          // min, max, N. FIXME: limits should be expressions so params could be used
           | AggrHistogram (float; float; u32)
           // Build a list with all values from the group
           | Group
