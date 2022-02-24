@@ -1142,7 +1142,8 @@ struct
       else
         let accum = logor (lshift accum width) (enlarge arr.(i)) in
         loop accum (i - 1) (read_width + width) in
-    loop zero (Array.length arr - 1) 0
+    let max_vals = res_width / width in
+    loop zero ((min (Array.length arr) max_vals) - 1) 0
 
   (*$inject
     let t32 f arr =
