@@ -273,7 +273,10 @@ let rec init_state ?depth ~r_env e =
   | Stateful { operation = SF1 (AggrOr, _) ; _ } ->
       bool false,
       DT.bool
-  | Stateful { operation = SF1 ((AggrBitAnd | AggrBitOr | AggrBitXor), _) ; _ } ->
+  | Stateful { operation = SF1 (AggrBitAnd, _) ; _ } ->
+      DT.E1 (BitNot, convert e.E.typ (u8_of_int 0)),
+      e.E.typ
+  | Stateful { operation = SF1 ((AggrBitOr | AggrBitXor), _) ; _ } ->
       convert e.E.typ (u8_of_int 0),
       e.E.typ
   | Stateful { operation = SF1 (Group, _) ; _ } ->

@@ -2157,7 +2157,13 @@ and emit_expr_ ~env ~context ~opc oc expr =
     TBool ->
       finalize_state ~env ~opc ~nullable n my_state "identity" [] oc []
   | InitState,
-    Stateful { operation = SF1 ((AggrBitAnd|AggrBitOr|AggrBitXor), _) ; _ },
+    Stateful { operation = SF1 (AggrBitAnd, _) ; _ },
+    t ->
+      wrap_nullable ~nullable oc (fun oc ->
+        let m = omod_of_type t in
+        String.print oc (m ^ ".(lognot zero)"))
+  | InitState,
+    Stateful { operation = SF1 ((AggrBitOr|AggrBitXor), _) ; _ },
     t ->
       wrap_nullable ~nullable oc (fun oc ->
         String.print oc (omod_of_type t ^ ".zero"))
