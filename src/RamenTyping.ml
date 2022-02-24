@@ -1052,7 +1052,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc mn.DT.typ
 
   | Stateless (SL2 (Percentile, e1, e2)) ->
-      (* - e1 must be a vector or list of anything;
+      (* - e1 must be a vector or array of anything;
        * - the result is as nullable as e1 elements;
        * - if e2 is an immediate vector, then:
        *   - e2 must be a non nullable vector of non-nullable numeric
@@ -2059,7 +2059,7 @@ let emit_constraints tuple_sizes records field_names
 
   | Stateless (SL2 (In, e1, e2)) ->
       (* Typing rule:
-       * - e2 can be a string, a cidr, a list or a vector;
+       * - e2 can be a string, a cidr, an array or a vector;
        * - if e2 is a string, then e1 must be a string (TODO: or a u8);
        * - if e2 is a cidr, then e1 must be an ip (TODO: either of the same
        *   version or either the IP or the cidr must be generic);

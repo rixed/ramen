@@ -1081,8 +1081,8 @@ struct
           (match string_of_const e2 with
           | None -> raise (Reject "LIKE pattern must be a string constant")
           | Some p -> make_stateless (SL1 (Like p, e1)))
-      | "starts" -> make_stateless (SL2 (StartsWith, e1, e2))
-      | "ends" -> make_stateless (SL2 (EndsWith, e1, e2))
+      | "starts" | "starts with" -> make_stateless (SL2 (StartsWith, e1, e2))
+      | "ends" | "ends with" -> make_stateless (SL2 (EndsWith, e1, e2))
       | _ -> assert false in
     binary_ops_reducer ~op ~term:mid_prec_left_assoc ~sep:opt_blanks ~reduce m
 
