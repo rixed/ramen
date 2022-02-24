@@ -2089,7 +2089,10 @@ and emit_expr_ ~env ~context ~opc oc expr =
       ()
   | Finalize,
     Stateful { lifespan ; skip_nulls ; operation = SF1 (aggr, e) },
-    _ when E.is_a_list e ->
+    _ when E.is_a_list e &&
+           (* Some aggr operations actually accept lists already, so for
+            * them a list is a normal item to aggregate! *)
+           aggr <> Group && aggr <> Distinct ->
       (* Build the expression that aggregate the list items rather than the
        * list: *)
       let var_name = "item_" in
@@ -2108,20 +2111,20 @@ and emit_expr_ ~env ~context ~opc oc expr =
               Stateful { lifespan ; skip_nulls ; operation = SF1 (aggr, e') } }
       in
       (* Start by resetting the state: *)
-      Printf.fprintf oc "(" ;
+      Printf.fprintf oc "(\n" ;
       Printf.fprintf oc "\t\t%a <- %a ;\n"
         (emit_expr ~env ~context:Finalize ~opc) my_state
         (emit_expr ~env ~context:InitState ~opc) expr ;
       Printf.fprintf oc "\t\t%a_empty_ <- true ;\n"
         (emit_expr ~env ~context:Finalize ~opc) my_state ;
-      Printf.fprintf oc "(match %a with "
+      Printf.fprintf oc "\t\t(match %a with "
         (emit_expr ~env ~context:Finalize ~opc) e ;
       if e.E.typ.DT.nullable then
         Printf.fprintf oc "None as n_ -> n_ | Some arr_ ->\n"
       else
         Printf.fprintf oc "arr_ ->\n" ;
       Printf.fprintf oc
-        "Array.iter (fun %s -> %a) arr_ ;\n"
+        "\t\t\tArray.iter (fun %s -> %a) arr_ ;\n"
         var_name
         (emit_expr ~env ~context:UpdateState ~opc) expr' ;
       (* And finalize that using the fake expression [expr'] to reach
