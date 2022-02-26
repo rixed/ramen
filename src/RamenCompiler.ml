@@ -522,6 +522,14 @@ let precompile conf get_parent src_file src_path =
     add_single_temp_file smt2_file ;
     apply_types compiler_parents condition compiler_funcs types ;
     (*
+     * Now that the types are known, the default lifespans of expressions
+     * can be resolved.
+     *)
+    Hashtbl.iter (fun _ func ->
+      func.VSI.operation <- O.set_default_lifespans func.VSI.operation
+    ) compiler_funcs ;
+
+    (*
      * Once the type of every expression is known there are a few final
      * check and actions to performs, such as inferring factors/event times,
      * gathering io types, etc...

@@ -6,8 +6,8 @@ DEFINE f1 AS
 DEFINE f2 AS
   SELECT
     start,
-    once every 1s globally start AS _seconds,
-    past 2 globally _seconds AS _ts,
+    once every 1s start AS _seconds,
+    past 2 _seconds AS _ts,
     _ts[1] - _ts[0] AS interval,
     ABS(interval - 1) > 0.1 AS error
   FROM f1;

@@ -35,6 +35,7 @@ type top_output = Raql_top_output.DessserGen.t
 type binding_key = Raql_binding_key.DessserGen.t
 
 let string_of_state_lifespan = function
+  | NoState | ImmediateState -> "immediate"
   | LocalState -> "local"
   | GlobalState -> "global"
 
@@ -215,6 +216,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
   let st g n =
     (* TODO: do not display default *)
     (match g with
+    | Some (NoState | ImmediateState) -> " IMMEDIATELY"
     | Some LocalState -> " LOCALLY"
     | Some GlobalState -> " GLOBALLY"
     | None -> "") ^
@@ -995,6 +997,7 @@ struct
   let state_lifespan m =
     let m = "state lifespan" :: m in
     (
+      (worD "immediately" >>: fun () -> NoState) |<|
       (worD "globally" >>: fun () -> GlobalState) |<|
       (worD "locally" >>: fun () -> LocalState)
     ) m

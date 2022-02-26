@@ -1284,7 +1284,7 @@ examples-check:
 
 GENERATED_DOC_TESTS = \
 	$(addsuffix .test, $(addprefix doc/raql/, \
-		$(filter-out now random age group distinct, $(GENERATED_EXPRS))))
+		$(filter-out now random age, $(GENERATED_EXPRS))))
 
 doc/raql/%.test: doc/gen_doc.byte
 	doc/gen_doc.byte '$@'

@@ -48,6 +48,12 @@ let static_environments
     init_global :: env_of_globals globals_mod_name globals in
   env_env, param_env, global_state_env
 
+let id_of_state = function
+  | E.NoState -> assert false (* By definition *)
+  | E.ImmediateState -> "immediate_"  (* This one not passed as argument *)
+  | E.GlobalState -> "global_"
+  | E.LocalState -> "group_"
+
 (* Returns all the bindings in global and group states: *)
 let initial_environments op =
   let glob_env, loc_env =
@@ -57,11 +63,15 @@ let initial_environments op =
           let n = CodeGen_OCaml.name_of_state e in
           (match lifespan with
           | Some E.GlobalState ->
-              let v = CodeGen_OCaml.id_of_state GlobalState ^"."^ n in
+              let v = id_of_state GlobalState ^"."^ n in
               (State e.uniq_num, v) :: glo, loc
           | Some E.LocalState ->
-              let v = CodeGen_OCaml.id_of_state LocalState ^"."^ n in
+              let v = id_of_state LocalState ^"."^ n in
               glo, (State e.uniq_num, v) :: loc
+          | Some E.NoState ->
+              prev
+          | Some E.ImmediateState ->
+              assert false
           | None ->
               assert false (* Must have been replaced already *))
       | _ -> prev

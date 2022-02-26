@@ -268,17 +268,3 @@ let id_of_typ = function
   | TUsr ut -> todo ("Generalize user types to "^ ut.DT.name)
   | TSum _ -> todo "id_of_typ for sum types"
   | _ -> invalid_arg "id_of_typ"
-
-(* Tells whether this expression requires the out tuple (or anything else
- * from the group). *)
-let expr_needs_group e =
-  expr_needs_tuple_from [ GroupState ; LocalLastOut ] e ||
-  (match e.E.text with
-  | Stateful { lifespan = Some LocalState ; _ } ->
-      true
-  | Stateless (SL0 (EventStart|EventStop)) ->
-      (* This depends on the definition of the event time really.
-       * TODO: pass the event time down here and actually check. *)
-      true
-  | _ ->
-      false)

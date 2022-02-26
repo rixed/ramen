@@ -1,8 +1,8 @@
 // Variables that are pre-bound in various clauses of RaQL operations:
 [ Unknown // Either Record, In, Out or Param
 | In
-| GroupState
-| GlobalState
+| GroupState  // State vector attached to the current group
+| GlobalState // Global unique state vector
 | GlobalLastOut
 | LocalLastOut
 | Out

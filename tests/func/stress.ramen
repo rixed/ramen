@@ -3,7 +3,7 @@
 
 DEFINE prod1 AS
   YIELD
-    SUM globally u64(1) AS count,
+    SUM u64(1) AS count,
     -- Strings are the simplest variable length type:
     string?("") AS sn0,
     string?("a") AS sn1,

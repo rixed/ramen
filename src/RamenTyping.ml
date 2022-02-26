@@ -516,6 +516,28 @@ let emit_assert_numerics_or_numeric oc x nid =
     let xnid = n_of_expr x in
     emit_numerics_or_numeric oc xtid xnid nid)
 
+(* Result type of an aggregation function with lifespan possibly set.
+ * [eid] and [nid] are the type and nullability of the result.
+ * [x] is the operand expression.
+ * [numeric_only] is set if the operand is supposed to be numeric.
+ * [return_item_type] is set of eid is supposed to match the item type *)
+let emit_assert_aggr oc eid nid x lifespan ~numeric_only ~return_item_type =
+  let real_aggr, imm_aggr =
+    match lifespan with
+    | Some E.(GlobalState | LocalState) -> true, false
+    | Some NoState -> false, true
+    | None -> true, true
+    | _ -> assert false
+  (* When relying on the default lifespan we must enforce the rule that says
+   * that if the operand is a list then its an immediate aggregation: *)
+  and scalar_only = lifespan = None
+  and xtid = t_of_expr x
+  and xnid = n_of_expr x in
+  let name = expr_err x (Err.Aggr_result lifespan) in
+  emit_assert ~name oc (fun oc ->
+    Printf.fprintf oc "(aggr-result %s %s %s %s %b %b %b %b %b)"
+      eid nid xtid xnid real_aggr imm_aggr numeric_only scalar_only return_item_type)
+
 let emit_assert_ip oc e =
   let name = expr_err e Err.AnyIp in
   let id = t_of_expr e in
@@ -926,7 +948,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
       emit_assert_not_nullable oc e
 
-  | Stateful { operation =
+  | Stateful { lifespan ; operation =
       SF1 ((AggrSum|AggrMin|AggrMax|AggrFirst
            |AggrLast|AggrAnd|AggrOr
            |AggrBitAnd|AggrBitOr|AggrBitXor as aggr), x) ; _ } ->
@@ -934,31 +956,13 @@ let emit_constraints tuple_sizes records field_names
        * - if x is a list/vector then the result is as nullable as its
        *   elements or the list itself;
        * - otherwise the result has the type and nullability of x. *)
-      emit_assert oc (fun oc ->
-        let xtid = t_of_expr x
-        and xnid = n_of_expr x in
-        Printf.fprintf oc
-          "(ite ((_ is list) %s) \
-                (and (= %s (list-type %s)) \
-                     (= %s (or %s (list-nullable %s)))) \
-                (ite ((_ is vector) %s) \
-                     (and (= %s (vector-type %s)) \
-                          (= %s (or %s (vector-nullable %s)))) \
-                     (and (= %s %s) \
-                          (= %s %s))))"
-            xtid
-              eid xtid
-              nid xnid xtid
-            xtid
-              eid xtid
-              nid xnid xtid
-            eid xtid
-            nid (n_of_expr x)) ;
+      let numeric_only = aggr = AggrSum in
+      emit_assert_aggr oc eid nid x lifespan ~numeric_only ~return_item_type:true ;
 
       (match aggr with
       | AggrSum ->
-        (* - The result is numeric *)
-        emit_assert_numeric oc e
+        (* - The result is numeric, but we've told that already *)
+        ()
       | AggrBitAnd | AggrBitOr | AggrBitXor ->
         (* - The result is an integer *)
         emit_assert_integer oc e
@@ -970,11 +974,11 @@ let emit_constraints tuple_sizes records field_names
         ()
       | _ -> ())
 
-  | Stateful { operation = SF1 (AggrAvg, x) ; _ } ->
+  | Stateful { lifespan ; operation = SF1 (AggrAvg, x) ; _ } ->
       (* - x must be numeric or an array/vector of numerics;
        * - The result is a float;
        * - The result is nullable if x or its elements are. *)
-      emit_assert_numerics_or_numeric oc x nid ;
+      emit_assert_aggr oc eid nid x lifespan ~numeric_only:true ~return_item_type:false ;
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat
 
   | Stateless (SL1 (Minus, x)) ->
@@ -1830,12 +1834,12 @@ let emit_constraints tuple_sizes records field_names
         (Printf.sprintf2 "(or %s %s)" (n_of_expr tim) (n_of_expr e))
         (emit_eq nid)
 
-  | Stateful { operation = SF1 (Distinct, e) ; _ } ->
+  | Stateful { lifespan ; operation = SF1 (Distinct, x) ; _ } ->
       (* - e can be anything;
        * - The result is a boolean;
        * - The result is nullable if e is nullable. *)
-      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool ;
-      emit_assert_eq nid oc (n_of_expr e)
+      emit_assert_aggr oc eid nid x lifespan ~numeric_only:false ~return_item_type:false ;
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TBool
 
   | Stateful { operation = SF3 (Hysteresis, meas, accept, max) ; _ } ->
       (* - meas, accept and max must be numeric;
@@ -2018,45 +2022,66 @@ let emit_constraints tuple_sizes records field_names
         (emit_eq eid) ;
       emit_assert_nullable oc e
 
-  | Stateful { skip_nulls = n ; operation = SF1 (Group, g) } ->
-      (* - The result is a list which elements have the exact same type as g;
-       * - If we skip nulls then the elements are not nullable, otherwise they
-       *   are as nullable as g;
-       * - The group itself is nullable whenever g is nullable.
-       * Note: It is possible to build as an immediate value a vector of
-       * zero length (although, actually it's not), but it is not possible
-       * to build an empty list. So Group will never, under any circumstance,
-       * returns an empty list. The only possible way to build an
-       * empty list is by skipping nulls, but then is we skip all nulls
-       * it will be null. *)
-      emit_assert_let oc
-        (Printf.sprintf "(list %s %s)"
-          (t_of_expr g)
-          (if n then "false" else n_of_expr g))
-        (emit_eq eid) ;
-      emit_assert_eq (n_of_expr g) oc nid
+  | Stateful { lifespan ; skip_nulls ; operation = SF1 (Group, x) } ->
+      (* Similar to [emit_assert_aggr] but returns a list of items.
+       * - When used as a real aggregation function:
+       *   - the result is a list of elements of type x
+       *   - nullability of those elements is that of x if not skip_nulls,
+       *     or not nullable
+       * - When used for immediate aggregation, then the operand must be
+       *   an array or vector and the same rules as above apply. *)
+      let real_aggr, imm_aggr =
+        match lifespan with
+        | Some E.(GlobalState | LocalState) -> true, false
+        | Some NoState -> false, true
+        | None -> true, true
+        | _ -> assert false
+      (* When relying on the default lifespan we must enforce the rule that says
+       * that if the operand is a list then its an immediate aggregation: *)
+      and scalar_only = lifespan = None
+      and xtid = t_of_expr x
+      and xnid = n_of_expr x in
+      let name = expr_err x (Err.Aggr_result lifespan) in
+      emit_assert ~name oc (fun oc ->
+        Printf.fprintf oc
+         "(xor (and %b\n\
+                   (or %b (and (not ((_ is list) %s))\n\
+                               (not ((_ is vector) %s))))\n\
+                   (= %s (list %s %s))\n\
+                   (= %s %b))\n\
+              (and %b\n\
+                   (xor (and ((_ is list) %s)\n\
+                             (= %s (list (list-type %s) %s))\n\
+                             (= %s %b))\n\
+                        (and ((_ is vector) %s)\n\
+                             (= %s (list (vector-type %s) %s))\n\
+                             (= %s %b)))))\n\n"
+          real_aggr
+            (not scalar_only) xtid
+                              xtid
+            eid xtid (if skip_nulls then "false" else xnid)
+            nid skip_nulls (* If nulls are skipped the end result can be null *)
+          imm_aggr
+            xtid
+              eid xtid (if skip_nulls then "false" else ("(list-nullable "^ xtid ^")"))
+              nid skip_nulls
+            xtid
+              eid xtid (if skip_nulls then "false" else ("(vector-nullable "^ xtid ^")"))
+              nid skip_nulls)
 
-  | Stateful { skip_nulls = n ; operation = SF1 (Count, x) } ->
+  | Stateful { lifespan ; operation = SF1 (Count, x) } ->
       (* - The result is always an u32;
-       * - The result is only nullable if nulls are not skipped and x is a
-       *   nullable boolean, in which case we couldn't tell how many times
-       *   FIXME: see note in CodeGen_RaQL2DIL about skip nulls and Count!
-       *   the predicate is true. *)
-      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TU32 ;
-      if n then
-        emit_assert_false oc nid
-      else
-        emit_assert_let oc
-          (Printf.sprintf "(and %s (= bool %s))"
-            (n_of_expr x)
-            (t_of_expr x))
-          (emit_eq nid)
+       * - Nullability is handled as other aggr expression, although we could
+       *   technically count NULLs.
+       *   See note in CodeGen_RaQL2DIL about skip nulls and Count!  *)
+      emit_assert_aggr oc eid nid x lifespan ~numeric_only:false ~return_item_type:false ;
+      emit_assert_id_eq_typ tuple_sizes records field_names eid oc TU32
 
-  | Stateful { operation = SF1 (AggrHistogram (_, _, n), x) ; _ } ->
+  | Stateful { lifespan ; operation = SF1 (AggrHistogram (_, _, n), x) ; _ } ->
       (* - x must be numeric or a vector/array of numerics;
        * - The result is a vector of size n+2, of non nullable U32;
        * - The result itself is as nullable as x. *)
-      emit_assert_numerics_or_numeric oc x nid ;
+      emit_assert_aggr oc eid nid x lifespan ~numeric_only:true ~return_item_type:false ;
       let n = Uint32.to_int n in
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc
         (TVec (n+2, DT.required TU32)) ;
@@ -2981,7 +3006,7 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
       done) ;
 
   Printf.fprintf oc
-     ";\n\
+    ";\n\
      ; Define type expressions:\n\
      ;\n\
      (define-fun is-u128 ((t Type)) Bool\n\
@@ -3002,7 +3027,33 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
              %a))\n\n\
      (define-fun any-tuple-item-nullable ((t Type)) Bool\n\
         ; Returns true iif t is a tuple and anyone of its elements is nullable\n\
-        (or false%a))\n\n"
+        (or false%a))\n\n\
+     ; Sets the constraints on aggr result type and nullability:\n\
+     (define-fun aggr-result ((eid Type) ; type of the result\n\
+                              (nid Bool) ; nullability of the result\n\
+                              (xtid Type) ; type of the aggr operand\n\
+                              (xnid Bool) ; nullability of the operand\n\
+                              (real-aggr-allowed Bool)\n\
+                              (imm-aggr-allowed Bool)\n\
+                              (numeric-only Bool)\n\
+                              (scalar-only Bool) ; can we have real-aggr of lists?\n\
+                              (return-item-type Bool))\n\
+                             Bool\n\
+       (xor (and real-aggr-allowed\n\
+                 (or (not return-item-type) (= eid xtid))\n\
+                 (or (not numeric-only) (is-numeric xtid))\n\
+                 (or (not scalar-only) (and (not ((_ is list) xtid))\n\
+                                            (not ((_ is vector) xtid))))\n\
+                 (= nid xnid))\n\
+            (and imm-aggr-allowed\n\
+                 (xor (and ((_ is list) xtid)\n\
+                           (or (not return-item-type) (= eid (list-type xtid)))\n\
+                           (or (not numeric-only) (is-numeric (list-type xtid)))\n\
+                           (= nid (or xnid (list-nullable xtid))))\n\
+                      (and ((_ is vector) xtid)\n\
+                           (or (not return-item-type) (= eid (vector-type xtid)))\n\
+                           (or (not numeric-only) (is-numeric (vector-type xtid)))\n\
+                           (= nid (or xnid (vector-nullable xtid))))))))\n\n"
     (Set.Int.print ~first:" " ~last:"" ~sep:"\n" (fun oc sz ->
       Printf.fprintf oc "(and ((_ is tuple%d) t)" sz ;
       for i = 0 to sz-1 do

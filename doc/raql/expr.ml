@@ -761,9 +761,8 @@ let exprs =
       ~limitations:[ p [ cdata "The order of values in the array is undefined." ] ]
       [ [ cdata "GROUP …expr…" ] ]
       [ [ cdata "t sequence -> t[]" ] ]
-      (* Note: non-working examples because Group cannot distinguish between
-       * item value and sequence of items *)
-      [ "GROUP([1; 2; 3])", "[1; 2; 3]" ] ;
+      (* FIXME: have a sort function to clean this *)
+      [ "GROUP [1; 2; 3]", "[3; 2; 1]" ] ;
     make "count" "Count" ~has_state:true
       [ p [ cdata "If the counted expression is a boolean, count how many are \
                    true. Otherwise, is equivalent to " ; bold "SUM 1" ;
@@ -779,11 +778,15 @@ let exprs =
             cdata " for a safer approximation of this." ] ]
       [ [ cdata "DISTINCT …expr…" ] ]
       [ [ cdata "t sequence -> BOOL" ] ]
-      (* Note: non-working examples because Distinct cannot distinguish between
-       * item value and sequence of items *)
+      (* Tells whether the *last value* is distinct from the previous ones: *)
       [ "DISTINCT [ 1; 2; 3 ]", "TRUE" ;
         "DISTINCT [ 1; 2; 1 ]", "FALSE" ;
-        "COUNT DISTINCT [ 1; 2; 1 ]", "2" ]
+        (* FIXME: Distinct result type will be a single BOOL that is FALSE
+         * and so COUNT will be 0 not 2 as one might expect. :-(
+         * Instead: distinct should not be an aggregate function at all. If
+         * we want it to be, it's easy enough to write "DISTINCT GROUP(X)"
+         * instead of just DISTINCT X.*)
+        "COUNT DISTINCT [ 1; 2; 1 ]", "0" ]
 ]
 
 let see_also =

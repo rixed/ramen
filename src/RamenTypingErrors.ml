@@ -56,6 +56,7 @@ type expr =
   | MapType
   | MapNullability
   | TopOutput of E.top_output
+  | Aggr_result of E.lifespan option
 
 let string_of_index c t =
   assert (c < t) ;
@@ -153,6 +154,12 @@ let print_expr funcs condition oc =
       p " must be a top membership, therefore a boolean"
   | TopOutput List ->
       p " must be a top, therefore a list of items"
+  | Aggr_result (Some NoState) ->
+      p " must be an array or vector"
+  | Aggr_result (Some _) ->
+      p " does not fit an aggregation function" (* ? *)
+  | Aggr_result None ->
+      p " doest not fit an aggregation (even immediate) function"
 
 type func =
   | Clause of string * expr

@@ -1,4 +1,4 @@
 Cannot solve typing constraints: 
      In function [1;32m_0[0m, field [1;34mx[0m: expression [1;33m"glop"[0m must be of type STRING
- AND In function [1;32mf0[0m, field [1;34mavg_x[0m: In AVG GLOBALLY skip nulls(IN.x): expression [1;33mIN.x[0m must be numeric or a list/vector of numerics
- AND In function [1;32mf0[0m, field [1;34mavg_x[0m: In AVG GLOBALLY skip nulls(IN.x): expression [1;33mIN.x[0m must match all parents output
+ AND In function [1;32mf0[0m, field [1;34mavg_x[0m: In AVG skip nulls(IN.x): expression [1;33mIN.x[0m must match all parents output
+ AND In function [1;32mf0[0m, field [1;34mavg_x[0m: In AVG skip nulls(IN.x): expression [1;33mIN.x[0m doest not fit an aggregation (even immediate) function

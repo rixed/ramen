@@ -207,12 +207,18 @@
         // Sore a value in a map at a given key (also return that value):
         | MapSet ]; this; this; this) ]
     | Stateful {
-      // Stateful function can have either a unique global state a one state per
-      // aggregation group (local). Each function has its own default (functions
-      // that tends to be used mostly for aggregation have a local default state,
-      // while others have a global state), but you can select explicitly using
-      // the "locally" and "globally" keywords. For instance: "sum globally 1".
-      lifespan: [ LocalState | GlobalState ]?;  // Only optional during construction
+      // Stateful function can work in immediate mode, when their operand is an
+      // array or vector, or over several incoming tuples as normal aggregate
+      // functions do. In the later case, they can make use either of a unique
+      // global state or of one state per aggregation group (local).
+      // The default depends on the operand and the presence of an explicit
+      // group-by clause. Lifespan can be set explicitly using the "immediately",
+      // "locally" or "globally" keywords. For instance: "sum globally 1".
+      // The NoState is the starting point of immediate state (immediate is when
+      // the state has been created on the stack already).
+      // Note: this is only optional during construction.
+      lifespan: (lifespan AS [ NoState | ImmediateState | LocalState | GlobalState ])?;
+        // FIXME: instead of an option type for lifespan, add an Unknown constructor
       skip_nulls: bool;
       operation:
         [ SF1 (

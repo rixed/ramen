@@ -4,6 +4,6 @@ DEFINE f AS
   FROM fixtures/n123/csv
   SELECT
     -- This will skip nulls by default, therefore the resulting set must be NULL
-    sample globally (2, NULL) IS NULL AS trou, -- should be NULL
-    length sample globally (2, b) AS two
+    sample (2, NULL) IS NULL AS trou, -- should be NULL
+    length sample (2, b) AS two
   COMMIT AFTER n = 3;

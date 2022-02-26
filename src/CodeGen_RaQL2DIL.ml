@@ -133,9 +133,10 @@ let rec constant mn v =
  * Technically, there is also a third required function: the init function that
  * returns the initial value of the state.
  *
- * The only way state appear in RaQL is via the "locally" vs "globally"
- * keywords, which actually specify whether the state of a stateful function is
- * stored with the group or globally.
+ * The only way state appear in RaQL is via the "immediately" vs "locally" vs
+ * "globally" keywords, which actually specify whether the state of a stateful
+ * function shall be a local variable on the stack, stored with the group or
+ * stored globally.
  *
  * Dessser has no stateful operators, so this mechanism has to be implemented
  * from scratch. To help with that, dessser has:
@@ -155,11 +156,13 @@ let rec constant mn v =
  * can be changed with set-vec.
  *)
 
+(* Called to select the state vector where to get the state of [e]. *)
 let pick_state r_env e lifespan =
   let state_var =
     match lifespan with
     | Some E.LocalState -> Variable.GroupState
     | Some E.GlobalState -> Variable.GlobalState
+    | Some E.(NoState | ImmediateState) -> assert false (* Not called in this case *)
     | None -> assert false (* Must have been replaced long ago *) in
   try List.assoc (RecordValue state_var) r_env
   with Not_found ->
@@ -1255,18 +1258,19 @@ and expression ?(depth=0) ~r_env e =
               unsafe_nth (u8_of_int 0))
     (*
      * Stateful functions:
-     * When the argument is a list then those functions are actually stateless:
+     * When the lifespan is Nostate then the (single) argument must be an array
+     * or vector and those functions are actually stateless:
      *)
-    (* FIXME: do not store a state for those in any state vector *)
-    | Stateful { skip_nulls ; operation = SF1 (aggr, e_list) ; _ }
-      when E.is_a_list e_list ->
+    | Stateful { lifespan = Some NoState ; skip_nulls ;
+                 operation = SF1 (aggr, e_list) ; _ } ->
+        assert (E.is_a_list e_list) ;
         let state, _ = init_state ~r_env e in
         let list_item_t =
           match e_list.E.typ with
           | DT.{ typ = (TVec (_, mn) | TArr mn | TSet (_, mn)) ; _ } ->
               mn
           | _ ->
-              assert false (* Because 0f `E.is_a_list list` *) in
+              assert false (* Because `E.is_a_list e_list` *) in
         let do_fold list item_t =
           let_ ~name:"state_ref" (make_ref state) (fun state_ref ->
             let state = get_ref state_ref in
@@ -1522,7 +1526,7 @@ let update_state_for_expr ~r_env ~what e =
       else
         set_state state_rec state_t e new_state in
     match e.E.text with
-    | Stateful { operation = SF1 (_, e1) ; _ } when E.is_a_list e1 ->
+    | Stateful { lifespan = Some NoState ; operation = SF1 _ ; _ } ->
         (* Those are not actually stateful, see [expression] where those are
          * handled as stateless operators. *)
         lst

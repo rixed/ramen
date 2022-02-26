@@ -859,6 +859,28 @@ let check_depends_only_on lst e =
 
 let default_commit_cond = E.of_bool true
 
+let set_default_lifespans = function
+  | Aggregate { commit_cond ; flush_how ; key ; _ } as op ->
+      let has_local_lifespan =
+        not (commit_cond == default_commit_cond &&
+             flush_how = Reset &&
+             key = []) in
+      (* Set default lifespan: *)
+      let default_lifespan = function
+        | E.SF1 (_, E.{ typ = { typ = DT.(TArr _ | TVec _) ; _ } ; _}) ->
+            E.NoState
+        | _ ->
+            if has_local_lifespan then E.LocalState else E.GlobalState in
+      map_expr (fun _s -> function
+        | E.({ text = Stateful ({ lifespan = None ; operation ; _ } as sf) ;
+               _ } as e)->
+            { e with text = Stateful { sf with
+              lifespan = Some (default_lifespan operation) } }
+        | e -> e
+      ) op
+  | op ->
+      op
+
 (* Check that the expression is valid, or return an error message.
  * Also perform some optimisation, numeric promotions, etc...
  * This is done after the parse rather than Rejecting the parsing
@@ -1099,17 +1121,7 @@ let checked ?(unit_tests=false) params globals op =
         Printf.sprintf2 "Too many fields (configured maximum is %d)"
           num_all_fields |>
         failwith ;
-      let op =
-        Aggregate { aggregate with aggregate_fields ; aggregate_event_time } in
-      (* Set default lifespan: *)
-      let default_lifespan =
-        if has_local_lifespan then E.LocalState else E.GlobalState in
-      map_expr (fun _s -> function
-        | E.({ text = Stateful ({ lifespan = None ; _ } as sf) ; _ } as e)->
-            { e with text = Stateful { sf with
-              lifespan = Some default_lifespan } }
-        | e -> e
-      ) op
+      Aggregate { aggregate with aggregate_fields ; aggregate_event_time }
 
     | ListenFor { proto ; factors ; _ } ->
       let tup_typ = RamenProtocols.tuple_typ_of_proto proto in
@@ -1820,13 +1832,13 @@ struct
     "FROM 'foo' SELECT true AS 'dummy' NOTIFY \"ouch\"" \
       (test_op "from foo NOTIFY \"ouch\"")
 
-    "FROM 'foo' SELECT MIN LOCALLY skip nulls(in.'start') AS 'start', \\
-       MAX LOCALLY skip nulls(in.'stop') AS 'max_stop', \\
-       (SUM LOCALLY skip nulls(in.'packets')) / \\
+    "FROM 'foo' SELECT MIN skip nulls(in.'start') AS 'start', \\
+       MAX skip nulls(in.'stop') AS 'max_stop', \\
+       (SUM skip nulls(in.'packets')) / \\
          (param.'avg_window') AS 'packets_per_sec' \\
      GROUP BY (in.'start') / ((1000000) * (param.'avg_window')) \\
      COMMIT AFTER \\
-       ((MAX LOCALLY skip nulls(in.'start')) + (3600)) > (out.'start')" \
+       ((MAX skip nulls(in.'start')) + (3600)) > (out.'start')" \
         (test_op "select min start as start, \\
                            max stop as max_stop, \\
                            (sum packets)/avg_window as packets_per_sec \\
@@ -1835,7 +1847,7 @@ struct
                    commit after out.start < (max in.start) + 3600")
 
     "FROM 'foo' SELECT 1 AS 'one' GROUP BY true \\
-     COMMIT BEFORE (SUM LOCALLY skip nulls(1)) >= (5)" \
+     COMMIT BEFORE (SUM skip nulls(1)) >= (5)" \
         (test_op "select 1 as one from foo commit before sum 1 >= 5 group by true")
 
     "FROM 'foo/bar' SELECT in.'n', LAG GLOBALLY skip nulls(2, out.'n') AS 'l'" \

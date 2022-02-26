@@ -852,10 +852,6 @@ let name_of_state e =
   "state_"^ Uint32.to_string e.E.uniq_num |>
   RamenOCamlCompiler.make_valid_ocaml_identifier
 
-let id_of_state = function
-  | E.GlobalState -> "global_"
-  | E.LocalState -> "group_"
-
 let string_of_endianness = function
   | Raql_expr.DessserGen.LittleEndian -> "little"
   | BigEndian -> "big"
@@ -907,6 +903,31 @@ let fields_of_record kvs =
   List.enum) /@
   (fun (fn, _) -> N.field fn) |>
   remove_dups N.compare
+
+(* Given an aggr function with NoState, returns the equivalent expression that
+ * should be applied to each items of the sequence, where the state is hold in
+ * a local variable [item_var]: *)
+let imm_aggr_expr item_var e =
+  match e.E.text with
+  | E.Stateful { lifespan = Some NoState ; operation = SF1 (aggr, arr) ;
+                 skip_nulls ; _ } ->
+      let item_typ =
+        match arr.E.typ.typ with
+        | TArr t | TVec (_, t) -> t
+        | _ -> assert false (* operand is supposed to be a sequence *) in
+      let e' =
+        E.make ~nullable:item_typ.DT.nullable ~typ:item_typ.typ
+               (Stateless (SL0 (Binding (Direct item_var)))) in
+      (* By reporting the skip-null flag we make sure that each update will
+       * skip the nulls in the list - while the list itself will make the
+       * whole expression null if it's null. *)
+      E.{ e with text =
+            Stateful { lifespan = Some ImmediateState ; skip_nulls ;
+                       operation = SF1 (aggr, e') } }
+  | _ ->
+      (* This is only ever called on NoState functions, and only SF1
+       * can be set to NoState *)
+      assert false
 
 let rec conv_to ~env ~context ~opc to_typ oc e =
   match e.E.typ.typ, to_typ with
@@ -2071,61 +2092,48 @@ and emit_expr_ ~env ~context ~opc oc expr =
   (*
    * Stateful functions
    *
-   * All the aggregation functions below should accept lists as input.
-   * In that case, we merely iterate over all the elements of that list at
-   * finalization. We must then reset the initial state of these function,
-   * in effect making them stateless (they still have a state though,
-   * although they should not.
-   * FIXME: Probably this case should be recognized earlier
-   * and those functions replaced by some other, specific stateless variant.
-   * InitState is unchanged and UpdateState is a NOP.
-   * We do this for most of them but not all, as use case is arguable in
-   * many cases and a better approach needs to be devised.
-   * We pattern match those case first:
+   * All the aggregation functions below should accept lists as input and
+   * proceed as it were individual values. This is the so called "immediate"
+   * state lifespan.
+   * In that case, we merely build a local state and iterate over all the
+   * elements of that list at finalization time. We must then reset the initial
+   * state of these function, in effect making them stateless.
+   * Note: only SF1 functions are supporting this for now.
    *)
-  | UpdateState,
-    Stateful { operation = SF1 (_, e) },
-    _ when E.is_a_list e ->
-      ()
   | Finalize,
-    Stateful { lifespan ; skip_nulls ; operation = SF1 (aggr, e) },
-    _ when E.is_a_list e &&
-           (* Some aggr operations actually accept lists already, so for
-            * them a list is a normal item to aggregate! *)
-           aggr <> Group && aggr <> Distinct ->
+    Stateful { lifespan = Some NoState ; skip_nulls ;
+               operation = SF1 (_, arr) }, _ ->
       (* Build the expression that aggregate the list items rather than the
        * list: *)
-      let var_name = "item_" in
-      let expr' =
-        let item_typ =
-          match e.E.typ.typ with
-          | TArr t | TVec (_, t) -> t
-          | _ -> assert false in
-        let e' =
-          E.make ~nullable:item_typ.DT.nullable ~typ:item_typ.typ
-                 (Stateless (SL0 (Binding (Direct var_name)))) in
-        (* By reporting the skip-null flag we make sure that each update will
-         * skip the nulls in the list - while the list itself will make the
-         * whole expression null if it's null. *)
-        E.{ expr with text =
-              Stateful { lifespan ; skip_nulls ; operation = SF1 (aggr, e') } }
-      in
-      (* Start by resetting the state: *)
+      (* The state itself needs to be a record because the code generator
+       * expects it that way. One such record per required immediate state
+       * has been created already by emit_immediate_state_types. *)
+      let state_var_type =
+        Printf.sprintf "immediate_%s_" (Uint32.to_string expr.E.uniq_num)
+      and item_var = "item_" in
+      let expr' = imm_aggr_expr item_var expr in
+      (* Start by creating a state for immediate consumption: *)
       Printf.fprintf oc "(\n" ;
-      Printf.fprintf oc "\t\t%a <- %a ;\n"
-        (emit_expr ~env ~context:Finalize ~opc) my_state
-        (emit_expr ~env ~context:InitState ~opc) expr ;
-      Printf.fprintf oc "\t\t%a_empty_ <- true ;\n"
-        (emit_expr ~env ~context:Finalize ~opc) my_state ;
+      Printf.fprintf oc "\t\tlet imm_ : %s = {\n" state_var_type ;
+      Printf.fprintf oc "\t\t\timm_%s = %a ;\n"
+        (Uint32.to_string expr.E.uniq_num)
+        (emit_expr ~env ~context:InitState ~opc) expr' ;
+      if skip_nulls then
+        Printf.fprintf oc "\t\t\timm_%s_empty_ = true ;\n"
+          (Uint32.to_string expr.E.uniq_num) ;
+      Printf.fprintf oc "\t\t} in\n" ;
+      let state_var =
+        Printf.sprintf "imm_.imm_"^ Uint32.to_string expr.E.uniq_num in
+      let env = (State expr.E.uniq_num, state_var) :: env in
       Printf.fprintf oc "\t\t(match %a with "
-        (emit_expr ~env ~context:Finalize ~opc) e ;
-      if e.E.typ.DT.nullable then
+        (emit_expr ~env ~context:Finalize ~opc) arr ;
+      if arr.E.typ.DT.nullable then
         Printf.fprintf oc "None as n_ -> n_ | Some arr_ ->\n"
       else
         Printf.fprintf oc "arr_ ->\n" ;
       Printf.fprintf oc
         "\t\t\tArray.iter (fun %s -> %a) arr_ ;\n"
-        var_name
+        item_var
         (emit_expr ~env ~context:UpdateState ~opc) expr' ;
       (* And finalize that using the fake expression [expr'] to reach
        * the actual finalizer: *)
@@ -3965,7 +3973,7 @@ let emit_state_update_for_expr ~env ~what ~opc expr =
   let titled = ref false in
   E.unpure_iter (fun _ e ->
     match e.text with
-    | Stateful _ ->
+    | Stateful { lifespan = Some (GlobalState | LocalState) ; _ } ->
         if not !titled then (
           titled := true ;
           Printf.fprintf opc.code "\t(* State Update for %s: *)\n" what) ;
@@ -4233,17 +4241,17 @@ let otype_of_state e =
       t ^ nullable
 
 let emit_state_init name state_lifespan ~env other_params
-      ?where ?commit_cond ~opc selected_fields =
+      ~where ~commit_cond ~opc selected_fields =
   let open Raql_binding_key.DessserGen in
   (* We must collect all unpure functions present in the selected_fields
    * and return a record with the proper types and init values for the required
    * states. *)
   let for_each_my_unpure_fun f =
     for_each_unpure_fun_my_lifespan
-      state_lifespan selected_fields ?where ?commit_cond f
+      state_lifespan selected_fields ~where ~commit_cond f
   and fold_my_unpure_fun i f =
     fold_unpure_fun_my_lifespan
-      state_lifespan selected_fields ?where ?commit_cond i f
+      state_lifespan selected_fields ~where ~commit_cond i f
   in
   (* In the special case where we do not have any state at all, though, we
    * end up with an empty record, which is illegal in OCaml so we need to
@@ -4293,6 +4301,27 @@ let emit_state_init name state_lifespan ~env other_params
     Printf.fprintf opc.code "}\n"
   ) ;
   Printf.fprintf opc.code "\n"
+
+(* Similar to the above [emit_state_init] for for immediate states, for
+ * which one record type per expression need to be defined. *)
+let emit_immediate_state_types ~where ~commit_cond ~opc selected_fields =
+  let open Raql_binding_key.DessserGen in
+  for_each_unpure_fun_my_lifespan NoState selected_fields ~where ~commit_cond
+    (fun e ->
+      Printf.fprintf opc.code "type immediate_%s_ = {\n"
+        (Uint32.to_string e.E.uniq_num) ;
+      Printf.fprintf opc.code "\tmutable imm_%s : %s ;\n"
+        (Uint32.to_string e.E.uniq_num)
+        (* Stateful functions of lifespan NoState must have an argument that
+         * is an array/vector and we must prepare to aggregate those items: *)
+        (otype_of_state (imm_aggr_expr "wtv" e)) ;
+      (match e.E.text with
+      | E.Stateful { skip_nulls = true ; _ } ->
+          Printf.fprintf opc.code "\tmutable imm_%s_empty_ : bool ;\n"
+            (Uint32.to_string e.E.uniq_num)
+      | _ ->
+          ()) ;
+      Printf.fprintf opc.code "}\n")
 
 (* Note: we need group_ in addition to out_tuple because the commit-when clause
  * might have its own stateful functions going on *)
@@ -4495,6 +4524,8 @@ let emit_aggregate opc global_state_env group_state_env
   fail_with_context "group state initializer" (fun () ->
     emit_state_init "group_init_" E.LocalState ~env:(global_state_env @ base_env)
                     ["global_"] ~where ~commit_cond ~opc aggregate_fields) ;
+  fail_with_context "immediate states initializer" (fun () ->
+    emit_immediate_state_types ~where ~commit_cond ~opc aggregate_fields) ;
   fail_with_context "tuple reader" (fun () ->
     emit_deserialize_function 0 "read_in_tuple_" ~opc in_typ) ;
   (* This one must be emitted before any other using the out_prev_tuple *)

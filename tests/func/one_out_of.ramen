@@ -8,6 +8,6 @@ DEFINE f1 AS
 
 DEFINE f2 AS
   SELECT
-    one out of 10 globally count AS tens,
-    one out of 10 globally ncount AS ntens
+    one out of 10 count AS tens,
+    one out of 10 ncount AS ntens
   FROM f1;
