@@ -1380,7 +1380,7 @@ let emit_aggregate ~r_env compunit func_op func_name in_type params =
         flush_how, notifications, every
     | _ -> assert false in
   (* The worker will have a global state and a local one per group, stored in
-   * its snapshotted state. The first functions needed are those that create
+   * its saved snapshot state. The first functions needed are those that create
    * the initial state for the global and local states. *)
   let compunit =
     fail_with_context "coding for global state initializer" (fun () ->

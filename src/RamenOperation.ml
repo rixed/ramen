@@ -883,9 +883,9 @@ let set_default_lifespans = function
 
 (* Check that the expression is valid, or return an error message.
  * Also perform some optimisation, numeric promotions, etc...
- * This is done after the parse rather than Rejecting the parsing
- * result for better error messages, and also because we need the
- * list of available parameters. *)
+ * This is done after the parse rather than Rejecting the parsing result for
+ * better error messages, and also because we need the list of available
+ * parameters. *)
 let checked ?(unit_tests=false) params globals op =
   (* Start by resolving Unknown variables into In/Out/Param etc: *)
   let op = resolve_unknown_variables params globals op in
