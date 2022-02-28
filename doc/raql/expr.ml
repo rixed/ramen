@@ -786,7 +786,208 @@ let exprs =
          * Instead: distinct should not be an aggregate function at all. If
          * we want it to be, it's easy enough to write "DISTINCT GROUP(X)"
          * instead of just DISTINCT X.*)
-        "COUNT DISTINCT [ 1; 2; 1 ]", "0" ]
+        "COUNT DISTINCT [ 1; 2; 1 ]", "0" ] ;
+    make "lag" "Delayed value" ~has_state:true
+      [ p [ bold "LAG" ; cdata " refers to the value received k steps ago. \
+            Therefore " ; bold "LAG 1 x" ; cdata " refers to previous value \
+            of " ; bold "x" ; cdata ", " ; bold "LAG 2 x" ; cdata " refers \
+            to the value before the previous one, and so on." ] ;
+        p [ cdata "When less than k values have been received then " ;
+            bold "LAG k" ; cdata " is NULL." ] ]
+      [ [ cdata "LAG …unsigned-int-expr… …expr…" ] ;
+        [ cdata "LAG …expr…" ; tag "br" [] ;
+          cdata "Equivalent to: LAG 1 …expr…" ] ]
+      [ [ cdata "int, t -> t" ] ]
+      [] ;
+    make "smooth" "Exponential smoothing" ~has_state:true
+      [ p [ cdata "Blend a value with the latest blend using various \
+                   techniques, the simplest of which uses only one coefficient \
+                   α according to the formula: " ; emph "blended = new × α + \
+                   previous-blend × (1 - α)" ; cdata "." ] ;
+        p [ cdata "The first operand, α, is a floating point number between \
+                   0 and 1." ] ]
+      [ [ cdata "SMOOTH …float-expr… …num-expr…" ] ]
+      [ [ cdata "FLOAT -> num -> FLOAT" ] ]
+      [] ;
+    make "sample" "Reservoir sampling" ~has_state:true
+      [ p [ cdata "Build a random set of values of a given maximum size." ] ;
+        p [ cdata "The first operand " ; emph "k" ; cdata " is the maximum \
+                   size of the set and the second is the value to be \
+                   sampled." ] ;
+        p [ cdata "If fewer than " ; emph "k" ; cdata " values are received \
+                   then the result will contain them all. If more than " ;
+            emph "k" ; cdata " values are received then the result will have \
+                   exactly " ; emph "k" ; cdata " values (not taking into \
+                   consideration skipping over NULL values). Every \
+                   received value has the same probability to be part of \
+                   the resulting set." ] ;
+        p [ cdata "This function comes handy to reduce the input size of \
+                   a memory expensive operation such as a percentile \
+                   computation." ] ]
+      [ [ cdata "SAMPLE …unsigned-int-expr… …expr…" ] ]
+      [ [ cdata "N:uint, t -> t[<=N]" ] ]
+      [] ;
+    make "one-out-of" "Nullifies all values but one out of N" ~has_state:true
+      [ p [ cdata "The first operand, which must be a constant unsigned \
+                   integer, gives the periodicity of non-null values. The \
+                   second operand is the expression to return when its time \
+                   for a non NULL result." ] ]
+      [ [ cdata "ONE OUT OF …unsigned-int-expr… …expr…"] ]
+      [ [ cdata "uint, t -> t?" ] ]
+      [] ;
+    make "moveavg" "Moving average" ~has_state:true
+      [ p [ cdata "Average of the last " ; emph "k" ; cdata " values." ] ]
+      [ [ emph "k" ; cdata "-MOVEAVG …num-expr…" ] ;
+        [ emph "k" ; cdata "-MA …num-expr…" ] ]
+      [ [ cdata "uint, num -> num" ] ]
+      [] ;
+    make "hysteresis" "Tells if a value exceeded a threshold or recovered"
+         ~has_state:true
+      [ p [ cdata "Becomes false when the monitored value reaches the given \
+                   threshold, and remains false until the value goes \
+                   back to the given recovery value." ] ;
+        p [ cdata "Notice that if the threshold is greater than the recovery \
+                   then it is a maximum. Otherwise it acts as a minimum." ] ;
+        p [ cdata "The first operand is the monitored value." ] ;
+        p [ cdata "The second operand is the threshold." ] ;
+        p [ cdata "Finally, the third operand is the recovery value." ] ]
+      [ [ cdata "HYSTERESIS(…num-expr…, …num-expr…, …num-expr…)" ] ]
+      [ [ cdata "num, num, num -> BOOL" ] ]
+      [] ;
+    make "once-every" "" ~has_state:true
+      [ p [ bold "EVERY" ; cdata " is similar to " ; bold "ONE OUT OF" ;
+            cdata " but based on time rather than number of inputs." ] ;
+        p [ cdata "If " ; emph "TUMBLING" ;
+            cdata " is selected (or the second operand of the functional \
+                   syntax is true) then time is divided into windows \
+                   of the given duration (aligned such that timestamp modulo \
+                   duration is NULL), and the first value of each new \
+                   such window is selected (and all others are NULL), \
+                   whereas if " ;
+            emph "SLIDING" ; cdata " is selected then the next value \
+            after at least the selected duration is selected (regardless \
+            of time alignment)." ] ]
+      ~limitations:[ p [ cdata "The period must be a constant." ] ]
+      [ [ cdata "EVERY …num-expr… [ SLIDING | TUMBLING ] …expr…" ] ;
+        [ cdata "EVERY(…num-expr…, …bool-expr…, …expr…)" ] ]
+      [ [ cdata "num, BOOL, t -> t?" ] ]
+      [] ;
+    make "remember" "Remember values for some time" ~has_state:true
+      [ p [ cdata "Uses a series of Bloom-filters to remember any value for \
+                   a given duration." ] ;
+        (* TODO: let's get rid of 2nd operand (time) *)
+        p [ cdata "Returns TRUE if the value have been already encountered \
+                   up to a configurable time " ; emph "D" ;
+            cdata " in the past (3rd operand)." ] ;
+        p [ cdata "The rate of false positive is provided (as the first \
+                   operand) so that the trade-off between memory consumption \
+                   and accuracy is easy to configure." ] ;
+        p [ cdata "The 4th and last operand is the value to be remembered." ] ;
+        p [ cdata "When a new value is remembered, the " ; bold "REMEMBER" ;
+            cdata " function will refresh its memory so that this value will \
+                   be remembered for the next " ; emph "D" ;
+            cdata " duration, whereas the " ; bold "RECALL" ;
+            cdata " function will not, so that values will be reminded only \
+                   for a duration " ; emph "D" ; cdata " after it's first \
+                   encountered." ] ]
+      [ [ cdata "REMEMBER(…float-expr…, …time-expr…, …num-expr…, …expr…)" ] ;
+        [ cdata "RECALL(…float-expr…, …time-expr…, …num-expr…, …expr…)" ] ]
+      [ [ cdata "FLOAT, FLOAT, num, t -> BOOL" ] ]
+      [] ;
+    make "largest" "Select largest (or smallest values" ~has_state:true
+      [ p [ cdata "Selects the " ; emph "N" ; cdata " largest or smallest \
+                   values, possibly skipping the first ones." ] ;
+        p [ cdata "The weight of each value in the comparison can be \
+                   specified as a last operand (by default the value \
+                   itself is used)." ] ;
+        p [ cdata "Result will be NULL  whenever the number of received items \
+                   is less than the requested number, unless " ; bold "UP TO" ;
+            cdata " is specified, or if all items have been skipped as NULL." ] ]
+      ~limitations:[ p [ cdata "The number of selected values (as well as the \
+                                number of skipped values) must be constants" ] ]
+      [ [ cdata "[LARGEST | SMALLEST] [BUT …num-expr…] [UP TO] …num-expr… …expr… \
+                 [BY …num-expr…, …num-expr…, …]" ] ;
+        [ cdata "[LATEST | OLDEST] [BUT …num-expr…] [UP TO] …num-expr… …expr…" ] ;
+        (* Order by time: *)
+        [ cdata "EARLIER [UP TO] …num-expr… …expr…" ] ]
+      [ [ cdata "uint, uint, t, BY:[t1, t2, …] -> t[]" ] ]
+      [] ;
+    make "top" "Detect the top contributors" ~has_state:true
+      [ p [ cdata "The " ; bold "TOP" ; cdata " operation has several use \
+            cases. In each of those, the operator computes an estimation of \
+            the top " ; emph "N" ; cdata " contributors " ; emph "C" ;
+            cdata " according to some metric " ; emph "W" ;
+            cdata " (weight)." ] ;
+        p [ cdata "In its simplest form, the operator merely returns that \
+                   list of contributors." ] ;
+        p [ cdata "But oftentimes one just want to know it some value is in \
+                   the top, so the operator can then return a single \
+                   boolean." ] ;
+        p [ cdata "Finally, one might also want to know what rank, if any, \
+                   some contributor occupies in the top, and in this last \
+                   form the operator returns a nullable unsigned integer." ] ;
+        p [ cdata "Parameters control not only the accuracy of the top \
+                   approximation but also how quickly top contributors will \
+                   fade to make room for newer ones in long running \
+                   aggregations." ] ;
+        p [ cdata "Such " ; bold "TOP" ; cdata " operation may return \
+                   insignificant contributors if not that many really big \
+                   contributors exist. To filter those out, a last parameter \
+                   sets a threshold as a multiple of the standard deviation \
+                   of all the weights that any contributor must met to be \
+                   considered note-worthy." ] ]
+      [ [ cdata "LIST TOP …int-expr… [ OVER …int-expr… ] \
+                 …expr… [ BY …num-expr… ] [ FOR THE LAST …float-expr… ] \
+                 [ ABOVE …num-expr… SIGMAS ]" ] ;
+        [ cdata "IS …expr… IN TOP …int-expr… [ OVER …int-expr… ] \
+                 [ BY …num-expr… ] [ FOR THE LAST …float-expr… ] \
+                 [ ABOVE …num-expr… SIGMAS ]" ] ;
+        [ cdata "RANK OF …expr… IN TOP …int-expr… [ OVER …int-expr… ] \
+                 [ BY …num-expr… ] [ FOR THE LAST …float-expr… ] \
+                 [ ABOVE …num-expr… SIGMAS ]" ] ]
+      [ [ cdata "int, int, t, num, FLOAT, num -> t[]" ] ;
+        [ cdata "t, int, int, num, FLOAT, num -> BOOL" ] ;
+        [ cdata "t, int, int, num, FLOAT, num -> uint" ] ]
+      [] ;
+    make "past" "Group past values based on time" ~has_state:true
+      [ p [ bold "PAST" ; cdata " is similar to " ; bold "GROUP" ;
+            cdata " but it regroups values based on time rather than \
+                   number of incoming values. Also, it contains an internal \
+                   sampling mechanism." ] ;
+        p [ cdata "If " ; emph "TUMBLING" ;
+            cdata " is selected then time is divided into windows \
+                   of the given duration aligned such that timestamp modulo \
+                   duration is NULL, and those whole windows worth of values \
+                   are returned in one go once they are completed." ] ;
+        p [ cdata "Otherwise, if " ; emph "SLIDING" ;
+            cdata " if selected (or if nothing is specified) then at every \
+                   step the last values within the specified duration are \
+                   returned. This is the default behavior." ] ]
+      [ [ cdata "[ SAMPLE [ OF SIZE ] …num-expr… [ OF THE ] ] PAST …num-expr… \
+                 [ SLIDING | TUMBLING ] [ OF ] …expr…" ] ]
+      ~limitations:[ p [ cdata "The duration of the time window as well as \
+                                the sampling size must be constants." ] ]
+      [ [ cdata "num, num, t -> t[]" ] ]
+      [] ;
+    make "split" "Split a string" ~has_state:true
+      [ p [ cdata "split a string by some substring and produce the resulting \
+                   words." ] ;
+        p [ cdata "The first operand is the delimiter and the second operand \
+                   is the source string to be split." ] ;
+        p [ cdata "Contrary to all other operations documented in this manual, \
+                   split is not a function but a generator: given a single \
+                   input string it can generate from zero to N values." ] ;
+        p [ cdata "When a generator is present in the output type of a RaQL \
+                   worker then all other values are simply repeated for each \
+                   generated output. For instance, if we were to execute:" ] ;
+        p [ pre [ raw "SELECT SPLIT(\" \", \"foo bar\") AS word, 42 AS i\n" ] ] ;
+        p [ cdata "then the output would be the two tuples:" ] ;
+        p [ pre [ raw "\"foo\", 1\n\"bar\", 1\n" ] ] ;
+        p [ cdata "When several generators are present then the output is \
+                   the cartesian product of the output of the generators." ] ]
+      [ [ cdata "SPLIT(…string-expr…, …string-expr…)" ] ]
+      [ [ cdata "STRING, STRING -> STRING generator" ] ]
+      []
 ]
 
 let see_also =
@@ -823,5 +1024,7 @@ let see_also =
     [ "aggrbitor" ; "bit-or" ] ;
     [ "aggrbitxor" ; "bit-xor" ] ;
     [ "aggrfirst" ; "aggrlast" ] ;
-    [ "count" ; "distinct" ; (* "remember" *) ] ;
+    [ "count" ; "distinct" ; "remember" ] ;
+    [ "one-out-of" ; "once-every" ; "past" ] ;
+    [ "group" ; "past" ]
   ]
