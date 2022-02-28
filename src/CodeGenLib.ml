@@ -615,8 +615,7 @@ module Past = struct
             if t -. t' < state.max_age then h else
               out_the_olds (RamenHeap.del_min cmp h)
     in
-    let add values =
-      RamenHeap.add cmp (x, t) values in
+    let add values = RamenHeap.add cmp (x, t) values in
     let values = out_the_olds state.values in
     let values =
       match state.sample with

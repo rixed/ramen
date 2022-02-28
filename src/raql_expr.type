@@ -341,7 +341,7 @@
           // filtering):
           sigmas: this;
         }
-        // like `Latest` but based on time rather than number of entries, and with
+        // like `Group` but based on time rather than number of entries, and with
         // integrated sampling:
         | Past {
           what: this;
@@ -352,8 +352,8 @@
         } ] // operation
       }
     | Generator
-      // First function returning more than once (Generator). Here the typ is
-      // type of a single value but the function is a generator and can return
+      // First function returning more than once (Generator). Here the type is
+      // that of a single value but the function is a generator and can return
       // from 0 to N such values.
       [ Split (this; this) ]
     ];
