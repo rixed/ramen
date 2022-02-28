@@ -218,7 +218,7 @@ man/archivist.groff: ../src/ramen
 
 doc_dir ?= $(PWD)/../../ramen-docs
 
-install: $(PAGES) $(MANPAGES) $(IMAGES) $(OTHERS) style.css
+install: $(PAGES) $(MANPAGES) $(IMAGES) $(OTHERS) style.css $(wildcard raql/*.html)
 	@echo 'Installing pages into $(prefix)$(doc_dir)'
 	@install -d '$(prefix)$(doc_dir)'
 	for f in $^ ; do \

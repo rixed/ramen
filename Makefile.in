@@ -956,9 +956,12 @@ GENERATED_EXPRS = \
 	smooth sample one-out-of moveavg hysteresis once-every remember largest \
 	top past split
 
-GENERATED_PAGES = $(addprefix doc/raql/, $(addsuffix .html, $(GENERATED_EXPRS)))
+GENERATED_PAGES = $(addprefix site/raql/, $(addsuffix .html, $(GENERATED_EXPRS)))
 
-doc: $(GENERATED_PAGES)
+site/raql:
+	mkdir -p site/raql
+
+doc: site/raql $(GENERATED_PAGES)
 
 doc/gen_doc.cmo: doc/gen_doc.ml doc/raql/expr.cmo
 	ocamlfind ocamlc -annot -package batteries,owww -I doc/raql -c '$<' -o '$@'
@@ -970,13 +973,13 @@ doc/gen_doc.byte: doc/raql/expr.cmo doc/gen_doc.cmo
 	ocamlfind ocamlc -annot -package batteries,owww -linkpkg $^ -o '$@'
 
 clean-doc:
-	for d in doc doc/raql; do $(RM) $$d/*.cmo $$d/*.o $$d/*.cmt $$d/*.cmi; done
+	for d in doc site/raql; do $(RM) $$d/*.cmo $$d/*.o $$d/*.cmt $$d/*.cmi; done
 
 clean-dist-doc:
 	$(RM) doc/gen_doc.byte
 	$(RM) $(GENERATED_PAGES)
 
-doc/raql/%.html: doc/gen_doc.byte
+site/raql/%.html: doc/gen_doc.byte
 	@doc/gen_doc.byte '$@'
 
 
@@ -1302,7 +1305,7 @@ doc/raql/%.success: doc/raql/%.test doc/raql/%.ramen src/ramen
 	@$(RM) '$@'
 	RAMEN_DESSSER_CODE_GENERATOR=never \
 	RAMEN_OPTIMIZATION_LEVEL=3 \
-	src/ramen test --bundle-dir=bundle '$<' && touch '$@'
+	src/ramen test --bundle-dir=bundle '$<' --keep && touch '$@'
 
 doc-check: $(addsuffix .success, $(basename $(GENERATED_DOC_TESTS)))
 
