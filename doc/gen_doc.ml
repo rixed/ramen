@@ -22,6 +22,10 @@ let expr_of_name name =
     Printf.eprintf "No such expression: %S\n" name ;
     exit 1
 
+let link_to e =
+  let href = e.Expr.name ^".html" in
+  a href [ cdata e.short_descr ]
+
 let of_expr e =
   let name = String.uppercase e.Expr.name in
   let state_expl =
@@ -84,7 +88,7 @@ let of_expr e =
     (if see_also = [] then [] else [ h2 "See Also" ]) @
     List.map (fun n ->
       let e' = expr_of_name n in
-      if e'.name <> e.name then p [ cdata e'.short_descr ] else Block []
+      if e'.name <> e.name then link_to e' else Block []
     ) see_also))
 
 let print_html_of_expr e oc =

@@ -318,13 +318,19 @@ between two possible lifespans for the operators state: local to the current agg
 
 <p>To configure that behavior, two keywords can be added right after the operator's name: <code>SKIP NULLS</code> (the default) and <code>KEEP NULLS</code>.</p>
 
-<h4>Boolean operators</h4>
+<a name="Operators">
+<h4>Operators</h4>
+</a>
+<div id="operator-manual">
 
 <?
 function raql($name) {
-  print '<li><a href="raql/'.$name.'.html">'.ucfirst($name).'</a></li>';
+  print '<li><a href="raql/'.$name.'.html" target="expr-manual">'.ucfirst($name).'</a></li>';
 }
 ?>
+
+<div id="operator-index">
+<h5>Boolean operators</h5>
 
 <ul>
 <?=raql('not')?>
@@ -337,7 +343,7 @@ function raql($name) {
 <?=raql('aggror')?>
 </ul>
 
-<h4>Arithmetic operators</h4>
+<h5>Arithmetic operators</h5>
 
 <ul>
 <?=raql('add')?>
@@ -358,7 +364,7 @@ function raql($name) {
 <?=raql('aggravg')?>
 </ul>
 
-<h4>Trigonometric functions</h4>
+<h5>Trigonometric functions</h5>
 
 <ul>
 <?=raql('pi')?>
@@ -373,7 +379,7 @@ function raql($name) {
 <?=raql('tanh')?>
 </ul>
 
-<h4>Arithmetic functions</h4>
+<h5>Arithmetic functions</h5>
 
 <ul>
 <?=raql('exp')?>
@@ -383,14 +389,14 @@ function raql($name) {
 <?=raql('sq')?>
 </ul>
 
-<h4>Smoothing</h4>
+<h5>Smoothing</h5>
 
 <ul>
 <?=raql('smooth')?>
 <?=raql('moveavg')?>
 </ul>
 
-<h4>Value selection operators</h4>
+<h5>Value selection operators</h5>
 
 <ul>
 <?=raql('min')?>
@@ -405,7 +411,7 @@ function raql($name) {
 <?=raql('lag')?>
 </ul>
 
-<h4>Grouping/Sketching functions</h4>
+<h5>Grouping/Sketching functions</h5>
 
 <ul>
 <?=raql('top')?>
@@ -419,7 +425,7 @@ function raql($name) {
 <?=raql('fit')?>
 </ul>
 
-<h4>Bit-wise operators</h4>
+<h5>Bit-wise operators</h5>
 
 <ul>
 <?=raql('bit-and')?>
@@ -431,7 +437,7 @@ function raql($name) {
 <?=raql('aggrbitxor')?>
 </ul>
 
-<h4>String related operators</h4>
+<h5>String related operators</h5>
 
 <ul>
 <?=raql('length')?>
@@ -448,7 +454,7 @@ function raql($name) {
 <?=raql('in')?>
 </ul>
 
-<h4>Time related operators</h4>
+<h5>Time related operators</h5>
 
 <ul>
 <?=raql('now')?>
@@ -457,7 +463,7 @@ function raql($name) {
 <?=raql('format_time')?>
 </ul>
 
-<h4>Networking related operators</h4>
+<h5>Networking related operators</h5>
 
 <ul>
 <?=raql('countrycode')?>
@@ -465,7 +471,7 @@ function raql($name) {
 <?=raql('in')?>
 </ul>
 
-<h4>NULLs and conversions related operators</h4>
+<h5>NULLs and conversions related operators</h5>
 
 <ul>
 <?=raql('force')?>
@@ -477,7 +483,7 @@ function raql($name) {
 <?=raql('chr')?>
 </ul>
 
-<h4>Miscellaneous operators</h4>
+<h5>Miscellaneous operators</h5>
 
 <ul>
 <?=raql('hysteresis')?>
@@ -486,6 +492,10 @@ function raql($name) {
 <?=raql('in')?>
 <?=raql('remember')?>
 </ul>
+
+</div>  <!-- operator-index -->
+<iframe id="operator-iframe" name="expr-manual" src="doc_placeholder.html"></iframe>
+</div>  <!-- operator-manual -->
 
 <a name="table-of-precedence">
 <h3>Operator precedence</h3>

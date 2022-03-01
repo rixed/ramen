@@ -197,3 +197,31 @@ status::before {
   content: "Are we there yet?";
   font-style: italic;
 }
+
+/* Partial 2 column layout for browsing raql manual pages */
+
+p.central {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+}
+
+#operator-manual {
+  display: flex;
+  height: 40em;
+}
+
+#operator-index {
+  flex: 20%;
+  overflow: scroll;
+}
+
+#operator-iframe {
+  flex: 80%;
+  border: 0px;
+  margin: 0 0 0 1em;
+  padding: 0;
+}

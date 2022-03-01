@@ -12,6 +12,7 @@ PAGES = \
 	communication.html \
 	archival.html \
 	language_reference.html \
+	doc_placeholder.html \
 	glossary.html \
 	man.html \
 	roadmap.html \
