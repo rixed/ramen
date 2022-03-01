@@ -1,0 +1,40 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>peek (RaQL expression)</title>
+</head>
+<body><h1>Read some bytes into a wider integer</h1>
+<h2>Syntax</h2>
+<p>PEEK …int-type… [[BIG | LITTLE] ENDIAN] …string…</p>
+<p>PEEK …int-type… [[BIG | LITTLE] ENDIAN] …int_vector…</p>
+<h2>Typing</h2>
+<p>STRING -&gt; int?</p>
+<p>int1[] -&gt; int2</p>
+<h2>Description</h2>
+<p>Either read some bytes from a string into an integer, or convert a vector of small unsigned integers into a large integer. Can come handy when receiving arrays of integers from external systems that have no better ways to encode large integers.</p>
+<p>The endianness can be specified, and little-endian is the default.</p>
+<p>If the destination type is actually narrower than required then the result is merely truncated. But if the destination type is wider than the number of provided bytes then the result will be NULL.</p>
+<p>The result is not nullable only when reading from a non nullable vector of non nullable integers.</p>
+<h2>Limitations</h2>
+<p>Some integer widths are not yet implemented.</p>
+<h2>Examples</h2>
+<p><b>SELECT PEEK U32 LITTLE ENDIAN &quot;\002\001\000\000&quot;…</b>
+</p>
+<p>  258</p>
+<p><b>SELECT PEEK U32 LITTLE ENDIAN &quot;\002\001&quot;…</b>
+</p>
+<p>  NULL</p>
+<p><b>SELECT PEEK I16 BIG ENDIAN &quot;\002\001&quot;…</b>
+</p>
+<p>  513</p>
+<p><b>SELECT PEEK U8 &quot;\004\003\002\001&quot;…</b>
+</p>
+<p>  4</p>
+<p><b>SELECT PEEK U32 LITTLE ENDIAN [0xC0u8; 0xA8u8; 0x00u8; 0x01u8]…</b>
+</p>
+<p>  16820416</p>
+<p><b>SELECT PEEK U32 BIG ENDIAN CAST([0xC0; 0xA8; 0x00; 0x01] AS U8[4])…</b>
+</p>
+<p>  3232235521</p>
+</body>
+</html>

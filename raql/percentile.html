@@ -1,0 +1,26 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>percentile (RaQL expression)</title>
+</head>
+<body><h1>Compute percentiles</h1>
+<h2>Syntax</h2>
+<p>…num-const…th PERCENTILE …expr…[ …num1…; …num2; … ] PERCENTILE …expr…</p>
+<h2>Typing</h2>
+<p>num1, num2[] -&gt; num2</p>
+<p>num1, num2[N] -&gt; num2</p>
+<p>num1[N1], num2[] -&gt; num2[N1]</p>
+<p>num1[N1], num2[N2] -&gt; num2[N1]</p>
+<h2>Description</h2>
+<p>This function takes as first operand an array or vector and the second operand can be either a numeric constant or a immediate vector of non numeric constants. It then compute the requested percentile(s).</p>
+<p>When several percentiles are requested, the return value is a vector of the corresponding requested percentiles. If only one percentile was asked for, then it is returned directly.</p>
+<p>Note that if you have several percentiles to compute it is much more efficient to make use of the vector syntax to compute all in one go than to perform several individual percentile operations.</p>
+<h2>Examples</h2>
+<p><b>SELECT 90th PERCENTILE [3; 5; 0; 2; 7; 8; 1; 9; 6; 10; 4]…</b>
+</p>
+<p>  9</p>
+<p><b>SELECT [10th; 90th] PERCENTILE [3; 5; 0; 2; 7; 8; 1; 9; 6; 10; 4]…</b>
+</p>
+<p>  [1; 9]</p>
+</body>
+</html>

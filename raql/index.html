@@ -1,0 +1,32 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>index (RaQL expression)</title>
+</head>
+<body><h1>Find the first or last occurrence of a character</h1>
+<h2>Syntax</h2>
+<p>INDEX(…string-expr…, …char-expr…)</p>
+<p>INDEX FROM START(…string-expr…, …char-expr…)</p>
+<p>INDEX FROM END(…string-expr…, …char-expr…)</p>
+<h2>Typing</h2>
+<p>STRING -&gt; CHAR -&gt; BOOL</p>
+<h2>Description</h2>
+<p>Returns the position of the first (or last) occurrence of the given character in the given string.</p>
+<p>The position of the first character is 0.</p>
+<p>Notice that the search is case sensitive.</p>
+<p>If the character is not present in the string then -1 is returned</p>
+<h2>Examples</h2>
+<p><b>SELECT INDEX(&quot;foobar&quot;, #\o)…</b>
+</p>
+<p>  1</p>
+<p><b>SELECT INDEX(&quot;foobar&quot;, #\O)…</b>
+</p>
+<p>  -1</p>
+<p><b>SELECT INDEX FROM END(&quot;foobar&quot;, #\o)…</b>
+</p>
+<p>  2</p>
+<h2>See Also</h2>
+<a href="endswith.html">String-ends-with operator</a>
+<a href="startswith.html">String-starts-with operator</a>
+</body>
+</html>

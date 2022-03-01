@@ -1,0 +1,45 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>like (RaQL expression)</title>
+</head>
+<body><h1>Comparing strings with patterns</h1>
+<h2>Syntax</h2>
+<p>…string-expr… LIKE &quot;pattern&quot;</p>
+<h2>Typing</h2>
+<p>STRING -&gt; BOOL</p>
+<h2>Description</h2>
+<p>LIKE compares a string expression with a pattern, expressed as a string that can contain the special character <em>percent</em>
+ (&apos;%&apos;) that can replace any substring including the empty substring, and the special character <em>underscore</em>
+ (&apos;_&apos;) that can match any single character.</p>
+<p>If you need to match precisely for any of those special characters you can escape them with the <em>backslach</em>
+ prefix (&apos;\&apos;). Notice though that since backslash is also the default escaping character for strings, and pattern is written as a string, it has to be doubled in practice to serve as a pattern escape character!</p>
+<p>The result is true if the left string matches the pattern, or false otherwise.</p>
+<p>Note that the pattern cannot be any string expression but must be a string constant.</p>
+<h2>Examples</h2>
+<p><b>SELECT &quot;foobar&quot; LIKE &quot;foo%&quot;…</b>
+</p>
+<p>  true</p>
+<p><b>SELECT &quot;foobar&quot; LIKE &quot;foo\\%&quot;…</b>
+</p>
+<p>  false</p>
+<p><b>SELECT &quot;foobar&quot; LIKE &quot;f%r&quot;…</b>
+</p>
+<p>  true</p>
+<p><b>SELECT &quot;foobar&quot; LIKE &quot;f__b_r&quot;…</b>
+</p>
+<p>  true</p>
+<p><b>SELECT &quot;foobar&quot; LIKE &quot;fo_b%&quot;…</b>
+</p>
+<p>  true</p>
+<p><b>SELECT &quot;foobar&quot; LIKE &quot;%baz&quot;…</b>
+</p>
+<p>  false</p>
+<p><b>SELECT &quot;foobar&quot; LIKE &quot;&quot;…</b>
+</p>
+<p>  false</p>
+<h2>See Also</h2>
+<a href="endswith.html">String-ends-with operator</a>
+<a href="startswith.html">String-starts-with operator</a>
+</body>
+</html>

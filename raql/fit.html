@@ -1,0 +1,31 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>fit (RaQL expression)</title>
+</head>
+<body><h1>(Multi)Linear regression</h1>
+<h2>Syntax</h2>
+<p>FIT …sequence-expr…</p>
+<h2>Typing</h2>
+<p>numeric[] -&gt; FLOAT</p>
+<p>numeric[n] -&gt; FLOAT</p>
+<p>(numeric; …; numeric)[] -&gt; FLOAT</p>
+<p>(numeric; …; numeric)[n] -&gt; FLOAT</p>
+<h2>Description</h2>
+<p>General fitting function that takes one operands: an array or vector of observations of either unique numeric values or tuples of numeric values.</p>
+<p>In the former case the unique value is supposed to be the value to predict (the <em>dependent variable</em>
+ in math jargon), using the start event time as the predictor (if available).</p>
+<p>In the later case, the first value of the tuple is the variable to predict and the others are the predictors (aka. the <em>explanatory variables</em>
+).</p>
+<p>Notice that the value that is predicted is the last of the observations rather than the next observations, which makes that function more handy when comparing the last observation with the prediction. Obviously, that last observed value is not taken into account to compute the prediction (but the last predictors are of course).</p>
+<p>The result will be the predicted value.</p>
+<h2>Examples</h2>
+<p><b>SELECT FIT [1; 2; 3; 99]…</b>
+</p>
+<p>  4</p>
+<p><b>SELECT FIT [(2; 1); (4; 2); (6; 3); (99; 4)]…</b>
+</p>
+<p>  8</p>
+<h2>See Also</h2>
+</body>
+</html>

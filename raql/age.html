@@ -1,0 +1,29 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>age (RaQL expression)</title>
+</head>
+<body><h1>Return the time elapsed since a past date</h1>
+<h2>Syntax</h2>
+<p>AGE …float-expr…</p>
+<h2>Typing</h2>
+<p>float</p>
+<h2>Description</h2>
+<p><b>AGE D</b>
+ is equivalent to <b>NOW - D</b>
+</p>
+<p>Warning: Parents of a function using AGE can not be archived, as the AGE function is not deterministic. For better results, use AGE as early as possible in the processing stream.</p>
+<h2>Examples</h2>
+<p><b>SELECT AGE(NOW - 3s)…</b>
+</p>
+<p>  3</p>
+<p><b>SELECT AGE(0)…</b>
+</p>
+<p>  1645380250.123524</p>
+<p><b>SELECT AGE(NOW)…</b>
+</p>
+<p>  0</p>
+<h2>See Also</h2>
+<a href="now.html">Return the current time as a UNIX timestamp</a>
+</body>
+</html>

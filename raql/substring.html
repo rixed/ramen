@@ -1,0 +1,31 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>substring (RaQL expression)</title>
+</head>
+<body><h1>Extract a substring</h1>
+<h2>Syntax</h2>
+<p>SUBSTRING(…string-expr…, …int-expr…, …int-expr…)</p>
+<h2>Typing</h2>
+<p>STRING, int, int -&gt; STRING</p>
+<h2>Description</h2>
+<p>The first operand is the original string, and the two others are positions in that string where the substring starts and stops (with the usual convention that start is inclusive and stop is exclusive).</p>
+<p>If one of the position is negative then it is meant to be relative to the end of the string.</p>
+<h2>Examples</h2>
+<p><b>SELECT SUBSTRING(&quot;foobar&quot;, 2, 4)…</b>
+</p>
+<p>  &quot;ob&quot;</p>
+<p><b>SELECT SUBSTRING(&quot;foobar&quot;, -2, 6)…</b>
+</p>
+<p>  &quot;ar&quot;</p>
+<p><b>SELECT SUBSTRING(&quot;foobar&quot;, -4, -2)…</b>
+</p>
+<p>  &quot;ob&quot;</p>
+<p><b>SELECT SUBSTRING(&quot;foobar&quot;, 20, 40)…</b>
+</p>
+<p>  &quot;&quot;</p>
+<p><b>SELECT SUBSTRING(&quot;foobar&quot;, -20, -40)…</b>
+</p>
+<p>  &quot;&quot;</p>
+</body>
+</html>

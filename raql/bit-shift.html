@@ -1,0 +1,30 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>bit-shift (RaQL expression)</title>
+</head>
+<body><h1>Bit shift operator</h1>
+<h2>Syntax</h2>
+<p>…int-expr… &lt;&lt; …int-expr…</p>
+<p>…int-expr… &gt;&gt; …int-expr…</p>
+<h2>Typing</h2>
+<p>int, int -&gt; int</p>
+<h2>Description</h2>
+<p>Shift its first integer operand by the number of bits indicated by its second operand, to the left or to the right.</p>
+<p>For right shifts, sign will be extended if the first operand is signed.</p>
+<h2>Examples</h2>
+<p><b>SELECT 1029 &gt;&gt; 3…</b>
+</p>
+<p>  128</p>
+<p><b>SELECT 5 &lt;&lt; 3…</b>
+</p>
+<p>  40</p>
+<p><b>SELECT -4 &gt;&gt; 1…</b>
+</p>
+<p>  -2</p>
+<h2>See Also</h2>
+<a href="bit-and.html">Bitwise AND operator</a>
+<a href="bit-or.html">Bitwise OR operator</a>
+<a href="bit-xor.html">Bitwise XOR operator</a>
+</body>
+</html>

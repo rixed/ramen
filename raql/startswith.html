@@ -1,0 +1,26 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>startswith (RaQL expression)</title>
+</head>
+<body><h1>String-starts-with operator</h1>
+<h2>Syntax</h2>
+<p>…string-expr… STARTS WITH …string-expr…</p>
+<h2>Typing</h2>
+<p>STRING, STRING -&gt; BOOL</p>
+<h2>Description</h2>
+<p>Test if a string starts with a given substring.</p>
+<p>Unlike the LIKE operator, does not require any of its operands to be a literal string value.</p>
+<h2>Examples</h2>
+<p><b>SELECT &quot;foobar&quot; STARTS WITH &quot;foo&quot;…</b>
+</p>
+<p>  TRUE</p>
+<p><b>SELECT &quot;foo&quot;||&quot;bar&quot; STARTS WITH 2*&quot;x&quot;…</b>
+</p>
+<p>  FALSE</p>
+<h2>See Also</h2>
+<a href="endswith.html">String-ends-with operator</a>
+<a href="index.html">Find the first or last occurrence of a character</a>
+<a href="like.html">Comparing strings with patterns</a>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>force (RaQL expression)</title>
+</head>
+<body><h1>Convert to not-null or crash</h1>
+<h2>Syntax</h2>
+<p>FORCE …nullable-expr…</p>
+<h2>Typing</h2>
+<p>t? -&gt; t</p>
+<h2>Description</h2>
+<p>Only force a value when you are certain it is not NULL, as the worker will abort otherwise.</p>
+<p>Does not accept non nullable operands.</p>
+<h2>Examples</h2>
+<p><b>SELECT FORCE(U8?(42))…</b>
+</p>
+<p>  42</p>
+<h2>See Also</h2>
+<a href="coalesce.html">Selects the first non null operand</a>
+<a href="is-null.html">Check for NULL</a>
+</body>
+</html>

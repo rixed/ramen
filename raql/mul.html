@@ -1,0 +1,31 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>mul (RaQL expression)</title>
+</head>
+<body><h1>Multiplication</h1>
+<h2>Syntax</h2>
+<p>…num-expr… * …num-expr…</p>
+<p>…int-expr… * …string-expr…</p>
+<h2>Typing</h2>
+<p>num1, num2 -&gt; largest(num1, num2)</p>
+<p>int, STRING -&gt; STRING</p>
+<h2>Description</h2>
+<p>Multiplies two numeric values, or repeat a string.</p>
+<p>If the two operands are numeric, then the result type is the largest of the operand types.</p>
+<p>Alternatively, can also be used to repeat a string if the first operand is an integer and the second a string. In that case the return type is a string.</p>
+<h2>Examples</h2>
+<p><b>SELECT 6 * 7…</b>
+</p>
+<p>  42</p>
+<p><b>SELECT 2 * &quot;foo&quot;…</b>
+</p>
+<p>  &quot;foofoo&quot;</p>
+<h2>See Also</h2>
+<a href="add.html">Addition</a>
+<a href="div.html">Division</a>
+<a href="idiv.html">Integer division</a>
+<a href="pow.html">Power</a>
+<a href="sub.html">Subtraction</a>
+</body>
+</html>

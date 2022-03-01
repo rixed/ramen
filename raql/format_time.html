@@ -1,0 +1,37 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>format_time (RaQL expression)</title>
+</head>
+<body><h1>format a timestamp as a date and time</h1>
+<h2>Syntax</h2>
+<p>FORMAT_TIME(…string-expr…, …num-expr…)</p>
+<h2>Typing</h2>
+<p>STRING -&gt; num -&gt; STRING</p>
+<h2>Description</h2>
+<p>FORMAT_TIME turns a timestamp (second operand) into a string formatted according to a given template (first operand).</p>
+<p>The template, which need not be a literal string, can contain special character sequences that will be replaced with date and time elements from the timestamp.</p>
+<p>The special sequences and what they stand for:</p>
+<ul><li>%Y: year (4 digits)</li>
+<li>%d: day of month (2 digits)</li>
+<li>%H: hour of day (2 digits)</li>
+<li>%j: day of year</li>
+<li>%M: minutes in hour (2 digits)</li>
+<li>%m: month number (2 digits)</li>
+<li>%n: newline</li>
+<li>%t: tabulation</li>
+<li>%S: seconds in minute (with millisecond resolution)</li>
+<li>%s: the timestamp</li>
+<li>%u: day of week (as a number, 0 being Sunday)</li>
+</ul>
+<h2>Examples</h2>
+<p><b>SELECT FORMAT_TIME(&quot;Sunday was day #%u&quot;, 1645354800)…</b>
+</p>
+<p>  &quot;Sunday was day #0&quot;</p>
+<p><b>SELECT FORMAT_TIME(&quot;%Y-%m-%dT%H:%M:%S&quot;, 1645354800)…</b>
+</p>
+<p>  &quot;2022-02-20T12:00:00.00&quot;</p>
+<h2>See Also</h2>
+<a href="parse_time.html">Format a date</a>
+</body>
+</html>

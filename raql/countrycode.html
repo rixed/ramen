@@ -1,0 +1,28 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>countrycode (RaQL expression)</title>
+</head>
+<body><h1>Country code of an IP</h1>
+<h2>Syntax</h2>
+<p>COUNTRYCODE …ip-expr…</p>
+<h2>Typing</h2>
+<p>IPv4 -&gt; STRING?</p>
+<p>IPv6 -&gt; STRING?</p>
+<p>Ip -&gt; STRING?</p>
+<h2>Description</h2>
+<p>Return the country-code (as a string) of an IP (v4 or v6).</p>
+<p>Ramen relies on an embedded, constant database of IP geo-locations that&apos;s designed for speed. It therefore makes no external request. As a downside, the information can be outdated or missing (in which case NULL is returned).</p>
+<p>Given the embedded database might change from one version of Ramen to the next, this function is not deterministic across upgrades.</p>
+<p>This function should be only used as a hint.</p>
+<h2>Examples</h2>
+<p><b>SELECT COUNTRYCODE 5.182.236.0…</b>
+</p>
+<p>  &quot;AT&quot;</p>
+<p><b>SELECT COUNTRYCODE 2a00:1450:400f:804::2004…</b>
+</p>
+<p>  &quot;IE&quot;</p>
+<h2>See Also</h2>
+<a href="ipfamily.html">Returns the version of an IP</a>
+</body>
+</html>

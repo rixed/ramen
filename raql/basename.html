@@ -1,0 +1,22 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>basename (RaQL expression)</title>
+</head>
+<body><h1>Strip the directory part of a path</h1>
+<h2>Syntax</h2>
+<p>BASENAME …string-expr…</p>
+<h2>Typing</h2>
+<p>STRING -&gt; STRING</p>
+<h2>Description</h2>
+<p>Similar to the UNIX tool basename, this removes from the passed operand everything before the last slash (&apos;/&apos;), to keep only the filename portion of a path.</p>
+<p>Does nothing if the operand contains no slash.</p>
+<h2>Examples</h2>
+<p><b>SELECT BASENAME &quot;/foo/bar/baz&quot;…</b>
+</p>
+<p>  &quot;baz&quot;</p>
+<p><b>SELECT BASENAME &quot;foo&quot;…</b>
+</p>
+<p>  &quot;foo&quot;</p>
+</body>
+</html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>lag (RaQL expression)</title>
+</head>
+<body><h1>Delayed value</h1>
+<p>this is an aggregate function. As such, it accepts a single operand which can wither be a scalar, in which case it will operate in turn on each item of the group, or an array or a vector in which case it will operate on each value in sequence and return the result (in practice, this process is delayed until the group is submitted for performance reasons)</p>
+<p>User can choose to skip over NULL values or to include them in the computation with one of the modifiers <em>SKIP NULLS</em>
+ to skip NULL values (the default) and <em>KEEP NULLS</em>
+ to include them.</p>
+<p>In the first case the result will still be NULL if all input values are NULL, and in the last case any NULL value will
+                 make the result NULL.</p>
+<p>The other modifier tells whether the state used to compute the aggregate must be local (each group has its own independent state) or global (all groups share a single state). In general when using a GROUP-BY clause the former behavior is intended, and it is thus the default when an explicit GROUP-BY clause is present. Otherwise, the default is to use only one global state.</p>
+<p>One can choose between those two with the modifier <em>LOCALLY</em>
+ to force a group-wise state and <em>GLOBALLY</em>
+ to force a global state.</p>
+<p>This choice of the state lifespan is only meaningful when the operation is applied to a single scalar value, since the state required to compute the end result over a literal array or vector lives only as long as that computation.</p>
+<h2>Syntax</h2>
+<p>LAG …unsigned-int-expr… …expr…</p>
+<p>LAG …expr…<br/>Equivalent to: LAG 1 …expr…</p>
+<h2>Typing</h2>
+<p>int, t -&gt; t</p>
+<h2>Description</h2>
+<p><b>LAG</b>
+ refers to the value received k steps ago. Therefore <b>LAG 1 x</b>
+ refers to previous value of <b>x</b>
+, <b>LAG 2 x</b>
+ refers to the value before the previous one, and so on.</p>
+<p>When less than k values have been received then <b>LAG k</b>
+ is NULL.</p>
+</body>
+</html>

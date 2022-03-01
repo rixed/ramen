@@ -1,0 +1,37 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>split (RaQL expression)</title>
+</head>
+<body><h1>Split a string</h1>
+<p>this is an aggregate function. As such, it accepts a single operand which can wither be a scalar, in which case it will operate in turn on each item of the group, or an array or a vector in which case it will operate on each value in sequence and return the result (in practice, this process is delayed until the group is submitted for performance reasons)</p>
+<p>User can choose to skip over NULL values or to include them in the computation with one of the modifiers <em>SKIP NULLS</em>
+ to skip NULL values (the default) and <em>KEEP NULLS</em>
+ to include them.</p>
+<p>In the first case the result will still be NULL if all input values are NULL, and in the last case any NULL value will
+                 make the result NULL.</p>
+<p>The other modifier tells whether the state used to compute the aggregate must be local (each group has its own independent state) or global (all groups share a single state). In general when using a GROUP-BY clause the former behavior is intended, and it is thus the default when an explicit GROUP-BY clause is present. Otherwise, the default is to use only one global state.</p>
+<p>One can choose between those two with the modifier <em>LOCALLY</em>
+ to force a group-wise state and <em>GLOBALLY</em>
+ to force a global state.</p>
+<p>This choice of the state lifespan is only meaningful when the operation is applied to a single scalar value, since the state required to compute the end result over a literal array or vector lives only as long as that computation.</p>
+<h2>Syntax</h2>
+<p>SPLIT(…string-expr…, …string-expr…)</p>
+<h2>Typing</h2>
+<p>STRING, STRING -&gt; STRING generator</p>
+<h2>Description</h2>
+<p>split a string by some substring and produce the resulting words.</p>
+<p>The first operand is the delimiter and the second operand is the source string to be split.</p>
+<p>Contrary to all other operations documented in this manual, split is not a function but a generator: given a single input string it can generate from zero to N values.</p>
+<p>When a generator is present in the output type of a RaQL worker then all other values are simply repeated for each generated output. For instance, if we were to execute:</p>
+<p><pre>SELECT SPLIT(" ", "foo bar") AS word, 42 AS i
+</pre>
+</p>
+<p>then the output would be the two tuples:</p>
+<p><pre>"foo", 1
+"bar", 1
+</pre>
+</p>
+<p>When several generators are present then the output is the cartesian product of the output of the generators.</p>
+</body>
+</html>

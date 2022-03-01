@@ -1,0 +1,29 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>is-null (RaQL expression)</title>
+</head>
+<body><h1>Check for NULL</h1>
+<h2>Syntax</h2>
+<p>…nullable-expr… IS NULL</p>
+<p>…nullable-expr… IS NOT NULL</p>
+<h2>Typing</h2>
+<p>t? -&gt; BOOL</p>
+<h2>Description</h2>
+<p>Test any nullable operand for NULL. Always returns a non-nullable boolean.</p>
+<p>Notice that this is not equivalent to comparing a value to NULL using the equality operator. Indeed, NULL propagates through the equality operator and the result of such a comparison would merely be NULL.</p>
+<h2>Examples</h2>
+<p><b>SELECT NULL IS NULL…</b>
+</p>
+<p>  TRUE</p>
+<p><b>SELECT NULL IS NOT NULL…</b>
+</p>
+<p>  FALSE</p>
+<p><b>SELECT (NULL = 1) IS NULL…</b>
+</p>
+<p>  TRUE</p>
+<h2>See Also</h2>
+<a href="coalesce.html">Selects the first non null operand</a>
+<a href="force.html">Convert to not-null or crash</a>
+</body>
+</html>

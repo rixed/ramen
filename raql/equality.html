@@ -1,0 +1,30 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>equality (RaQL expression)</title>
+</head>
+<body><h1>Equality test</h1>
+<h2>Syntax</h2>
+<p>…expr… = …expr…</p>
+<p>…expr… != …expr…</p>
+<p>…expr… &lt;&gt; …expr…</p>
+<h2>Typing</h2>
+<p>t, t -&gt; BOOL</p>
+<h2>Description</h2>
+<p>Test for equality.</p>
+<p>Values of any type can be tested for equality, but both values must have the same type.</p>
+<h2>Examples</h2>
+<p><b>SELECT &quot;foo&quot; = &quot;FOO&quot;…</b>
+</p>
+<p>  FALSE</p>
+<p><b>SELECT [1; 2] &lt;&gt; [2; 1]…</b>
+</p>
+<p>  TRUE</p>
+<p><b>SELECT PI != 3.14…</b>
+</p>
+<p>  TRUE</p>
+<h2>See Also</h2>
+<a href="comparison.html">Comparison operators</a>
+<a href="strict-comparison.html">Comparison operators</a>
+</body>
+</html>

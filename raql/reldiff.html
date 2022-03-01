@@ -1,0 +1,34 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>reldiff (RaQL expression)</title>
+</head>
+<body><h1>Relative difference</h1>
+<h2>Syntax</h2>
+<p>RELDIFF(…num-expr…, …num-expr…)</p>
+<h2>Typing</h2>
+<p>num1, num2 -&gt; FLOAT</p>
+<h2>Description</h2>
+<p>Compare the two operands A and B by computing:</p>
+<p>MIN(ABS(A-B), MAX(A, B)) / MAX(ABS(A-B), MAX(A, B))</p>
+<p>Returns 0 when A = B.</p>
+<h2>Examples</h2>
+<p><b>SELECT RELDIFF(1, 1)…</b>
+</p>
+<p>  0</p>
+<p><b>SELECT RELDIFF(10, 9)…</b>
+</p>
+<p>  0.1</p>
+<p><b>SELECT RELDIFF(9, 10)…</b>
+</p>
+<p>  0.1</p>
+<p><b>SELECT RELDIFF(-9, -10)…</b>
+</p>
+<p>  0.1</p>
+<p><b>SELECT RELDIFF(1, -10)…</b>
+</p>
+<p>  1.1</p>
+<h2>See Also</h2>
+<a href="sub.html">Subtraction</a>
+</body>
+</html>

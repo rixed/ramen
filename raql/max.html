@@ -1,0 +1,29 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>max (RaQL expression)</title>
+</head>
+<body><h1>Maximum</h1>
+<h2>Syntax</h2>
+<p>MAX(…expr1…, …expr2…, …)</p>
+<h2>Typing</h2>
+<p>t1, t2, … -&gt; largest(t1, t2, …)</p>
+<h2>Description</h2>
+<p>Return the maximum value of all the operands.</p>
+<p>All operands must have compatible types (ie. it is possible to convert one into another).</p>
+<p>The result will be NULL if any of the operands is.</p>
+<h2>Examples</h2>
+<p><b>SELECT MAX(1, 2, 3)…</b>
+</p>
+<p>  3</p>
+<p><b>SELECT MAX(&quot;foo&quot;, &quot;bar&quot;)…</b>
+</p>
+<p>  &quot;foo&quot;</p>
+<p><b>SELECT MAX([5; 6], [3; 9])…</b>
+</p>
+<p>  [5; 6]</p>
+<h2>See Also</h2>
+<a href="aggrmax.html">Maximum (aggregate)</a>
+<a href="min.html">Minimum</a>
+</body>
+</html>

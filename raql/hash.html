@@ -1,0 +1,22 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>hash (RaQL expression)</title>
+</head>
+<body><h1>Hash any value</h1>
+<h2>Syntax</h2>
+<p>HASH …expr…</p>
+<h2>Typing</h2>
+<p>t -&gt; I64</p>
+<h2>Description</h2>
+<p>Compute a integer hash of a value of any type.</p>
+<p>The hash function is deterministic.</p>
+<h2>Examples</h2>
+<p><b>SELECT HASH NULL…</b>
+</p>
+<p>  NULL</p>
+<p><b>SELECT HASH (&quot;foo&quot;; &quot;bar&quot;)…</b>
+</p>
+<p>  731192513</p>
+</body>
+</html>

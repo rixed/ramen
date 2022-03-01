@@ -1,0 +1,23 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>cast (RaQL expression)</title>
+</head>
+<body><h1>Cast an expression into a specific type</h1>
+<h2>Syntax</h2>
+<p>CAST(…expr… AS …type…)</p>
+<p>…type…(…expr…)</p>
+<h2>Typing</h2>
+<p>t1 -&gt; t2</p>
+<h2>Description</h2>
+<p>Any type can be cast into any other one. For instance, strings can be parsed as numbers or numbers printed as strings. Some conversion makes no sense and might lead to surprising results.</p>
+<p>The result is the requested type, forced nullable if the expression is nullable. See FORCE to cast away nullability.</p>
+<h2>Examples</h2>
+<p><b>SELECT CAST(PI AS U8)…</b>
+</p>
+<p>  3</p>
+<p><b>SELECT CAST(PI AS STRING)…</b>
+</p>
+<p>  &quot;3.14159265359&quot;</p>
+</body>
+</html>

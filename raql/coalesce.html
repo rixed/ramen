@@ -1,0 +1,28 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>coalesce (RaQL expression)</title>
+</head>
+<body><h1>Selects the first non null operand</h1>
+<h2>Syntax</h2>
+<p>COALESCE(…expr1…, …expr2…, …)</p>
+<p>…expr1… |? …expr2…</p>
+<h2>Typing</h2>
+<p>(t?, t?, …, t?) -&gt; t?</p>
+<p>(t?, t?, …, t) -&gt; t</p>
+<h2>Description</h2>
+<p>Accept a list of alternative values of the same type and returns the first one that is not NULL.</p>
+<p>All alternatives but the last must be nullable.</p>
+<p>If all alternatives are NULL then returns NULL.</p>
+<h2>Examples</h2>
+<p><b>SELECT NULL |? 1…</b>
+</p>
+<p>  1</p>
+<p><b>SELECT COALESCE(IF RANDOM &gt; 1 THEN &quot;can&apos;t happen&quot;, &quot;ok&quot;)…</b>
+</p>
+<p>  &quot;ok&quot;</p>
+<h2>See Also</h2>
+<a href="force.html">Convert to not-null or crash</a>
+<a href="is-null.html">Check for NULL</a>
+</body>
+</html>

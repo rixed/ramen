@@ -1,0 +1,21 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>now (RaQL expression)</title>
+</head>
+<body><h1>Return the current time as a UNIX timestamp</h1>
+<h2>Syntax</h2>
+<p>NOW</p>
+<h2>Typing</h2>
+<p>float</p>
+<h2>Description</h2>
+<p>Floating point number of seconds since 1970-01-01 00:00 UTC.</p>
+<p>Warning: Parents of a function using NOW can not be archived, as the NOW function is not deterministic. For better results, use NOW as early as possible in the processing stream.</p>
+<h2>Examples</h2>
+<p><b>SELECT NOW…</b>
+</p>
+<p>  1646126548.49</p>
+<h2>See Also</h2>
+<a href="age.html">Return the time elapsed since a past date</a>
+</body>
+</html>

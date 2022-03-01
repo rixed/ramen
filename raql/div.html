@@ -1,0 +1,32 @@
+<!DOCTYPE html
+          PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+          "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>div (RaQL expression)</title>
+</head>
+<body><h1>Division</h1>
+<h2>Syntax</h2>
+<p>…num-expr… / …num-expr…</p>
+<h2>Typing</h2>
+<p>num1, num2 -&gt; FLOAT?</p>
+<p>num1, non-zero-const -&gt; FLOAT</p>
+<h2>Description</h2>
+<p>Divides two numeric values.</p>
+<p>The result is always a FLOAT. If the divisor and dividend are non-zero constants then the result is not nullable, otherwise it is, and the result of 0/0 is NULL.</p>
+<h2>Examples</h2>
+<p><b>SELECT 84/2…</b>
+</p>
+<p>  42</p>
+<p><b>SELECT 1/0…</b>
+</p>
+<p>  Inf</p>
+<p><b>SELECT 0/0…</b>
+</p>
+<p>  NULL</p>
+<h2>See Also</h2>
+<a href="add.html">Addition</a>
+<a href="idiv.html">Integer division</a>
+<a href="mod.html">Modulo</a>
+<a href="mul.html">Multiplication</a>
+<a href="sub.html">Subtraction</a>
+</body>
+</html>
