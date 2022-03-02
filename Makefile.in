@@ -782,7 +782,7 @@ $(BUNDLE_DIR)/include/caml:
 $(BUNDLE_DIR)/include/dessser:
 	@echo 'Copying Dessser headers'
 	@install -d '$(BUNDLE_DIR)/include/dessser'
-	@cp '$(wildcard $(shell ocamlfind query dessser)/*.h)' '$(BUNDLE_DIR)/include/dessser/'
+	@cp $(wildcard $(shell ocamlfind query dessser)/*.h) '$(BUNDLE_DIR)/include/dessser/'
 
 # We have to force -cclib -lstdint_stubs right after -cclib wrap_ringbuf.o
 # otherwise -package stdint would put it before and gcc would not include the
