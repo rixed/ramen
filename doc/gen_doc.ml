@@ -5,12 +5,6 @@ open Html
 let html_of_limitation l =
   p l
 
-let html_of_example (input, output) =
-  Block [
-    p [
-      bold ("SELECT "^ input ^"…") ] ;
-    p [ cdata ("  "^ output) ] ]
-
 let expr_of_name name =
   let filenamify s =
     String.map (fun c ->
@@ -27,6 +21,8 @@ let link_to e =
   a href [ cdata e.short_descr ]
 
 let html_of_expr e =
+  let html_of_example (input, output) =
+    tr [ td [ cdata input ] ; td [ cdata output ] ] in
   let name = String.uppercase e.Expr.name in
   let state_expl =
     [ p [ cdata "this is an aggregate function. As such, it accepts a \
@@ -84,8 +80,15 @@ let html_of_expr e =
         ]) @
     (if e.limitations = [] then [] else [ h2 "Limitations" ]) @
     e.limitations @
-    (if e.examples = [] then [] else [ h2 "Examples" ]) @
-    List.map html_of_example e.examples @
+    (if e.examples = [] then [] else [
+      h2 "Examples" ;
+      table [
+        thead [
+          tr [ th [ cdata "expression" ] ;
+               th [ cdata "evaluates to" ] ] ] ;
+        tbody
+          (List.map html_of_example e.examples)
+      ] ]) @
     (if see_also = [] then [] else [ h2 "See Also" ]) @
     List.map (fun n ->
       let e' = expr_of_name n in
