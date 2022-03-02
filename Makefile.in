@@ -956,7 +956,9 @@ GENERATED_EXPRS = \
 	smooth sample one-out-of moveavg hysteresis once-every remember largest \
 	top past split
 
-GENERATED_PAGES = $(addprefix site/raql/, $(addsuffix .html, $(GENERATED_EXPRS)))
+GENERATED_PAGES = \
+	$(addprefix site/raql/, $(addsuffix .html, $(GENERATED_EXPRS))) \
+	doc/raql/toc.html
 
 site/raql:
 	mkdir -p site/raql
@@ -977,9 +979,16 @@ clean-doc:
 
 clean-dist-doc:
 	$(RM) doc/gen_doc.byte
+	$(RM) doc/doc.qrc
 	$(RM) $(GENERATED_PAGES)
 
 site/raql/%.html: doc/gen_doc.byte
+	@doc/gen_doc.byte '$@'
+
+doc/doc.qrc: $(GENERATED_PAGES) doc/gen_doc.byte
+	@doc/gen_doc.byte '$@'
+
+doc/raql/toc.html: doc/gen_doc.byte
 	@doc/gen_doc.byte '$@'
 
 

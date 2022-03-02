@@ -6,7 +6,7 @@ let html_of_limitation l =
   p l
 
 let html_of_example (input, output) =
-  Html.Block [
+  Block [
     p [
       bold ("SELECT "^ input ^"…") ] ;
     p [ cdata ("  "^ output) ] ]
@@ -26,7 +26,7 @@ let link_to e =
   let href = e.Expr.name ^".html" in
   a href [ cdata e.short_descr ]
 
-let of_expr e =
+let html_of_expr e =
   let name = String.uppercase e.Expr.name in
   let state_expl =
     [ p [ cdata "this is an aggregate function. As such, it accepts a \
@@ -94,7 +94,7 @@ let of_expr e =
 
 let print_html_of_expr e oc =
   print_xml_head oc ;
-  print oc (of_expr e)
+  print oc (html_of_expr e)
 
 (* Output the testto check the examples: *)
 let print_test_of_expr e oc =
@@ -122,24 +122,69 @@ let print_raql_of_expr e oc =
   Printf.fprintf oc "\n" ;
   Printf.fprintf oc "  EVERY 0.1s;\n"
 
+let print_html_toc oc =
+  let sections = Hashtbl.create 50 in
+  List.iter (fun e ->
+    List.iter (fun section ->
+      Hashtbl.modify_opt section (function
+        | None -> Some [ e.Expr.name ]
+        | Some names -> Some (e.Expr.name :: names)
+      ) sections
+    ) e.Expr.sections
+  ) Expr.exprs ;
+  print_xml_head oc ;
+  let blocks =
+    Hashtbl.fold (fun section_name section_exprs blocks ->
+      (
+        section_name,
+        ul (
+          List.map (fun name ->
+            let e = expr_of_name name in
+            li [ link_to e ]
+          ) section_exprs)
+      ) :: blocks
+    ) sections [] in
+  html [ title "Table Of Content" ;
+         tag ~attrs:["charset", "utf-8"] "meta" [] ] (
+    List.sort (fun (a, _) (b, _) -> String.compare a b) blocks |>
+    List.map (fun (name, blk) ->
+      Block [ h1 (String.lchop ~n:3 name) ; blk ])
+  ) |>
+  print oc
+
+let print_raql_qt_resources oc =
+  Printf.fprintf oc "<RCC>\n" ;
+  Printf.fprintf oc "  <qresource>\n" ;
+  Printf.fprintf oc "    <file>toc.html</file>\n" ;
+  List.iter (fun e ->
+    Printf.fprintf oc "    <file>%s.html</file>\n" e.Expr.name
+  ) Expr.exprs ;
+  Printf.fprintf oc "  </qresource>\n" ;
+  Printf.fprintf oc "</RCC>\n"
+
 let with_file target f =
   Printf.printf "Generating %s...\n" target ;
   File.with_file_out target f
 
-let process source filename ext target =
-  match source, ext with
-  | "raql", "html" ->
-      with_file target (print_html_of_expr (expr_of_name filename))
-  | "raql", "test" ->
-      let e = expr_of_name filename in
+let process source name ext target =
+  match source, name, ext with
+  | "raql", "toc", "html" ->
+      with_file target print_html_toc
+  | "raql", _, "html" ->
+      with_file target (print_html_of_expr (expr_of_name name))
+  | "raql", _, "test" ->
+      let e = expr_of_name name in
       assert (e.Expr.deterministic) ;
       assert (e.examples <> []) ;
       with_file target (print_test_of_expr e)
-  | "raql", "ramen" ->
-      let e = expr_of_name filename in
+  | "raql", _, "ramen" ->
+      let e = expr_of_name name in
       assert (e.Expr.deterministic) ;
       assert (e.examples <> []) ;
       with_file target (print_raql_of_expr e)
+  | _, _, "qrc" ->
+      (* Qt resource file *)
+      with_file target print_raql_qt_resources
   | _ ->
       Printf.eprintf "Unknown object %S or target %S\n" source ext ;
       exit 1

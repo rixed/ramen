@@ -175,3 +175,4 @@ docker/Dockerfile
 docker/Dockerfile-dev
 doc/*/*.ramen
 doc/*/*.test
+doc/doc.qrc

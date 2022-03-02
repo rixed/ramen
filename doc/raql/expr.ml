@@ -12,45 +12,66 @@ type expr =
     syntaxes : html list ;  (* what function names are accepted *)
     typing : html list ;
     examples : (string * string) list ;
-    limitations : html }
+    limitations : html ;
+    sections : string list }
+
+module Section =
+struct
+  let bool = "01 Boolean operators"
+  let arith = "02 Arithmetic operators"
+  let trigo = "03 Trigonometric functions"
+  let funcs = "04 Arithmetic functions"
+  let smooth = "05 Smoothing"
+  let select = "06 Value selection"
+  let groups = "07 Grouping/Sketching"
+  let bits = "08 Bit-wise operators"
+  let string = "09 String related operators"
+  let time = "10 Time related operators"
+  let net = "11 Networking related operators"
+  let types = "12 NULLs and conversions"
+  let misc = "13 Miscellaneous operators"
+end
 
 let make ?(infix = false) ?(has_state = false) ?(deterministic = true)
-         ?(limitations = []) name
+         ?(limitations = []) ?(sections = [ Section.misc ]) name
          short_descr long_descr syntaxes typing examples =
   { name ; infix ; has_state ; deterministic ; short_descr ; long_descr ;
-    syntaxes ; typing ; examples ; limitations }
+    syntaxes ; typing ; examples ; limitations ; sections }
 
 let exprs =
   let warn_utf8 =
     p [ cdata "For now, strings are just variable length sequences of \
                bytes. However, the plan is to make them UTF8 though." ] in
-  [ make "now" "Return the current time as a UNIX timestamp"
-         ~deterministic:false
+  [ make "now" ~sections:Section.[time]
+      "Return the current time as a UNIX timestamp"
+      ~deterministic:false
       [ p [ cdata "Floating point number of seconds since 1970-01-01 00:00 \
                    UTC." ] ]
       [ [ cdata "NOW" ] ]
       [ [ cdata "float" ] ]
       [ "NOW", string_of_float (Unix.gettimeofday ()) ] ;
-    make "random" "Return a random number"
-         ~deterministic:false
+    make "random" ~sections:Section.[misc] "Return a random number"
+      ~deterministic:false
       [ p [ cdata "Results are uniformly distributed between 0 and 1." ] ]
       [ [ cdata "RANDOM" ] ]
       [ [ cdata "float" ] ]
       [ "RANDOM", string_of_float (Random.float 1.) ] ;
-    make "pi" "The constant π"
+    make "pi" ~sections:Section.[trigo] "The constant π"
       []
       [ [ cdata "PI" ] ]
       [ [ cdata "float" ] ]
       [ "PI", "3.14159265358979312" ] ;
-    make "age" "Return the time elapsed since a past date"
-         ~deterministic:false
+    make "age" ~sections:Section.[time]
+      "Return the time elapsed since a past date"
+      ~deterministic:false
       [ p [ bold "AGE D" ; cdata " is equivalent to " ; bold "NOW - D" ] ]
       [ [ cdata "AGE …float-expr…" ] ]
       [ [ cdata "float" ] ]
       [ "AGE(NOW - 3s)", "3" ;
         "AGE(0)", "1645380250.123524" ;
         "AGE(NOW)", "0" ] ;
-    make "cast" "Cast an expression into a specific type"
+    make "cast" ~sections:Section.[types]
+      "Cast an expression into a specific type"
       [ p [ cdata "Any type can be cast into any other one. \
                    For instance, strings can be parsed as numbers or numbers \
                    printed as strings. \
@@ -62,14 +83,16 @@ let exprs =
       [ [ cdata "t1 -> t2" ] ]
       [ "CAST(PI AS U8)", "3" ;
         "CAST(PI AS STRING)", "\"3.14159265359\"" ] ;
-    make "force" "Convert to not-null or crash"
+    make "force" ~sections:Section.[types]
+      "Convert to not-null or crash"
       [ p [ cdata "Only force a value when you are certain it is not NULL, as the \
                    worker will abort otherwise." ] ;
         p [ cdata "Does not accept non nullable operands." ] ]
       [ [ cdata "FORCE …nullable-expr…" ] ]
       [ [ cdata "t? -> t" ] ]
       [ "FORCE(U8?(42))", "42" ] ;
-    make "peek" "Read some bytes into a wider integer"
+    make "peek" ~sections:Section.[types]
+      "Read some bytes into a wider integer"
       ~limitations:[ p [ cdata "Some integer widths are not yet implemented." ] ]
       [ p [ cdata "Either read some bytes from a string into an integer, \
                    or convert a vector of small unsigned integers into a large \
@@ -96,7 +119,8 @@ let exprs =
          * is 32bits: *)
         "PEEK U32 LITTLE ENDIAN [0xC0u8; 0xA8u8; 0x00u8; 0x01u8]", "16820416" ;
         "PEEK U32 BIG ENDIAN CAST([0xC0; 0xA8; 0x00; 0x01] AS U8[4])", "3232235521" ] ;
-    make "length" "Compute the length of a string or array"
+    make "length" ~sections:Section.[string]
+      "Compute the length of a string or array"
       [ p [ cdata "Returns the number of " ; bold "bytes" ; cdata " in a \
                    string." ] ;
         warn_utf8 ;
@@ -106,44 +130,47 @@ let exprs =
       [ "LENGTH \"foo\"", "3" ;
         "LENGTH \"\"", "0" ;
         "LENGTH CAST([42] AS U8[])", "1" ] ;
-    make "lower" "Return the lowercase version of a string"
+    make ~sections:Section.[string]
+      "lower" "Return the lowercase version of a string"
       [ warn_utf8 ]
       [ [ cdata "LOWER …string-expr…" ] ]
       [ [ cdata "STRING -> STRING" ] ]
       [ "LOWER \"Foo Bar Baz\"", "\"foo bar baz\"" ] ;
-    make "upper" "Return the uppercase version of a string"
+    make ~sections:Section.[string]
+      "upper" "Return the uppercase version of a string"
       [ warn_utf8 ]
       [ [ cdata "UPPER …string-expr…" ] ]
       [ [ cdata "STRING -> STRING" ] ]
       [ "UPPER \"Foo Bar Baz\"", "\"FOO BAR BAZ\"" ] ;
-    make "uuid_of_u128" "Print a U128 as an UUID"
+    make ~sections:Section.[types]
+      "uuid_of_u128" "Print a U128 as an UUID"
       [ p [ cdata "Convert a U128 into a STRING using the traditional \
                    notation for UUIDs." ] ]
       [ [ cdata "UUID_OF_U128 …u128-expr…" ] ]
       [ [ cdata "U128 -> STRING" ] ]
       [ "UUID_OF_U128 0x123456789abcdeffedcba098765431",
         "\"00123456-789a-bcde-ffed-cba098765431\"" ] ;
-    make "not" "Negation"
+    make "not" ~sections:Section.[bool] "Negation"
       [ p [ cdata "boolean negation." ] ]
       [ [ cdata "NOT …bool-expr…" ] ]
       [ [ cdata "BOOL -> BOOL" ] ]
       [ "NOT TRUE", "FALSE" ;
         "NOT (0 > 1)", "TRUE" ] ;
-    make "abs" "Absolute value"
+    make "abs" ~sections:Section.[arith] "Absolute value"
       [ p [ cdata "Return the absolute value of an expression of any numeric \
                    type." ] ]
       [ [ cdata "ABS …numeric-expr…" ] ]
       [ [ cdata "numeric -> numeric" ] ]
         (* Note: parentheses are required to disambiguate: *)
       [ "ABS(-1.2)", "1.2" ] ;
-    make "neg" "Negation"
+    make "neg" ~sections:Section.[arith] "Negation"
       [ p [ cdata "Negation of the numeric operand." ] ;
         p [ cdata "The return type is either the same as that of the operand, \
                    or a non smaller signed integer type" ] ]
       [ [ cdata "-…numerix-expr…" ] ]
       [ [ cdata "numeric -> signed-numeric" ] ]
       [ "-(1+1)", "-2" ] ;
-    make "is-null" "Check for NULL"
+    make "is-null" ~sections:Section.[types] "Check for NULL"
       [ p [ cdata "Test any nullable operand for NULL. Always returns a \
                    non-nullable boolean." ] ;
         p [ cdata "Notice that this is not equivalent to comparing a value \
@@ -156,24 +183,24 @@ let exprs =
       [ "NULL IS NULL", "TRUE" ;
         "NULL IS NOT NULL", "FALSE" ;
         "(NULL = 1) IS NULL", "TRUE" ] ;
-    make "exp" "Exponential function"
+    make "exp" ~sections:Section.[funcs] "Exponential function"
       [ p [ cdata "Compute the exponential function (as a FLOAT)." ] ]
       [ [ cdata "EXP …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       [ "EXP 0", "1" ; "EXP 1", "2.71828182846" ] ;
-    make "log" "Natural logarithm"
+    make "log" ~sections:Section.[funcs] "Natural logarithm"
       [ p [ cdata "Compute the natural logarithm of the operand." ] ;
         p [ cdata "Returns NaN on negative operands." ] ]
       [ [ cdata "LOG …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       [ "LOG 1", "0" ] ;
-    make "log10" "Decimal logarithm"
+    make "log10" ~sections:Section.[funcs] "Decimal logarithm"
       [ p [ cdata "Compute the decimal logarithm of the operand." ] ;
         p [ cdata "Returns NaN on negative operands." ] ]
       [ [ cdata "LOG10 …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       [ "LOG10 100", "2" ] ;
-    make "sqrt" "Square root"
+    make "sqrt" ~sections:Section.[funcs] "Square root"
       [ p [ cdata "Square root function." ] ;
         p [ cdata "Returns NULL on negative operands." ] ]
       [ [ cdata "SQRT …numeric-expr…" ] ]
@@ -181,85 +208,85 @@ let exprs =
       [ "SQRT 16", "4" ;
         (* Note: parentheses are required to disambiguate: *)
         "SQRT(-1)", "NULL" ] ;
-    make "sq" "Square"
+    make "sq" ~sections:Section.[funcs] "Square"
       [ p [ cdata "Square function." ] ;
         p [ cdata "Returns the same type as the operand." ] ]
       [ [ cdata "SQ …numeric-expr…" ] ]
       [ [ cdata "numeric -> numeric" ] ]
       [ "SQ 4", "16" ] ;
-    make "ceil" "Ceiling function"
+    make "ceil" ~sections:Section.[funcs] "Ceiling function"
       [ p [ cdata "Return the round value just greater or equal to the operand." ] ;
         p [ cdata "The result has the same type than the operand." ] ]
       [ [ cdata "CEIL …numeric-expr…" ] ]
       [ [ cdata "numeric -> numeric" ] ]
       [ "CEIL 41.2", "42" ] ;
-    make "floor" "Floor function"
+    make "floor" ~sections:Section.[funcs] "Floor function"
       [ p [ cdata "Return the round value just smaller or equal to the operand." ] ;
         p [ cdata "The result has the same type than the operand." ] ]
       [ [ cdata "FLOOR …numeric-expr…" ] ]
       [ [ cdata "numeric -> numeric" ] ]
       [ "FLOOR 42.7", "42" ;
         "FLOOR(-42.7)", "-43" ] ;
-    make "round" "Rounding"
+    make "round" ~sections:Section.[arith;types] "Rounding"
       [ p [ cdata "Return the closest round value." ] ;
         p [ cdata "The result has the same type than the operand." ] ]
       [ [ cdata "ROUND …numeric-expr…" ] ]
       [ [ cdata "numeric -> numeric" ] ]
       [ "ROUND 42.4", "42" ] ;
-    make "cos" "Cosine"
+    make "cos" ~sections:Section.[trigo] "Cosine"
       [ p [ cdata "Return the cosine of the operand." ] ]
       [ [ cdata "COS …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       [ "COS PI", "-1" ] ;
-    make "sin" "Sine"
+    make "sin" ~sections:Section.[trigo] "Sine"
       [ p [ cdata "Return the sine of the operand." ] ]
       [ [ cdata "SIN …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       [ "SIN PI", "0" ] ;
-    make "tan" "Tangent"
+    make "tan" ~sections:Section.[trigo] "Tangent"
       [ p [ cdata "Return the tangent of the operand." ] ]
       [ [ cdata "TAN …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       [ "TAN 0", "0" ] ;
-    make "acos" "Arc-Cosine"
+    make "acos" ~sections:Section.[trigo] "Arc-Cosine"
       [ p [ cdata "Return the arc-cosine of the operand." ] ]
       [ [ cdata "ACOS …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       (* Must use parenths: *)
       [ "ACOS(-1)", "3.14159265359" ] ;
-    make "asin" "Arc-Sine"
+    make "asin" ~sections:Section.[trigo] "Arc-Sine"
       [ p [ cdata "Return the arc-sine of the operand." ] ]
       [ [ cdata "ASIN …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       [ "2 * ASIN 1", "3.14159265359" ] ;
-    make "atan" "ArcTangent"
+    make "atan" ~sections:Section.[trigo] "ArcTangent"
       [ p [ cdata "Return the arc-tangent of the operand." ] ]
       [ [ cdata "ATAN …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       [ "4 * ATAN 1", "3.14159265359" ] ;
-    make "cosh" "Hyperbolic Cosine"
+    make "cosh" ~sections:Section.[trigo] "Hyperbolic Cosine"
       [ p [ cdata "Return the hyperbolic cosine of the operand." ] ]
       [ [ cdata "COSH …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       [ "COSH 0", "1" ] ;
-    make "sinh" "Hyperbolic Sine"
+    make "sinh" ~sections:Section.[trigo] "Hyperbolic Sine"
       [ p [ cdata "Return the hyperbolic sine of the operand." ] ]
       [ [ cdata "SINH …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       [ "SINH 0", "0" ] ;
-    make "tanh" "Hyperbolic Tangent"
+    make "tanh" ~sections:Section.[trigo] "Hyperbolic Tangent"
       [ p [ cdata "Return the hyperbolic tangent of the operand." ] ]
       [ [ cdata "TANH …numeric-expr…" ] ]
       [ [ cdata "numeric -> FLOAT" ] ]
       [ "TANH 0", "0" ] ;
-    make "hash" "Hash any value"
+    make "hash" ~sections:Section.[trigo] "Hash any value"
       [ p [ cdata "Compute a integer hash of a value of any type." ] ;
         p [ cdata "The hash function is deterministic." ] ]
       [ [ cdata "HASH …expr…" ] ]
       [ [ cdata "t -> I64" ] ]
       [ "HASH NULL", "NULL" ;
         "HASH (\"foo\"; \"bar\")", "731192513" ] ;
-    make "parse_time" "Format a date"
+    make "parse_time" ~sections:Section.[time] "Format a date"
       [ p [ cdata "This function takes a date as a string and convert it to a \
                    timestamp. It accepts various common encodings (similar to \
                    the UNIX at(1) command." ] ;
@@ -271,13 +298,14 @@ let exprs =
       (* Divide by 24 so that this does not depend on the time zone: *)
       [ "(PARSE_TIME \"1976-01-28 12:00:00.9\") // 24h", "2218" ;
         "(PARSE_TIME \"12/25/2005\") // 24h", "13141" ] ;
-    make "chr" "ASCII character of a given code"
+    make "chr" ~sections:Section.[types;string]
+      "ASCII character of a given code"
       [ p [ cdata "Convert the given integer (must be below 255) into the \
                    corresponding ASCII character." ] ]
       [ [ cdata "CHR …int-expr…" ]]
       [ [ cdata "integer -> CHR" ] ]
       [ "CHR 65", "#\\A" ] ;
-    make "like" "Comparing strings with patterns"
+    make "like" ~sections:Section.[string;bool] "Comparing strings with patterns"
       [ p [ cdata "LIKE compares a string expression with a pattern, expressed \
                    as a string that can contain the special character " ;
             emph "percent" ;
@@ -306,7 +334,7 @@ let exprs =
         "\"foobar\" LIKE \"fo_b%\"", "true" ;
         "\"foobar\" LIKE \"%baz\"", "false" ;
         "\"foobar\" LIKE \"\"", "false" ] ;
-    make "fit" "(Multi)Linear regression"
+    make "fit" ~sections:Section.[groups] "(Multi)Linear regression"
       [ p [ cdata "General fitting function that takes one operands: an \
                    array or vector of observations of either unique numeric \
                    values or tuples of numeric values." ] ;
@@ -331,7 +359,7 @@ let exprs =
         [ cdata "(numeric; …; numeric)[n] -> FLOAT" ] ]
       [ "FIT [1; 2; 3; 99]", "4" ;
         "FIT [(2; 1); (4; 2); (6; 3); (99; 4)]", "8" ] ;
-    make "countrycode" "Country code of an IP"
+    make "countrycode" ~sections:Section.[net] "Country code of an IP"
       [ p [ cdata "Return the country-code (as a string) of an IP (v4 or \
                    v6)." ] ;
         p [ cdata "Ramen relies on an embedded, constant database of IP \
@@ -349,7 +377,7 @@ let exprs =
         [ cdata "Ip -> STRING?" ] ]
       [ "COUNTRYCODE 5.182.236.0", "\"AT\"" ;
         "COUNTRYCODE 2a00:1450:400f:804::2004", "\"IE\"" ] ;
-    make "ipfamily" "Returns the version of an IP"
+    make "ipfamily" ~sections:Section.[net] "Returns the version of an IP"
       [ p [ cdata "Returns either 4 if the IP is an IPv4 or 6 if the IP is an \
                    IPv6." ] ]
       [ [ cdata "IPFAMILY …ip-expr…" ] ]
@@ -358,7 +386,7 @@ let exprs =
         [ cdata "Ip -> unsigned-int" ] ]
       [ "IPFAMILY 135.181.17.92", "4" ;
         "IPFAMILY 2a01:4f9:4b:55b0::2", "6" ] ;
-    make "basename" "Strip the directory part of a path"
+    make "basename" ~sections:Section.[string] "Strip the directory part of a path"
       [ p [ cdata "Similar to the UNIX tool basename, this removes from the \
                    passed operand everything before the last slash ('/'), \
                    to keep only the filename portion of a path." ] ;
@@ -367,7 +395,7 @@ let exprs =
       [ [ cdata "STRING -> STRING" ] ]
       [ "BASENAME \"/foo/bar/baz\"", "\"baz\"" ;
         "BASENAME \"foo\"", "\"foo\"" ] ;
-    make "min" "Minimum"
+    make "min" ~sections:Section.[select] "Minimum"
       [ p [ cdata "Return the minimum value of all the operands." ] ;
         p [ cdata "All operands must have compatible types (ie. it is \
                    possible to convert one into another)." ] ;
@@ -377,7 +405,7 @@ let exprs =
       [ "MIN(1, 2, 3)", "1" ;
         "MIN(\"foo\", \"bar\")", "\"bar\"" ;
         "MIN([5; 6], [3; 9])", "[3; 9]" ] ;
-    make "max" "Maximum"
+    make "max" ~sections:Section.[select] "Maximum"
       [ p [ cdata "Return the maximum value of all the operands." ] ;
         p [ cdata "All operands must have compatible types (ie. it is \
                    possible to convert one into another)." ] ;
@@ -387,7 +415,8 @@ let exprs =
       [ "MAX(1, 2, 3)", "3" ;
         "MAX(\"foo\", \"bar\")", "\"foo\"" ;
         "MAX([5; 6], [3; 9])", "[5; 6]" ] ;
-    make "coalesce" "Selects the first non null operand"
+    make "coalesce" ~sections:Section.[select;types]
+      "Selects the first non null operand"
       [ p [ cdata "Accept a list of alternative values of the same type and \
                    returns the first one that is not NULL." ] ;
         p [ cdata "All alternatives but the last must be nullable." ] ;
@@ -399,21 +428,21 @@ let exprs =
         [ cdata "(t?, t?, …, t) -> t" ] ]
       [ "NULL |? 1", "1" ;
         "COALESCE(IF RANDOM > 1 THEN \"can't happen\", \"ok\")", "\"ok\"" ] ;
-    make "add" "Addition"
+    make "add" ~sections:Section.[arith] "Addition"
       [ p [ cdata "Adds two numeric values." ] ;
         p [ cdata "The result have the type of the largest operand." ] ]
       [ [ cdata "…num-expr… + …num-expr…" ] ]
       [ [ cdata "num1, num2 -> largest(num1, num2)" ] ]
       [ "27 + 15", "42" ;
         "1.5 + 1u8", "2.5" ] ;
-    make "sub" "Subtraction"
+    make "sub" ~sections:Section.[arith] "Subtraction"
       [ p [ cdata "Subtracts two numeric values." ] ;
         p [ cdata "The result type is the largest of the operand types, and \
                    always signed." ] ]
       [ [ cdata "…num-expr… - …num-expr…" ] ]
       [ [ cdata "num1, num2 -> signed(largest(num1, num2))" ] ]
       [ "1u8 - 2u8", "-1" ] ;
-    make "mul" "Multiplication"
+    make "mul" ~sections:Section.[arith] "Multiplication"
       [ p [ cdata "Multiplies two numeric values, or repeat a string." ] ;
         p [ cdata "If the two operands are numeric, then the result type \
                    is the largest of the operand types." ] ;
@@ -426,7 +455,7 @@ let exprs =
         [ cdata "int, STRING -> STRING" ] ]
       [ "6 * 7", "42" ;
         "2 * \"foo\"", "\"foofoo\"" ] ;
-    make "div" "Division"
+    make "div" ~sections:Section.[arith] "Division"
       [ p [ cdata "Divides two numeric values." ] ;
         p [ cdata "The result is always a FLOAT. If the divisor and dividend \
                    are non-zero constants then the result is not nullable, \
@@ -437,7 +466,7 @@ let exprs =
       [ "84/2", "42" ;
         "1/0", "Inf" ;
         "0/0", "NULL" ] ;
-    make "idiv" "Integer division"
+    make "idiv" ~sections:Section.[arith] "Integer division"
       [ p [ cdata "Divides two numeric values, truncating toward zero." ] ;
         p [ cdata "The result type is the largest of the operand types." ] ;
         p [ cdata "For FLOAT operands the result will still be a FLOAT, \
@@ -447,7 +476,7 @@ let exprs =
       [ "10//3", "3" ;
         "-10//3", "-3" ;
         "10.5//3.1", "3" ] ;
-    make "mod" "Modulo"
+    make "mod" ~sections:Section.[arith] "Modulo"
       [ p [ cdata "Compute the modolus of the two given operands." ] ;
         p [ cdata "The result type is the largest of the operand types." ] ]
       [ [ cdata "…num-expr… % …num-expr…" ] ]
@@ -455,14 +484,14 @@ let exprs =
       [ "3 % 2", "1" ;
         "-3 % 2", "-1" ;
         "3 % -2", "1" ] ;
-    make "pow" "Power"
+    make "pow" ~sections:Section.[arith] "Power"
       [ p [ cdata "Compute the first operand to the power of the second." ] ;
         p [ cdata "The result type is the largest of the operand types." ] ]
       [ [ cdata "…num-expr… ^ …num-expr…" ] ]
       [ [ cdata "num1, num2 -> largest(num1, num2)" ] ]
       [ "2 ^ 3", "8" ;
         "PI ^ PI", "36.4621596072079" ] ;
-    make "truncate" "Rounding to selected precision"
+    make "truncate" ~sections:Section.[types;arith] "Rounding to selected precision"
       [ p [ cdata "Truncate the first operand to the nearest (from below) \
                    multiple of the second, or to the nearest integer if no \
                    second operand is provided (it is then equivalent to " ;
@@ -473,7 +502,7 @@ let exprs =
       [ "TRUNCATE(153.6, 10)", "150" ;
         "TRUNCATE 5.8", "5" ;
         "TRUNCATE(-2.3)", "-3" ] ;
-    make "reldiff" "Relative difference"
+    make "reldiff" ~sections:Section.[arith] "Relative difference"
       [ p [ cdata "Compare the two operands A and B by computing:" ] ;
         p [ cdata "MIN(ABS(A-B), MAX(A, B)) / MAX(ABS(A-B), MAX(A, B))" ] ;
         p [ cdata "Returns 0 when A = B." ] ]
@@ -484,7 +513,7 @@ let exprs =
         "RELDIFF(9, 10)", "0.1" ;
         "RELDIFF(-9, -10)", "0.1" ;
         "RELDIFF(1, -10)", "1.1" ] ;
-    make "and" "Boolean And"
+    make "and" ~sections:Section.[bool] "Boolean And"
       [ p [ cdata "Boolean AND operator." ] ]
       [ [ cdata "…bool-expr… AND …bool-expr…" ] ]
       [ [ cdata "BOOL, BOOL -> BOOL" ] ]
@@ -492,7 +521,7 @@ let exprs =
         "FALSE AND TRUE", "FALSE" ;
         "TRUE AND FALSE", "FALSE" ;
         "TRUE AND TRUE", "TRUE" ] ;
-    make "or" "Boolean Or"
+    make "or" ~sections:Section.[bool] "Boolean Or"
       [ p [ cdata "Boolean OR operator." ] ]
       [ [ cdata "…bool-expr… OR …bool-expr…" ] ]
       [ [ cdata "BOOL, BOOL -> BOOL" ] ]
@@ -500,7 +529,7 @@ let exprs =
         "FALSE OR TRUE", "TRUE" ;
         "TRUE OR FALSE", "TRUE" ;
         "TRUE OR TRUE", "TRUE" ] ;
-    make "comparison" "Comparison operators"
+    make "comparison" ~sections:Section.[bool] "Comparison operators"
       [ p [ cdata "Non-strict comparison operators." ] ;
         p [ cdata "Values of any type can be compared, but both values must \
                    have the same type." ] ]
@@ -513,7 +542,7 @@ let exprs =
         "TRUE >= FALSE", "TRUE" ;
         "\"foo\" <= \"bar\"", "FALSE" ;
         "(5; 1) <= (5; 2)", "TRUE" ] ;
-    make "strict-comparison" "Comparison operators"
+    make "strict-comparison" ~sections:Section.[bool] "Comparison operators"
       [ p [ cdata "Strict comparison operators." ] ;
         p [ cdata "Values of any type can be compared, but both values must \
                    have the same type." ] ]
@@ -526,7 +555,7 @@ let exprs =
         "TRUE > FALSE", "TRUE" ;
         "\"foo\" < \"bar\"", "FALSE" ;
         "(5; 1) < (5; 2)", "TRUE" ] ;
-    make "equality" "Equality test"
+    make "equality" ~sections:Section.[bool] "Equality test"
       [ p [ cdata "Test for equality." ] ;
         p [ cdata "Values of any type can be tested for equality, but both \
                    values must have the same type." ] ]
@@ -537,12 +566,12 @@ let exprs =
       [ "\"foo\" = \"FOO\"", "FALSE" ;
         "[1; 2] <> [2; 1]", "TRUE" ;
         "PI != 3.14", "TRUE" ] ;
-    make "concat" "Concatenation operation"
+    make "concat" ~sections:Section.[string] "Concatenation operation"
       [ p [ cdata "Concatenate two strings." ] ]
       [ [ cdata "…string-expr… || …string-expr…" ] ]
       [ [ cdata "STRING, STRING -> STRING" ] ]
       [ "\"foo\" || \"bar\"", "\"foobar\"" ] ;
-    make "startswith" "String-starts-with operator"
+    make "startswith" ~sections:Section.[string] "String-starts-with operator"
       [ p [ cdata "Test if a string starts with a given substring." ] ;
         p [ cdata "Unlike the LIKE operator, does not require any of its \
                    operands to be a literal string value." ] ]
@@ -550,7 +579,7 @@ let exprs =
       [ [ cdata "STRING, STRING -> BOOL" ] ]
       [ "\"foobar\" STARTS WITH \"foo\"", "TRUE" ;
         "\"foo\"||\"bar\" STARTS WITH 2*\"x\"", "FALSE" ] ;
-    make "endswith" "String-ends-with operator"
+    make "endswith" ~sections:Section.[string] "String-ends-with operator"
       [ p [ cdata "Test if a string ends with a given substring." ] ;
         p [ cdata "Unlike the LIKE operator, does not require any of its \
                    operands to be a literal string value." ] ]
@@ -558,25 +587,25 @@ let exprs =
       [ [ cdata "STRING, STRING -> BOOL" ] ]
       [ "\"foobar\" ENDS WITH \"bar\"", "TRUE" ;
         "\"foo\"||\"bar\" STARTS WITH 2*\"x\"", "FALSE" ] ;
-    make "bit-and" "Bitwise AND operator"
+    make "bit-and" ~sections:Section.[bits] "Bitwise AND operator"
       [ p [ cdata "Perform a bitwise AND operation with its integer \
                    operands." ] ]
       [ [ cdata "…int-expr… & …int-expr…" ] ]
       [ [ cdata "int, int -> int" ] ]
       [ "1029 & 15", "5" ] ;
-    make "bit-or" "Bitwise OR operator"
+    make "bit-or" ~sections:Section.[bits] "Bitwise OR operator"
       [ p [ cdata "Perform a bitwise OR operation with its integer \
                    operands." ] ]
       [ [ cdata "…int-expr… | …int-expr…" ] ]
       [ [ cdata "int, int -> int" ] ]
       [ "1025 | 5", "1029" ] ;
-    make "bit-xor" "Bitwise XOR operator"
+    make "bit-xor" ~sections:Section.[bits] "Bitwise XOR operator"
       [ p [ cdata "Perform a bitwise XOR operation with its integer \
                    operands." ] ]
       [ [ cdata "…int-expr… # …int-expr…" ] ]
       [ [ cdata "int, int -> int" ] ]
       [ "1029 # 15", "1034" ] ;
-    make "bit-shift" "Bit shift operator"
+    make "bit-shift" ~sections:Section.[bits] "Bit shift operator"
       [ p [ cdata "Shift its first integer operand by the number of bits \
                    indicated by its second operand, to the left or to the \
                    right." ] ;
@@ -588,7 +617,7 @@ let exprs =
       [ "1029 >> 3", "128" ;
         "5 << 3", "40" ;
         "-4 >> 1", "-2" ] ;
-    make "in" "Membership test"
+    make "in" ~sections:Section.[string;net;groups] "Membership test"
       [ p [ cdata "Test if the first operand is a member of the second one." ] ;
         p [ cdata "The second operand can be either an array or vector, a \
                    STRING (in which case the first operand must be a string \
@@ -602,7 +631,8 @@ let exprs =
       [ "42 IN [1; 2; 3]", "FALSE" ;
         "\"oo\" IN \"foobar\"", "TRUE" ;
         "192.168.10.21 IN 192.168.00.0/16", "TRUE" ] ;
-    make "format_time" "format a timestamp as a date and time"
+    make "format_time" ~sections:Section.[time]
+      "Format a timestamp as a date and time"
       [ p [ cdata "FORMAT_TIME turns a timestamp (second operand) into a \
                    string formatted according to a given template (first \
                    operand)." ] ;
@@ -627,7 +657,8 @@ let exprs =
           "\"Sunday was day #0\"" ;
         "FORMAT_TIME(\"%Y-%m-%dT%H:%M:%S\", 1645354800)",
           "\"2022-02-20T12:00:00.00\"" ] ;
-    make "index" "Find the first or last occurrence of a character"
+    make "index" ~sections:Section.[string]
+      "Find the first or last occurrence of a character"
       [ p [ cdata "Returns the position of the first (or last) occurrence of \
                    the given character in the given string." ] ;
         p [ cdata "The position of the first character is 0." ] ;
@@ -641,7 +672,7 @@ let exprs =
       [ "INDEX(\"foobar\", #\\o)", "1" ;
         "INDEX(\"foobar\", #\\O)", "-1" ;
         "INDEX FROM END(\"foobar\", #\\o)", "2" ] ;
-    make "percentile" "Compute percentiles"
+    make "percentile" ~sections:Section.[groups] "Compute percentiles"
       [ p [ cdata "This function takes as first operand an array or vector \
                    and the second operand can be either a numeric constant \
                    or a immediate vector of non numeric constants. It then \
@@ -662,7 +693,7 @@ let exprs =
         [ cdata "num1[N1], num2[N2] -> num2[N1]" ] ]
       [ "90th PERCENTILE [3; 5; 0; 2; 7; 8; 1; 9; 6; 10; 4]", "9" ;
         "[10th; 90th] PERCENTILE [3; 5; 0; 2; 7; 8; 1; 9; 6; 10; 4]", "[1; 9]" ] ;
-    make "substring" "Extract a substring"
+    make "substring" ~sections:Section.[string] "Extract a substring"
       [ p [ cdata "The first operand is the original string, and the two \
                    others are positions in that string where the substring \
                    starts and stops (with the usual convention that start \
@@ -676,72 +707,76 @@ let exprs =
         "SUBSTRING(\"foobar\", -4, -2)", "\"ob\"" ;
         "SUBSTRING(\"foobar\", 20, 40)", "\"\"" ;
         "SUBSTRING(\"foobar\", -20, -40)", "\"\"" ] ;
-    make "aggrmin" "Minimum (aggregate)" ~has_state:true
+    make "aggrmin" ~sections:Section.[select] "Minimum (aggregate)" ~has_state:true
       [ p [ cdata "Selects the minimum value." ] ]
       [ [ cdata "MIN …expr…" ] ]
       [ [ cdata "t sequence -> t" ] ]
       [ "MIN [ 3; 6; 2; 4; 5 ]", "2" ;
         "MIN SKIP NULLS [ u32?(3) ; NULL ]", "3" ;
         "MIN KEEP NULLS [ u32?(3) ; NULL ]", "NULL" ] ;
-    make "aggrmax" "Maximum (aggregate)" ~has_state:true
+    make "aggrmax" ~sections:Section.[select] "Maximum (aggregate)" ~has_state:true
       [ p [ cdata "Selects the maximum value." ] ]
       [ [ cdata "MAX …expr…" ] ]
       [ [ cdata "t sequence -> t" ] ]
       [ "MAX [ 3; 6; 2; 4; 5 ]", "6" ;
         "MAX SKIP NULLS [ u32?(3) ; NULL ]", "3" ;
         "MAX KEEP NULLS [ u32?(3) ; NULL ]", "NULL" ] ;
-    make "aggrsum" "Sum (aggregate)" ~has_state:true
+    make "aggrsum" ~sections:Section.[arith] "Sum (aggregate)" ~has_state:true
       [ p [ cdata "Compute the sum of the values." ] ]
       [ [ cdata "SUM …expr…" ] ]
       [ [ cdata "num sequence -> num" ] ]
       [ "SUM [ 3; 6; 2; 4; 5 ]", "20" ;
         "SUM SKIP NULLS [ u32?(3) ; NULL ]", "3" ;
         "SUM KEEP NULLS [ u32?(3) ; NULL ]", "NULL" ] ;
-    make "aggravg" "Average (aggregate)" ~has_state:true
+    make "aggravg" ~sections:Section.[arith] "Average (aggregate)" ~has_state:true
       [ p [ cdata "Compute the average value." ] ]
       [ [ cdata "AVG …expr…" ] ]
       [ [ cdata "num sequence -> FLOAT" ] ]
       [ "AVG [ 3; 6; 2; 4; 5 ]", "4" ;
         "AVG SKIP NULLS [ u32?(3) ; NULL ]", "3" ;
         "AVG KEEP NULLS [ u32?(3) ; NULL ]", "NULL" ] ;
-    make "aggrand" "Logical AND (aggregate)" ~has_state:true
+    make "aggrand" ~sections:Section.[bool] "Logical AND (aggregate)" ~has_state:true
       [ p [ cdata "AND all the values together." ] ]
       [ [ cdata "AND …expr…" ] ]
       [ [ cdata "BOOL sequence -> BOOL" ] ]
       [ "AND [ TRUE ; TRUE ; FALSE ; TRUE ]", "FALSE" ;
         "AND KEEP NULLS [ bool?(TRUE) ; NULL ; bool?(TRUE) ]", "NULL" ] ;
-    make "aggror" "Logical OR (aggregate)" ~has_state:true
+    make "aggror" ~sections:Section.[bool] "Logical OR (aggregate)" ~has_state:true
       [ p [ cdata "OR all the values together." ] ]
       [ [ cdata "OR …expr…" ] ]
       [ [ cdata "BOOL sequence -> BOOL" ] ]
       [ "OR [ TRUE ; TRUE ; FALSE ; TRUE ]", "TRUE" ;
         "OR KEEP NULLS [ bool?(TRUE) ; NULL ; bool?(TRUE) ]", "NULL" ] ;
-    make "aggrbitand" "Bitwise AND (aggregate)" ~has_state:true
+    make "aggrbitand" ~sections:Section.[bits]
+      "Bitwise AND (aggregate)" ~has_state:true
       [ p [ cdata "Bitwise AND all values together." ] ]
       [ [ cdata "BITAND …int-expr…" ] ]
       [ [ cdata "int sequence -> int" ] ]
       [ "BITAND [ 12; 5; 4 ]", "4" ] ;
-    make "aggrbitor" "Bitwise OR (aggregate)" ~has_state:true
+    make "aggrbitor" ~sections:Section.[bits]
+      "Bitwise OR (aggregate)" ~has_state:true
       [ p [ cdata "Bitwise OR all values together." ] ]
       [ [ cdata "BITOR …int-expr…" ] ]
       [ [ cdata "int sequence -> int" ] ]
       [ "BITOR [ 3; 2; 4 ]", "7" ] ;
-    make "aggrbitxor" "Bitwise XOR (aggregate)" ~has_state:true
+    make "aggrbitxor" ~sections:Section.[bits]
+      "Bitwise XOR (aggregate)" ~has_state:true
       [ p [ cdata "Bitwise XOR all values together." ] ]
       [ [ cdata "BITXOR …int-expr…" ] ]
       [ [ cdata "int sequence -> int" ] ]
       [ "BITXOR [ 1; 2; 5 ]", "6" ] ;
-    make "aggrfirst" "First value" ~has_state:true
+    make "aggrfirst" ~sections:Section.[select] "First value" ~has_state:true
       [ p [ cdata "Selects the first value of a sequence." ] ]
       [ [ cdata "FIRST …expr…" ] ]
       [ [ cdata "t sequence -> t" ] ]
       [ "FIRST [ 1; 2; 3 ]", "1" ] ;
-    make "aggrlast" "Last value" ~has_state:true
+    make "aggrlast" ~sections:Section.[select] "Last value" ~has_state:true
       [ p [ cdata "Selects the last value of a sequence." ] ]
       [ [ cdata "LAST …expr…" ] ]
       [ [ cdata "t sequence -> t" ] ]
       [ "LAST [ 1; 2; 3 ]", "3" ] ;
-    make "aggrhistogram" "Build an histogram" ~has_state:true
+    make "aggrhistogram" ~sections:Section.[groups]
+      "Build an histogram" ~has_state:true
       [ p [ cdata "Given a sequence of numeric values, build an histogram \
                    for values between the provided minimum and maximum \
                    values." ] ;
@@ -756,14 +791,15 @@ let exprs =
       [ [ cdata "t, FLOAT, FLOAT, N:uint -> u32[N+2]" ] ]
       [ "HISTOGRAM([ 5.1; 5.3; 3.2; 2.1; 3.7; 5.6; 1.4 ], 0, 6, 6)",
         "[ 0; 0; 1; 1; 2; 0; 3; 0 ]" ] ;
-    make "group" "Collect values into an array" ~has_state:true
+    make "group" ~sections:Section.[groups]
+      "Collect values into an array" ~has_state:true
       [ p [ cdata "This operator aggregates all values into an array." ] ]
       ~limitations:[ p [ cdata "The order of values in the array is undefined." ] ]
       [ [ cdata "GROUP …expr…" ] ]
       [ [ cdata "t sequence -> t[]" ] ]
       (* FIXME: have a sort function to clean this *)
       [ "GROUP [1; 2; 3]", "[3; 2; 1]" ] ;
-    make "count" "Count" ~has_state:true
+    make "count" ~sections:Section.[groups] "Count" ~has_state:true
       [ p [ cdata "If the counted expression is a boolean, count how many are \
                    true. Otherwise, is equivalent to " ; bold "SUM 1" ;
             cdata "." ] ]
@@ -771,7 +807,8 @@ let exprs =
       [ [ cdata "t sequence -> u32" ] ]
       [ "COUNT [ 1; 1; 1 ]", "3" ;
         "COUNT [ TRUE ; FALSE ; TRUE ]", "2" ] ;
-    make "distinct" "Tells if each item is distinct" ~has_state:true
+    make "distinct" ~sections:Section.[groups]
+      "Tells if each item is distinct" ~has_state:true
       [ p [ cdata "Accurately tells if the same item was already met in \
                    the aggregate." ] ;
         p [ cdata "See " ; bold "REMEMBER" ;
@@ -787,7 +824,7 @@ let exprs =
          * we want it to be, it's easy enough to write "DISTINCT GROUP(X)"
          * instead of just DISTINCT X.*)
         "COUNT DISTINCT [ 1; 2; 1 ]", "0" ] ;
-    make "lag" "Delayed value" ~has_state:true
+    make "lag" ~sections:Section.[select] "Delayed value" ~has_state:true
       [ p [ bold "LAG" ; cdata " refers to the value received k steps ago. \
             Therefore " ; bold "LAG 1 x" ; cdata " refers to previous value \
             of " ; bold "x" ; cdata ", " ; bold "LAG 2 x" ; cdata " refers \
@@ -799,7 +836,8 @@ let exprs =
           cdata "Equivalent to: LAG 1 …expr…" ] ]
       [ [ cdata "int, t -> t" ] ]
       [] ;
-    make "smooth" "Exponential smoothing" ~has_state:true
+    make "smooth" ~sections:Section.[smooth]
+      "Exponential smoothing" ~has_state:true
       [ p [ cdata "Blend a value with the latest blend using various \
                    techniques, the simplest of which uses only one coefficient \
                    α according to the formula: " ; emph "blended = new × α + \
@@ -809,7 +847,8 @@ let exprs =
       [ [ cdata "SMOOTH …float-expr… …num-expr…" ] ]
       [ [ cdata "FLOAT -> num -> FLOAT" ] ]
       [] ;
-    make "sample" "Reservoir sampling" ~has_state:true
+    make "sample" ~sections:Section.[groups]
+      "Reservoir sampling" ~has_state:true
       [ p [ cdata "Build a random set of values of a given maximum size." ] ;
         p [ cdata "The first operand " ; emph "k" ; cdata " is the maximum \
                    size of the set and the second is the value to be \
@@ -827,7 +866,8 @@ let exprs =
       [ [ cdata "SAMPLE …unsigned-int-expr… …expr…" ] ]
       [ [ cdata "N:uint, t -> t[<=N]" ] ]
       [] ;
-    make "one-out-of" "Nullifies all values but one out of N" ~has_state:true
+    make "one-out-of" ~sections:Section.[groups]
+      "Nullifies all values but one out of N" ~has_state:true
       [ p [ cdata "The first operand, which must be a constant unsigned \
                    integer, gives the periodicity of non-null values. The \
                    second operand is the expression to return when its time \
@@ -835,13 +875,14 @@ let exprs =
       [ [ cdata "ONE OUT OF …unsigned-int-expr… …expr…"] ]
       [ [ cdata "uint, t -> t?" ] ]
       [] ;
-    make "moveavg" "Moving average" ~has_state:true
+    make "moveavg" ~sections:Section.[smooth] "Moving average" ~has_state:true
       [ p [ cdata "Average of the last " ; emph "k" ; cdata " values." ] ]
       [ [ emph "k" ; cdata "-MOVEAVG …num-expr…" ] ;
         [ emph "k" ; cdata "-MA …num-expr…" ] ]
       [ [ cdata "uint, num -> num" ] ]
       [] ;
-    make "hysteresis" "Tells if a value exceeded a threshold or recovered"
+    make "hysteresis" ~sections:Section.[misc]
+      "Tells if a value exceeded a threshold or recovered"
          ~has_state:true
       [ p [ cdata "Becomes false when the monitored value reaches the given \
                    threshold, and remains false until the value goes \
@@ -854,7 +895,7 @@ let exprs =
       [ [ cdata "HYSTERESIS(…num-expr…, …num-expr…, …num-expr…)" ] ]
       [ [ cdata "num, num, num -> BOOL" ] ]
       [] ;
-    make "once-every" "" ~has_state:true
+    make "once-every" ~sections:Section.[groups] "" ~has_state:true
       [ p [ bold "EVERY" ; cdata " is similar to " ; bold "ONE OUT OF" ;
             cdata " but based on time rather than number of inputs." ] ;
         p [ cdata "If " ; emph "TUMBLING" ;
@@ -872,7 +913,8 @@ let exprs =
         [ cdata "EVERY(…num-expr…, …bool-expr…, …expr…)" ] ]
       [ [ cdata "num, BOOL, t -> t?" ] ]
       [] ;
-    make "remember" "Remember values for some time" ~has_state:true
+    make "remember" ~sections:Section.[misc]
+      "Remember values for some time" ~has_state:true
       [ p [ cdata "Uses a series of Bloom-filters to remember any value for \
                    a given duration." ] ;
         (* TODO: let's get rid of 2nd operand (time) *)
@@ -894,7 +936,8 @@ let exprs =
         [ cdata "RECALL(…float-expr…, …time-expr…, …num-expr…, …expr…)" ] ]
       [ [ cdata "FLOAT, FLOAT, num, t -> BOOL" ] ]
       [] ;
-    make "largest" "Select largest (or smallest values" ~has_state:true
+    make "largest" ~sections:Section.[select]
+      "Select largest (or smallest values" ~has_state:true
       [ p [ cdata "Selects the " ; emph "N" ; cdata " largest or smallest \
                    values, possibly skipping the first ones." ] ;
         p [ cdata "The weight of each value in the comparison can be \
@@ -912,7 +955,8 @@ let exprs =
         [ cdata "EARLIER [UP TO] …num-expr… …expr…" ] ]
       [ [ cdata "uint, uint, t, BY:[t1, t2, …] -> t[]" ] ]
       [] ;
-    make "top" "Detect the top contributors" ~has_state:true
+    make "top" ~sections:Section.[groups]
+      "Detect the top contributors" ~has_state:true
       [ p [ cdata "The " ; bold "TOP" ; cdata " operation has several use \
             cases. In each of those, the operator computes an estimation of \
             the top " ; emph "N" ; cdata " contributors " ; emph "C" ;
@@ -949,7 +993,8 @@ let exprs =
         [ cdata "t, int, int, num, FLOAT, num -> BOOL" ] ;
         [ cdata "t, int, int, num, FLOAT, num -> uint" ] ]
       [] ;
-    make "past" "Group past values based on time" ~has_state:true
+    make "past" ~sections:Section.[groups]
+      "Group past values based on time" ~has_state:true
       [ p [ bold "PAST" ; cdata " is similar to " ; bold "GROUP" ;
             cdata " but it regroups values based on time rather than \
                    number of incoming values. Also, it contains an internal \
@@ -969,7 +1014,7 @@ let exprs =
                                 the sampling size must be constants." ] ]
       [ [ cdata "num, num, t -> t[]" ] ]
       [] ;
-    make "split" "Split a string" ~has_state:true
+    make "split" ~sections:Section.[string] "Split a string" ~has_state:true
       [ p [ cdata "split a string by some substring and produce the resulting \
                    words." ] ;
         p [ cdata "The first operand is the delimiter and the second operand \
