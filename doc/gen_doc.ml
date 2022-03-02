@@ -65,7 +65,8 @@ let of_expr e =
   if String.ends_with e.short_descr "." then
     Printf.eprintf "WARNING: %s: short description ends with '.'!\n"
       name ;
-  html [ title (e.name ^ " (RaQL expression)") ] (
+  html [ title (e.name ^ " (RaQL expression)") ;
+         tag ~attrs:["charset", "utf-8"] "meta" [] ] (
     ( h1 e.short_descr ::
       if e.has_state then state_expl else [] ) @
     [ h2 "Syntax" ] @
