@@ -19,12 +19,11 @@ DEFINE DDoS_detector AS
       -- FIXME: sampling_type and sampling_rate should be taken into account.
       float (NOT REMEMBER (
         0.1, -- 10% of false positives
-        start, -- time of the event to remember
         3600, -- remember events for 1 hour
         -- value to remember: src IP + dst IP pair:
         (src; dst)))) / 60 AS new_cnxs_per_secs,
     -- Count only the number of new clients
-    sum (0.9 * float (NOT REMEMBER (0.1, start, 3600, src))) / 60
+    sum (0.9 * float (NOT REMEMBER (0.1, 3600, src))) / 60
       AS new_clients_per_secs;
 
 -- Output the top 10 TCP DDoS targets every 10 minutes.
@@ -33,7 +32,7 @@ DEFINE DDoS_targets AS
   -- We want to count how many distinct src are connecting
   -- to the same dst*dst_port*ip_proto.
   WHEN ip_proto = 6 AND tcp_flags & 2 <> 0 AND
-       NOT REMEMBER GLOBALLY (0.1, start, 600, (src; dst; dst_port)) AND
+       NOT REMEMBER GLOBALLY (0.1, 600, (src; dst; dst_port), start) AND
        IS (dst; dst_port) IN TOP 10
   GROUP BY dst, dst_port
   SELECT dst, dst_port, sum 1 AS count
@@ -42,7 +41,7 @@ DEFINE DDoS_targets AS
 -- Output the top 10 port scanners every hour (scans can be slow)
 DEFINE port_scan_detector AS
   FROM ../traffic/netflow
-  WHEN NOT REMEMBER GLOBALLY (0.1, start, 3600, (src; dst; dst_port; ip_proto)) AND
+  WHEN NOT REMEMBER GLOBALLY (0.1, 3600, (src; dst; dst_port; ip_proto), start) AND
        IS (src; dst) IN TOP 10
   GROUP BY src, dst
   SELECT src, dst, sum 1 AS count
@@ -53,7 +52,7 @@ DEFINE ip_scan_detector AS
   FROM ../traffic/netflow
   -- An IP scanner could use varying proto/port to detect host
   -- presence so we just care about src and dst here:
-  WHEN NOT REMEMBER GLOBALLY (0.1, start, 3600, (src; dst)) AND
+  WHEN NOT REMEMBER GLOBALLY (0.1, 3600, (src; dst), start) AND
        IS src IN TOP 10
   GROUP BY src
   SELECT src, sum 1 AS count

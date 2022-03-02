@@ -472,7 +472,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
                operation = SF4 (Remember refresh, fpr, tim, dur, e) } ->
       Printf.fprintf oc "%s%s %a"
         (if refresh then "REMEMBER" else "RECALL")
-        (st g n) print_args [ fpr ; tim ; dur ; e ]
+        (st g n) print_args [ fpr ; dur ; e ; tim ]
   | Stateful { lifespan = g ; skip_nulls = n ;
                operation = SF4s (MultiLinReg, e1, e2, e3, e4s) } ->
       Printf.fprintf oc "SEASON_FIT_MULTI%s %a"
@@ -1430,10 +1430,16 @@ struct
       (afun1_sf "smooth" >>: fun ((g, n), e) ->
          let alpha = of_float 0.5 in
          make_stateful g n (SF2 (ExpSmooth, alpha, e))) |<|
-      (afun4_sf "remember" >>: fun ((g, n), fpr, tim, dur, e) ->
+      (afun4_sf "remember" >>: fun ((g, n), fpr, dur, e, tim) ->
          make_stateful g n (SF4 (Remember true, fpr, tim, dur, e))) |<|
-      (afun4_sf "recall" >>: fun ((g, n), fpr, tim, dur, e) ->
+      (* Use event-time by default: *)
+      (afun3_sf "remember" >>: fun ((g, n), fpr, dur, e) ->
+         make_stateful
+          g n (SF4 (Remember true, fpr, default_start, dur, e))) |<|
+      (afun4_sf "recall" >>: fun ((g, n), fpr, dur, e, tim) ->
          make_stateful g n (SF4 (Remember false, fpr, tim, dur, e))) |<|
+      (afun3_sf "recall" >>: fun ((g, n), fpr, dur, e) ->
+         make_stateful g n (SF4 (Remember false, fpr, default_start, dur, e))) |<|
       (afun1_sf "distinct" >>: fun ((g, n), e) ->
          make_stateful g n (SF1 (Distinct, e))) |<|
       (afun3_sf "hysteresis" >>: fun ((g, n), value, accept, max) ->

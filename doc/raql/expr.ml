@@ -917,14 +917,15 @@ let exprs =
       "Remember values for some time" ~has_state:true
       [ p [ cdata "Uses a series of Bloom-filters to remember any value for \
                    a given duration." ] ;
-        (* TODO: let's get rid of 2nd operand (time) *)
         p [ cdata "Returns TRUE if the value have been already encountered \
                    up to a configurable time " ; emph "D" ;
-            cdata " in the past (3rd operand)." ] ;
+            cdata " in the past (second operand)." ] ;
         p [ cdata "The rate of false positive is provided (as the first \
                    operand) so that the trade-off between memory consumption \
                    and accuracy is easy to configure." ] ;
-        p [ cdata "The 4th and last operand is the value to be remembered." ] ;
+        p [ cdata "The third operand is the value to be remembered." ] ;
+        p [ cdata "Optionally, a fourth operand can set explicitly the time \
+                   to be used as current, overriding the event-time." ] ;
         p [ cdata "When a new value is remembered, the " ; bold "REMEMBER" ;
             cdata " function will refresh its memory so that this value will \
                    be remembered for the next " ; emph "D" ;

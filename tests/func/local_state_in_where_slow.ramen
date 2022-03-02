@@ -8,7 +8,7 @@ DEFINE f1 AS
   FROM fixtures/cars/csv
   WHEN
     -- Some global state:
-    REMEMBER GLOBALLY (0.1, year, 1, (manufacturer; model)) AND
+    REMEMBER GLOBALLY (0.1, 1, (manufacturer; model), year) AND
     -- and some local state:
     IS manufacturer IN TOP 10 at time year for 1
   GROUP BY manufacturer, model;
