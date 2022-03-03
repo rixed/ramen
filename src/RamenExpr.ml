@@ -1057,6 +1057,7 @@ struct
       that_string "=" |<| that_string "!=" |<| that_string "in" |<|
       (strinG "not" -- blanks -- worD "in" >>: fun () -> "not in") |<|
       that_string "like" |<|
+      (strinG "not" -- blanks -- worD "like" >>: fun () -> "not like") |<|
       ((that_string "starts" |<| that_string "ends") +- blanks +- worD "with")
     and reduce e1 op e2 = match op with
       | ">" -> make_stateless (SL2 (Gt, e1, e2))
@@ -1084,6 +1085,11 @@ struct
           (match string_of_const e2 with
           | None -> raise (Reject "LIKE pattern must be a string constant")
           | Some p -> make_stateless (SL1 (Like p, e1)))
+      | "not like" ->
+          (match string_of_const e2 with
+          | None -> raise (Reject "LIKE pattern must be a string constant")
+          | Some p ->
+              make_stateless (SL1 (Not, make_stateless (SL1 (Like p, e1)))))
       | "starts" | "starts with" -> make_stateless (SL2 (StartsWith, e1, e2))
       | "ends" | "ends with" -> make_stateless (SL2 (EndsWith, e1, e2))
       | _ -> assert false in

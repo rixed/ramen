@@ -329,9 +329,11 @@ let exprs =
       [ [ cdata "…string-expr… LIKE \"pattern\"" ] ]
       [ [ cdata "STRING -> BOOL" ] ]
       [ "\"foobar\" LIKE \"foo%\"", "true" ;
+        "\"foobar\" NOT LIKE \"foo\"", "true" ;
         (* Notice the doubled escape character: *)
         "\"foobar\" LIKE \"foo\\\\%\"", "false" ;
         "\"foobar\" LIKE \"f%r\"", "true" ;
+        "\"foobar\" NOT LIKE \"%oo%\"", "false" ;
         "\"foobar\" LIKE \"f__b_r\"", "true" ;
         "\"foobar\" LIKE \"fo_b%\"", "true" ;
         "\"foobar\" LIKE \"%baz\"", "false" ;
