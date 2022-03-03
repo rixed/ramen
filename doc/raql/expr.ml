@@ -190,16 +190,18 @@ let exprs =
       [ "EXP 0", "1" ; "EXP 1", "2.71828182846" ] ;
     make "log" ~sections:Section.[funcs] "Natural logarithm"
       [ p [ cdata "Compute the natural logarithm of the operand." ] ;
-        p [ cdata "Returns NaN on negative operands." ] ]
+        p [ cdata "Returns NULL on negative operands." ] ]
       [ [ cdata "LOG …numeric-expr…" ] ]
-      [ [ cdata "numeric -> FLOAT" ] ]
-      [ "LOG 1", "0" ] ;
+      [ [ cdata "numeric -> FLOAT?" ] ]
+      [ "LOG 1", "0" ;
+        "LOG(-1)", "NULL" ] ;
     make "log10" ~sections:Section.[funcs] "Decimal logarithm"
       [ p [ cdata "Compute the decimal logarithm of the operand." ] ;
-        p [ cdata "Returns NaN on negative operands." ] ]
+        p [ cdata "Returns NULL on negative operands." ] ]
       [ [ cdata "LOG10 …numeric-expr…" ] ]
-      [ [ cdata "numeric -> FLOAT" ] ]
-      [ "LOG10 100", "2" ] ;
+      [ [ cdata "numeric -> FLOAT?" ] ]
+      [ "LOG10 100", "2" ;
+        "LOG10(-1)", "NULL" ] ;
     make "sqrt" ~sections:Section.[funcs] "Square root"
       [ p [ cdata "Square root function." ] ;
         p [ cdata "Returns NULL on negative operands." ] ]

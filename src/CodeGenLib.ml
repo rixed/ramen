@@ -122,11 +122,15 @@ let div_or_null a b =
 let sqrt_or_null a =
   if a < 0. then None else Some (sqrt a)
 
-let pow_or_null a b =
+let null_if_nan2 op a b =
   (* Here it is somewhat dangerously assumed that there can be no non
    * nullable NaN value. If it is not the case the compilation of the
-   * generated OCaml code will fail when type checking a Option.get: *)
-  let p = a ** b in
+   * generated OCaml code will fail when type checking an Option.get: *)
+  let p = op a b in
+  if Float.is_nan p then None else Some p
+
+let null_if_nan1 op a =
+  let p = op a in
   if Float.is_nan p then None else Some p
 
 (* Multiply a string by an integer *)

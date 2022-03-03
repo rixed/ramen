@@ -1755,8 +1755,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_not_nullable oc e1 ;
       emit_assert_eq (n_of_expr e2) oc nid
 
-  | Stateless (SL1 ((Exp|Log|Log10
-                    |Cos|Sin|Tan|ACos|ASin|ATan|CosH|SinH|TanH), x)) ->
+  | Stateless (SL1 ((Exp|Cos|Sin|Tan|ACos|ASin|ATan|CosH|SinH|TanH), x)) ->
       (* - x must be numeric;
        * - The result is a float;
        * - The result nullability is inherited from arguments *)
@@ -1764,7 +1763,7 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat ;
       emit_assert_eq (n_of_expr x) oc nid
 
-  | Stateless (SL1 (Sqrt, x)) ->
+  | Stateless (SL1 ((Sqrt|Log|Log10), x)) ->
       (* - x must be numeric;
        * - The result is a float;
        * - The result is nullable *)

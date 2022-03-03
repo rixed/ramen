@@ -1274,7 +1274,7 @@ and emit_expr_ ~env ~context ~opc oc expr =
     Stateless (SL2 (Pow, e1, e2)),
     TFloat ->
       emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
-      "CodeGenLib.pow_or_null"
+        "CodeGenLib.null_if_nan2 ( ** )"
         [ ConvTo TFloat, PropagateNull ;
           ConvTo TFloat, PropagateNull ] oc [e1; e2]
   | Finalize,
@@ -1378,12 +1378,14 @@ and emit_expr_ ~env ~context ~opc oc expr =
   | Finalize,
     Stateless (SL1 (Log, e)),
     TFloat ->
-      emit_functionN ~env ~opc ~nullable "log"
+      emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+        "CodeGenLib.null_if_nan1 log"
         [ ConvTo TFloat, PropagateNull ] oc [ e ]
   | Finalize,
     Stateless (SL1 (Log10, e)),
     TFloat ->
-      emit_functionN ~env ~opc ~nullable "log10"
+      emit_functionN ~env ~opc ~nullable ~impl_return_nullable:true
+        "CodeGenLib.null_if_nan1 log10"
         [ ConvTo TFloat, PropagateNull ] oc [ e ]
   | Finalize,
     Stateless (SL1 (Sqrt, e)),
