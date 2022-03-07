@@ -8,7 +8,8 @@ let watchdog = 4
 let uncaught_exception = 5
 let damaged_ringbuf = 6
 let confserver_unreachable = 7
-let other_error = 8
+let confserver_migrated = 8
+let other_error = 9
 
 let string_of_code = function
   | 0 -> "terminated"
@@ -19,5 +20,6 @@ let string_of_code = function
   | 5 -> "crashed"
   | 6 -> "suffered ringbuffer damage"
   | 7 -> "cannot reach the confserver"
-  | 8 -> "other error"
+  | 8 -> "confserver restarted after migration"
+  | 9 -> "other error"
   | _ -> "unknown"

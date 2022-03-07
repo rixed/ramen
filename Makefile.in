@@ -1046,6 +1046,7 @@ TESTABLE_SOURCES = \
 	src/RamenSync.ml \
 	src/RamenAuthn.ml \
 	src/RamenSyncZMQClient.ml \
+	src/RamenSyncZMQServer.ml \
 	src/RamenMake.ml \
 	src/RamenSupervisor.ml \
 	src/RamenSampling.ml \
@@ -1152,6 +1153,9 @@ LINKED_FOR_TESTS = \
 	src/RamenReplay.ml \
 	src/RamenServices.ml \
 	src/RamenArchivist.ml \
+	src/RamenSyncServer.ml \
+	src/RamenSourceExamples.ml \
+	src/RamenSyncZMQServer.ml \
 	src/RamenExport.ml \
 	src/RamenTimeseries.ml \
 	src/RamenRun.ml \

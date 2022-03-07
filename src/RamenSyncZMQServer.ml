@@ -9,6 +9,7 @@ open RamenLog
 open RamenSync
 module Archivist = RamenArchivist
 module Default = RamenConstsDefault
+module ExitCodes = RamenConstsExitCodes
 module Files = RamenFiles
 module Metric = RamenConstsMetric
 module Server = RamenSyncServer.Make (Value) (Selector)
@@ -177,15 +178,81 @@ let populate_init
 
 module Snapshot =
 struct
+  (*$< Snapshot *)
+
   type t =
     V1 of (Key.t * Server.hash_value) list
 
-  let file_name conf =
+  let file_name ?(version=Versions.sync_conf) conf =
     N.path_cat [ conf.C.persist_dir ; N.path "confserver/snapshots" ;
-                 N.path Versions.sync_conf ]
+                 N.path version ]
+
+  let previous_version_of v =
+    if String.length v = 0 then None else
+    let c = v.[0] in
+    if c <> 'v' && c <> 'V' then None else
+    match int_of_string (String.lchop v) - 1 with
+    | exception _ -> None
+    | v' -> Some (String.of_char c ^ string_of_int v')
+
+  (*$= previous_version_of & ~printer:(function None -> "None" | Some s -> s)
+     (Some "v41") (previous_version_of "v42")
+     None (previous_version_of "")
+     None (previous_version_of "x42")
+     None (previous_version_of "v")
+     None (previous_version_of "vfoo")
+  *)
+
+  (* When [fname] does not exist, look for an older version and try to
+   * read it, snapshot it again as current version, and quit. The idea is
+   * that only two behavior can happen:
+   * - Either reading the old version will corrupt memory, and ramen will crash
+   *   before saving is complete, or
+   * - the values that have been read are actually "valid enough" and the new
+   *   snapshot will be safe to read and its content will be close or
+   *   identical to the previous snapshot.
+   * Namely, it is believed that in no cases a snapshot will be written that
+   * will be unsafe to read. *)
+  let try_upgrade conf dst_fname =
+    let rec upgrade_from ?(max_try=4) next_version =
+      if max_try < 0 then
+        !logger.info "No previous version, giving up"
+      else
+        let max_try = max_try - 1 in
+        match previous_version_of next_version with
+        | None ->
+            !logger.error "Cannot find out previous version of %S, giving up"
+              next_version
+        | Some version ->
+            let src_fname = file_name ~version conf in
+            if Files.exists src_fname then (
+              try
+                !logger.warning "Trying to upgrade configuration from %S..."
+                  version ;
+                let V1 lst = Files.marshal_from_file src_fname in
+                Files.marshal_into_file dst_fname (V1 lst) ;
+                !logger.info "Upgraded from %S into %a, now restarting."
+                  version N.path_print dst_fname ;
+                exit ExitCodes.confserver_migrated
+              with e ->
+                !logger.error "Cannot upgrade configuration from %S: %s, \
+                               giving up and restarting."
+                  version
+                  (Printexc.to_string e) ;
+                (* Must ensure no upgrade will be attempted after restart: *)
+                Files.touch dst_fname (Unix.time ()) ;
+                exit ExitCodes.confserver_migrated
+            ) else (
+              !logger.warning "No previous version in %a, skipping."
+                N.path_print src_fname ;
+              upgrade_from ~max_try version
+            )
+    in
+    upgrade_from Versions.sync_conf
 
   let load conf srv no_source_examples =
     let fname = file_name conf in
+    if not (Files.exists fname) then try_upgrade conf fname ;
     try
       let fd = Files.safe_open fname [ O_RDONLY ] 0o640 in
       finally
@@ -291,6 +358,8 @@ struct
   let init conf =
     let fname = file_name conf in
     Files.mkdir_all ~is_file:true fname
+
+  (*$>*)
 end
 
 (*
