@@ -199,59 +199,58 @@ struct
            * A new snapshot is going to be saved before long if the
            * confserver survives (or exit cleanly). *)
           Files.safe_unlink fname ;
-          match Files.marshal_from_fd fname fd with
-          | V1 lst ->
-              let old_codegen_version =
-                let k = Key.Versions ConfVersions.codegen_version_name in
-                match (List.assoc k lst).v with
-                | exception Not_found -> ""
-                | Value.RamenValue (VString s) -> s
-                | v ->
-                    err_sync_type k v "a string" ;
-                    "" in
-              let skip_infos = old_codegen_version <> Versions.codegen in
-              if skip_infos then
-                !logger.info "Codegen version changed from %s to %s, \
-                              will not load precompiled info keys"
-                  old_codegen_version Versions.codegen ;
-              !logger.info "Loading %d configuration keys from %a"
-                (List.length lst)
-                N.path_print fname ;
-              let now = Unix.gettimeofday () in
-              let is_example n =
-                String.starts_with (n : N.src_path :> string) "examples/" in
-              List.iter (function
-                | Key.Error _
-                | Key.Versions _
-                | Key.Tails (_, _, _, Subscriber _)
-                (* Be wary of replay requests found at startup that could cause
-                 * crashloop, better delete them *)
-                | Key.ReplayRequests as k, _ ->
-                    !logger.debug "Skipping key %a"
-                      Key.print k
-                | Key.Sources (n, "info") as k, _
-                  when skip_infos || (no_source_examples && is_example n) ->
-                    !logger.debug "Skipping key %a"
-                      Key.print k
-                | Key.Sources (n, "ramen") as k, _
-                  when no_source_examples && is_example n ->
-                    !logger.debug "Removing example program %a"
-                      Key.print k
-                | Key.PerSite (site, PerWorker (fq,
-                    PerInstance (_, QuarantineUntil))),
-                  Server.{ v = Value.RamenValue T.(VFloat t) ; _ } ->
-                    if t > now then
-                      !logger.debug "Forgiving quarantined %a:%a"
-                        N.site_print site
-                        N.fq_print fq
-                | k, hv ->
-                    !logger.debug "Loading configuration key %a = %a"
-                      Key.print k
-                      Value.print hv.Server.v ;
-                    Server.H.replace srv.Server.h k hv
-              ) lst ;
-              ConfVersions.init srv ;
-              true) ()
+          let V1 lst = Files.marshal_from_fd fname fd in
+          let old_codegen_version =
+            let k = Key.Versions ConfVersions.codegen_version_name in
+            match (List.assoc k lst).v with
+            | exception Not_found -> ""
+            | Value.RamenValue (VString s) -> s
+            | v ->
+                err_sync_type k v "a string" ;
+                "" in
+          let skip_infos = old_codegen_version <> Versions.codegen in
+          if skip_infos then
+            !logger.info "Codegen version changed from %s to %s, \
+                          will not load precompiled info keys"
+              old_codegen_version Versions.codegen ;
+          !logger.info "Loading %d configuration keys from %a"
+            (List.length lst)
+            N.path_print fname ;
+          let now = Unix.gettimeofday () in
+          let is_example n =
+            String.starts_with (n : N.src_path :> string) "examples/" in
+          List.iter (function
+            | Key.Error _
+            | Key.Versions _
+            | Key.Tails (_, _, _, Subscriber _)
+            (* Be wary of replay requests found at startup that could cause
+             * crashloop, better delete them *)
+            | Key.ReplayRequests as k, _ ->
+                !logger.debug "Skipping key %a"
+                  Key.print k
+            | Key.Sources (n, "info") as k, _
+              when skip_infos || (no_source_examples && is_example n) ->
+                !logger.debug "Skipping key %a"
+                  Key.print k
+            | Key.Sources (n, "ramen") as k, _
+              when no_source_examples && is_example n ->
+                !logger.debug "Removing example program %a"
+                  Key.print k
+            | Key.PerSite (site, PerWorker (fq,
+                PerInstance (_, QuarantineUntil))),
+              Server.{ v = Value.RamenValue T.(VFloat t) ; _ } ->
+                if t > now then
+                  !logger.debug "Forgiving quarantined %a:%a"
+                    N.site_print site
+                    N.fq_print fq
+            | k, hv ->
+                !logger.debug "Loading configuration key %a = %a"
+                  Key.print k
+                  Value.print hv.Server.v ;
+                Server.H.replace srv.Server.h k hv
+          ) lst ;
+          ConfVersions.init srv ;
+          true) ()
     with Unix.(Unix_error (ENOENT, _, _)) ->
           !logger.info
             "No previous configuration state, will start empty" ;
