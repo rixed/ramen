@@ -862,7 +862,17 @@ let start
           addr, service_name in
     TcpSocket.Server.make
       bind_addr service_name (make_session do_authn) on_msg in
-  C.info_or_test conf "Create services..." ;
+  (* Load the configuration *before* listening to clients in order to avoid
+   * initial turmoil: *)
+  C.info_or_test conf "Loading latest configuration snapshot..." ;
+  (* Not so easy: some values must be overwritten (such as server
+   * versions, startup time...) *)
+  if Snapshot.load conf srv no_source_examples then
+    clean_old conf srv oldest_site
+  else
+    populate_init conf srv no_source_examples archive_total_size
+                  archive_recall_cost ;
+  C.info_or_test conf "Creating services..." ;
   let services =
     Enum.append
       (List.enum ports /@ make_service false)
@@ -873,12 +883,5 @@ let start
       C.info_or_test conf "Shutting down services..." ;
       Array.iter TcpSocket.Server.shutdown services)
     (fun () ->
-      (* Not so easy: some values must be overwritten (such as server
-       * versions, startup time...) *)
-      if Snapshot.load conf srv no_source_examples then
-        clean_old conf srv oldest_site
-      else
-        populate_init conf srv no_source_examples archive_total_size
-                      archive_recall_cost ;
       service_loop ~while_ conf srv services
     ) ()
