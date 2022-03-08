@@ -338,7 +338,8 @@ let recv_cmd session =
   | None ->
       raise (Unix.Unix_error (EAGAIN, "get_msg", ""))
   | Some msg when Bytes.length msg = 0 ->
-      failwith "Disconnected from configuration server"
+      !logger.warning "Disconnected from configuration server" ;
+      raise Exit
   | Some msg ->
       (*!logger.debug "recv_cmd: received a message of %d bytes"
         (Bytes.length msg) ;*)
@@ -429,7 +430,10 @@ let init_auth ?while_ session uid =
         Printf.sprintf "Unexpected reply %s"
           (SrvMsg.to_string cmd) |>
         failwith
-  with e ->
+  with Exit ->
+    let bt = Printexc.get_raw_backtrace () in
+    Printexc.raise_with_backtrace Exit bt
+  | e ->
     !logger.error "Failed to Auth: %s" (Printexc.to_string e) ;
     false
 
@@ -509,6 +513,9 @@ let init_sync ?(while_=always) session topics =
           send_cmd session (CltCmd.StartSync sel) ;
           loop rest in
   match loop globs with
+  | exception Exit ->
+      let bt = Printexc.get_raw_backtrace () in
+      Printexc.raise_with_backtrace Exit bt
   | exception e ->
       !logger.error "Failed to sync: %s" (Printexc.to_string e) ;
       false
@@ -549,6 +556,9 @@ let start ?while_ ~url ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key
   !logger.debug "Connecting to configuration server at %s..." url ;
   match retry_socket ?while_ (TcpSocket.Client.make recvtimeo host)
                      service_name with
+  | exception Exit ->
+      let bt = Printexc.get_raw_backtrace () in
+      Printexc.raise_with_backtrace Exit bt
   | exception e ->
       Printf.sprintf "Cannot connect to configuration server: %s"
         (Printexc.to_string e) |>
