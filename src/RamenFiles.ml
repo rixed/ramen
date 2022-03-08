@@ -363,6 +363,7 @@ let read_whole_fd fd =
 
 let touch fname to_when =
   !logger.debug "Touching %a" N.path_print fname ;
+  mkdir_all ~is_file:true fname ;
   Unix.utimes (fname :> string) to_when to_when
 
 let file_print oc fname =
