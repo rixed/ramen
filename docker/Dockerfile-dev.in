@@ -115,8 +115,8 @@ RUN opam install --yes inotify qtest
 # For convenience:
 RUN opam install --yes down ocp-index odig odoc
 
-# For tools/ipcsv
-RUN opam install --yes ipaddr csv
+# For tools/ipcsv/doc-check
+RUN opam install --yes ipaddr csv owww
 
 # Now install z3 from source (as we need both executable and libs):
 RUN cd /root && \
