@@ -678,6 +678,31 @@ let service_loop ~while_ conf srv services =
   loop () ;
   Snapshot.save conf srv
 
+(* Detect the case where the hostname of the confserver has changed since last
+ * startup and emit a warning *)
+let detect_hostname_change conf srv =
+  (* As a groundwork we need iterators over sites in the configuration: *)
+  let fold_sites f u =
+    Server.H.fold (fun k _ u ->
+      match k with
+      | Key.PerSite (site, _)
+      | Tails (site, _, _, _)
+          -> f u site
+      | _ -> u
+    ) srv.Server.h u in
+  let sites_1 = Services.all_sites conf in
+  if Services.SetOfSites.is_singleton sites_1 then
+  let sites_2 =
+    fold_sites (fun s site -> Services.SetOfSites.add site s)
+               Services.SetOfSites.empty in
+  if Services.SetOfSites.is_singleton sites_2 then
+  let site_1 = Services.SetOfSites.any sites_1
+  and site_2 = Services.SetOfSites.any sites_2 in
+  if N.compare site_1 site_2 <> 0 then
+  !logger.warning "Localhost renamed from %a to %a!"
+    N.site_print site_2
+    N.site_print site_1
+
 (* Clean a configuration that's just been reloaded from old, irrelevant
  * settings, esp. ancient sites that are not active any longer (the given
  * duration [oldest_site] is relative to the current site). *)
@@ -723,6 +748,7 @@ let fix_old_perms srv =
   ) srv.Server.h
 
 let clean_old conf srv oldest =
+  detect_hostname_change conf srv ;
   clean_old_sites conf srv oldest ;
   fix_old_perms srv
 
