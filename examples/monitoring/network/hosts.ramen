@@ -238,11 +238,13 @@ DEFINE load PERSIST FOR 1d AS
     out.start + period AS stop,
     host,
     COALESCE (type_instance, "unknown") AS _type,
-    AVG (IF _type = "shortterm" THEN value) AS load_1min
+    -- Wiki says to look at type_instance but in practice various loadavg seems to come in value, value2 and value3.
+    -- Here we try to collect
+    AVG (IF _type = "shortterm" OR type_instance IS NULL THEN value) AS load_1min
       "Load average figures giving the number of jobs in the run queue (state R) or waiting for disk I/O (state D) averaged over 1 Minute",
-    AVG (IF _type = "midterm" THEN value) AS load_5min
+    AVG (IF _type = "midterm" THEN value ELSE value2) AS load_5min
       "Load average figures giving the number of jobs in the run queue (state R) or waiting for disk I/O (state D) averaged over 5 Minutes.",
-    AVG (IF _type = "longterm" THEN value) AS load_15min
+    AVG (IF _type = "longterm" THEN value ELSE value3) AS load_15min
       "Load average figures giving the number of jobs in the run queue (state R) or waiting for disk I/O (state D) averaged over 15 Minutes."
   FROM collectd
   WHERE COALESCE (plugin = "load" AND type_name = "load", false)
