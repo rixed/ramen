@@ -309,7 +309,8 @@ let build_next conf session ?(force=false) get_parent src_path from_ext =
                 !logger.debug "Target %a is not yet a proper source."
                   Key.print to_key) ;
               md5s := N.md5 (Files.read_whole_file from_file) :: !md5s ;
-              if force || check from_file to_file then (
+              let target_is_null = hv.value = RamenValue Raql_value.VNull in
+              if force || target_is_null || check from_file to_file then (
                 !logger.debug "Must rebuild%s"
                   (if force then " (FORCED)" else "") ;
                 if !src_ext = "" then (
