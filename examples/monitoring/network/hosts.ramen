@@ -118,29 +118,28 @@ DEFINE disk PERSIST FOR 1d AS
     out.start + period AS stop,
     host,
     instance AS partition,
-    COALESCE (type_instance, "unknown") AS _type,
     COALESCE (type_name, "unknown") AS _tname,
-    AVG (IF _tname = "disk_io_time" AND _type = "io_time" THEN value) AS io_time
-      "Time spent doing I/Os per second. You can treat this metric as a device load percentage (value of 1 sec time spent matches 100% of load).",
-    AVG (IF _tname = "disk_io_time" AND _type = "weighted_io_time" THEN value) {seconds} AS weighted_io_time
-      "Measure of both I/O completion time and the backlog that may be accumulating.",
-    AVG (IF _tname = "disk_merged" AND _type = "read" THEN value) AS read_merged
-      "The number of operations that could be merged into other, already queued operations, ie. one physical disk access served two or more logical operations. Of course, the higher that number, the better.",
-    AVG (IF _tname = "disk_merged" AND _type = "write" THEN value) AS write_merged
-      "The number of operations, that could be merged into other, already queued operations, ie. one physical disk access served two or more logical operations. Of course, the higher that number, the better.",
-    AVG (IF _tname = "disk_octets" AND _type = "read" THEN value) AS read_bytes
+    AVG (IF _tname = "disk_io_time" THEN value) |? 0 AS read_io_time
+      "Time spent reading per second. You can treat this metric as a device load percentage (value of 1 sec time spent matches 100% of load).",
+    AVG (IF _tname = "disk_io_time" THEN value2) |? 0 AS write_io_time
+      "Time spent writting per second. You can treat this metric as a device load percentage (value of 1 sec time spent matches 100% of load).",
+    AVG (IF _tname = "disk_merged" THEN value) |? 0 AS read_merged
+      "The number of read operations that could be merged into other, already queued operations, ie. one physical disk access served two or more logical operations. Of course, the higher that number, the better.",
+    AVG (IF _tname = "disk_merged" THEN value2) |? 0 AS write_merged
+      "The number of write operations that could be merged into other, already queued operations, ie. one physical disk access served two or more logical operations. Of course, the higher that number, the better.",
+    AVG (IF _tname = "disk_octets" THEN value) |? 0 AS read_bytes
       "Volume read from a disk or partition",
-    AVG (IF _tname = "disk_octets" AND _type = "write" THEN value) AS write_bytes
-      "Volume from a disk or partition",
-    AVG (IF _tname = "disk_ops" AND _type = "read" THEN value) AS read_ops
+    AVG (IF _tname = "disk_octets" THEN value2) |? 0 AS write_bytes
+      "Volume written from a disk or partition",
+    AVG (IF _tname = "disk_ops" THEN value) |? 0 AS read_ops
       "The number of read operations issued to the disk.",
-    AVG (IF _tname = "disk_ops" AND _type = "write" THEN value) AS write_ops
+    AVG (IF _tname = "disk_ops" THEN value2) |? 0 AS write_ops
       "The number of write operations issued to the disk.",
-    AVG (IF _tname = "disk_time" AND _type = "read" THEN value) AS read_time
+    AVG (IF _tname = "disk_time" THEN value) |? 0 AS read_time
       "The average time an I/O-operation took to complete. Note from collectd: Since this is a little messy to calculate take the actual values with a grain of salt.",
-    AVG (IF _tname = "disk_time" AND _type = "write" THEN value) AS write_time
+    AVG (IF _tname = "disk_time" THEN value2) |? 0 AS write_time
       "The average time an I/O-operation took to complete. Note from collectd: Since this is a little messy to calculate take the actual values with a grain of salt.",
-    AVG (IF _tname = "pending_operations" THEN value) AS pending_ops
+    AVG (IF _tname = "pending_operations" THEN value) |? 0 AS pending_ops
       "Queue size of pending I/O operations."
   FROM collectd
   WHERE COALESCE (plugin = "disk", false)
@@ -239,7 +238,7 @@ DEFINE load PERSIST FOR 1d AS
     host,
     COALESCE (type_instance, "unknown") AS _type,
     -- Wiki says to look at type_instance but in practice various loadavg seems to come in value, value2 and value3.
-    -- Here we try to collect
+    -- Let's try to collect those metrics in any case:
     AVG (IF _type = "shortterm" OR type_instance IS NULL THEN value) AS load_1min
       "Load average figures giving the number of jobs in the run queue (state R) or waiting for disk I/O (state D) averaged over 1 Minute",
     AVG (IF _type = "midterm" THEN value ELSE value2) AS load_5min
