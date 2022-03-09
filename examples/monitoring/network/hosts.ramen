@@ -90,21 +90,21 @@ DEFINE interface PERSIST FOR 1d AS
     instance AS name,
     COALESCE (type_instance, "unknown") AS _type,
     COALESCE (type_name, "unknown") AS _tname,
-    AVG (IF _tname = "if_dropped" AND _type = "in" THEN value) AS in_dropped
+    AVG (IF _tname = "if_dropped" AND COALESCE(type_instance = "in", true) THEN value) |? 0 AS in_dropped
       "The total number of dropped incomming packets.",
-    AVG (IF _tname = "if_errors" AND _type = "in" THEN value) AS in_errors
-      "The total number of receiving errors.",
-    AVG (IF _tname = "if_octets" AND _type = "in" THEN value) {bytes} AS in_bytes
-      "The total received volume.",
-    AVG (IF _tname = "if_packets" AND _type = "in" THEN value) AS in_packets
-      "The total number of received packets.",
-    AVG (IF _tname = "if_dropped" AND _type = "out" THEN value) AS out_dropped
+    AVG (IF _tname = "if_dropped" THEN (IF _type = "out" THEN value ELSE value2)) |? 0 AS out_dropped
       "The total number of dropped outgoing packets.",
-    AVG (IF _tname = "if_errors" AND _type = "out" THEN value) AS out_errors
+    AVG (IF _tname = "if_errors" AND COALESCE(type_instance = "in", true) THEN value) |? 0 AS in_errors
+      "The total number of receiving errors.",
+    AVG (IF _tname = "if_errors" THEN (IF _type = "out" THEN value ELSE value2)) |? 0 AS out_errors
       "The total number of transmit error packets (This is the total of error conditions encountered when attempting to transmit a packet. The code here explains the possibilities, but this code is no longer present in /net/core/dev.c master at present - it appears to have moved to /net/core/net-procfs.c.)",
-    AVG (IF _tname = "if_octets" AND _type = "out" THEN value) {bytes} AS out_bytes
+    AVG (IF _tname = "if_octets" AND COALESCE(type_instance = "in", true) THEN value) |? 0 {bytes} AS in_bytes
+      "The total received volume.",
+    AVG (IF _tname = "if_octets" THEN (IF _type = "out" THEN value ELSE value2)) |? 0 {bytes} AS out_bytes
       "The total transmitted volume.",
-    AVG (IF _tname = "if_packets" AND _type = "out" THEN value) AS out_packets
+    AVG (IF _tname = "if_packets" AND COALESCE(type_instance = "in", true) THEN value) |? 0 AS in_packets
+      "The total number of received packets.",
+    AVG (IF _tname = "if_packets" THEN (IF _type = "out" THEN value ELSE value2)) |? 0 AS out_packets
       "The total number of transmitted packets."
   FROM collectd
   WHERE COALESCE (plugin = "interface", false)
