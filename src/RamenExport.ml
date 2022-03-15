@@ -62,6 +62,7 @@ let checked_field_names pub_typ field_names =
     ) field_names ;
     field_names)
 
+(* Will raise when the compiled function is missing *)
 let replay conf ~while_ session worker field_names where since until
            ~with_event_time f =
   (* Start with the most hazardous and interesting part: find a way to

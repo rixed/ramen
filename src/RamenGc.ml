@@ -259,10 +259,16 @@ let cleanup_once conf session dry_run del_ratio compress_older =
       | Key.PerSite (site, PerWorker (fq, Worker)),
         Value.Worker worker
         when site = conf.C.site ->
-          let _prog, prog_name, func = function_of_fq clt fq in
-          let bin =
-            Paths.execompserver_cache_bin conf.C.persist_dir worker.info_signature in
-          (bin, prog_name, func) :: lst
+          (match function_of_fq clt fq with
+          | exception e ->
+              !logger.warning "Cannot find binary for %a: %s, skipping"
+                N.fq_print fq
+                (Printexc.to_string e) ;
+              lst
+          | _prog, prog_name, func ->
+              let bin = Paths.execompserver_cache_bin conf.C.persist_dir
+                                                      worker.info_signature in
+              (bin, prog_name, func) :: lst)
       | _ -> lst
     ) []
   in

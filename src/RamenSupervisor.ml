@@ -1130,8 +1130,7 @@ let synchronize_running ?(while_=always) conf kill_at_exit =
           TimeRange.make replay.Value.Replay.since replay.until false in
         let func_of_fq fq =
           let prog_name, _func_name = N.fq_parse fq in
-          let _prog, _prog_name, func =
-            function_of_fq clt fq in
+          let _prog, _prog_name, func = function_of_fq clt fq in
           prog_name, func in
         (* Normally, the target worker will count the EndOfReplay and clean the
          * replay and response keys when done. When a single replayer pours

@@ -466,12 +466,17 @@ let setup_links conf ~while_ session func_of_fq t =
    * OutRef as the target: *)
   log_and_ignore_exceptions ~what (fun () ->
     if conf.C.site = t.target.site then
-      let prog_name, func = func_of_fq target_fq in
-      match t.recipient with
-      | VR.RingBuf rb ->
-          connect_to_rb prog_name func rb target_fieldmask
-      | VR.SyncKey k ->
-          connect_to_sync_key prog_name func k target_fieldmask
+      match func_of_fq target_fq with
+      | exception e ->
+          !logger.error "Cannot get compiled function for %a: %s, skipping"
+            N.fq_print target_fq
+            (Printexc.to_string e)
+      | prog_name, func ->
+          (match t.recipient with
+          | VR.RingBuf rb ->
+              connect_to_rb prog_name func rb target_fieldmask
+          | VR.SyncKey k ->
+              connect_to_sync_key prog_name func k target_fieldmask)
   ) () ;
   (* And then add all the links from workers to workers for that channel: *)
   Array.iter (fun (from, to_) ->
