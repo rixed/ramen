@@ -37,6 +37,7 @@ type expr =
   | AnyIp
   | AnyCidr
   | NumericVec
+  | VecOrArray
   | Matrix
   | InType
   | LengthType
@@ -121,6 +122,7 @@ let print_expr funcs condition oc =
   | AnyIp -> p " must be an IP"
   | AnyCidr -> p " must be a CIDR"
   | NumericVec -> p " must be a vector of numeric elements"
+  | VecOrArray -> p " must be a vector or array"
   | Matrix -> p " must be a list/vector of tuples of numeric elements"
   | InType -> p ": arguments must be compatible with the IN operator"
   | LengthType -> p ": arguments must be compatible with the LENGTH operator"

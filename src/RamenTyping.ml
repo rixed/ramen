@@ -1076,7 +1076,8 @@ let emit_constraints tuple_sizes records field_names
       let ret_vec =
         match e2 with { text = E.Vector _ ; _ } -> true | _ -> false in
       assert_imply (n_of_expr e1) oc nid ;
-      emit_assert oc (fun oc ->
+      let name = expr_err e Err.VecOrArray in
+      emit_assert ~name oc (fun oc ->
         let eid1 = t_of_expr e1 in
         let eid' = if ret_vec then "(vector-type "^ eid ^")"
                    else eid in

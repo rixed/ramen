@@ -1,0 +1,25 @@
+DEFINE logs AS
+DEFINE PERSIST FOR 15min http AS
+  SELECT
+    now AS start,
+    now + RANDOM AS stop,
+    "/index.html" AS url,
+    "GET" AS method,
+    u32(RANDOM * 10_000) AS request_size,
+    200 AS code,
+    u32(RANDOM * 100_000) AS response_size,
+    ip(u32(RANDOM * 0xFFFFFFFF)) AS client_ip,
+    ip(u32(192.168.42.0) + u8(RANDOM * 5)) AS server_ip
+  FACTORS method, code, server_ip
+  EVERY 1s;
+
+DEFINE http AS
+  SELECT
+    code, method,
+    SUM (response_size),
+    SUM (request_size),
+    95th PERCENTILE(stop-start) AS resp_time_95th,
+    COUNTRYCODE(client_ip) AS client_country
+  FROM logs
+  GROUP BY code, method, COUNTRYCODE(client_ip)
+  FACTORS code, method, client_country
