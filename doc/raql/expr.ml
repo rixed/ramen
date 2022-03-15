@@ -375,7 +375,8 @@ let exprs =
                    of Ramen to the next, this function is not deterministic \
                    across upgrades." ] ;
         p [ cdata "This function should be only used as a hint." ] ]
-      [ [ cdata "COUNTRYCODE …ip-expr…" ] ]
+      [ [ cdata "COUNTRYCODE …ip-expr…" ] ;
+        [ cdata "COUNTRY_CODE …ip-expr…" ] ]
       [ [ cdata "IPv4 -> STRING?" ] ;
         [ cdata "IPv6 -> STRING?" ] ;
         [ cdata "Ip -> STRING?" ] ]
@@ -384,7 +385,8 @@ let exprs =
     make "ipfamily" ~sections:Section.[net] "Returns the version of an IP"
       [ p [ cdata "Returns either 4 if the IP is an IPv4 or 6 if the IP is an \
                    IPv6." ] ]
-      [ [ cdata "IPFAMILY …ip-expr…" ] ]
+      [ [ cdata "IPFAMILY …ip-expr…" ] ;
+        [ cdata "IP_FAMILY …ip-expr…" ] ]
       [ [ cdata "IPv4 -> unsigned-int" ] ;
         [ cdata "IPv6 -> unsigned-int" ] ;
         [ cdata "Ip -> unsigned-int" ] ]
@@ -812,9 +814,12 @@ let exprs =
       [ "COUNT [ 1; 1; 1 ]", "3" ;
         "COUNT [ TRUE ; FALSE ; TRUE ]", "2" ] ;
     make "distinct" ~sections:Section.[groups]
-      "Tells if each item is distinct" ~has_state:true
+      "Tells if an item is new" ~has_state:true
       [ p [ cdata "Accurately tells if the same item was already met in \
                    the aggregate." ] ;
+        p [ cdata "Can be used in combination with " ; bold "COUNT" ;
+            cdata " to count how many distinct items are present in the \
+                   aggregate." ] ;
         p [ cdata "See " ; bold "REMEMBER" ;
             cdata " for a safer approximation of this." ] ]
       [ [ cdata "DISTINCT …expr…" ] ]
@@ -824,9 +829,10 @@ let exprs =
         "DISTINCT [ 1; 2; 1 ]", "FALSE" ;
         (* FIXME: Distinct result type will be a single BOOL that is FALSE
          * and so COUNT will be 0 not 2 as one might expect. :-(
-         * Instead: distinct should not be an aggregate function at all. If
-         * we want it to be, it's easy enough to write "DISTINCT GROUP(X)"
-         * instead of just DISTINCT X.*)
+         * The issue actually is caused by the implementation of immediate
+         * aggregate: when used as a parameter for another aggregate function
+         * then it should pass each intermediary result in turn to the outer
+         * aggregate expression. *)
         "COUNT DISTINCT [ 1; 2; 1 ]", "0" ] ;
     make "lag" ~sections:Section.[select] "Delayed value" ~has_state:true
       [ p [ bold "LAG" ; cdata " refers to the value received k steps ago. \

@@ -1060,7 +1060,7 @@ let emit_constraints tuple_sizes records field_names
 
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc mn.DT.typ
 
-  | Stateless (SL2 (Percentile, e1, e2)) ->
+  | Stateless (SL2 (Percentile, e1 (* values *), e2 (* percentiles *))) ->
       (* - e1 must be a vector or array of anything;
        * - the result is as nullable as e1 elements;
        * - if e2 is an immediate vector, then:
@@ -1152,7 +1152,7 @@ let emit_constraints tuple_sizes records field_names
   | Stateless (SL2 (Sub, e1, e2)) ->
       (* - e1 and e2 must be numeric;
        * - the result is not smaller than e1 or e2;
-       * - the result is signed even if both operands are unsigned:;
+       * - the result is signed even if both operands are unsigned;
        * - nullability propagates; *)
       emit_assert_numeric oc e1 ;
       emit_assert_numeric oc e2 ;

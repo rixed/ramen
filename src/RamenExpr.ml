@@ -421,7 +421,7 @@ and print_text ?(max_depth=max_int) with_types oc text =
   | Stateless (SL2 (Get, e1, e2)) ->
       Printf.fprintf oc "GET(%a, %a)" p e1 p e2
   | Stateless (SL2 (Percentile, e1, e2)) ->
-      Printf.fprintf oc "%a PERCENTILE(%a)" p e2 p e1
+      Printf.fprintf oc "%ath PERCENTILE(%a)" p e2 p e1
   | Stateless (SL1 (Like pat, e)) ->
       Printf.fprintf oc "(%a) LIKE %S" p e pat
   | Stateless (SL1s (Max, es)) ->
@@ -1481,7 +1481,11 @@ struct
         make_stateless (SL1 (Fit, e))) |<|
       (afun1 "countrycode" >>: fun e ->
         make_stateless (SL1 (CountryCode, e))) |<|
+      (afun1 "country_code" >>: fun e ->
+        make_stateless (SL1 (CountryCode, e))) |<|
       (afun1 "ipfamily" >>: fun e ->
+        make_stateless (SL1 (IpFamily, e))) |<|
+      (afun1 "ip_family" >>: fun e ->
         make_stateless (SL1 (IpFamily, e))) |<|
       (afun1 "basename" >>: fun e ->
         make_stateless (SL1 (Basename, e))) |<|
@@ -1946,7 +1950,7 @@ struct
     "(unknown.'start') // ((1000000) * (unknown.'avg_window'))" \
       (test_expr ~printer:(print false) p "start // (1_000_000 * avg_window)")
 
-    "param.'p' PERCENTILE(unknown.'bytes_per_sec')" \
+    "param.'p'th PERCENTILE(unknown.'bytes_per_sec')" \
       (test_expr ~printer:(print false) p "p percentile bytes_per_sec")
 
     "(MAX skip nulls(in.'start')) > ((out.'start') + (((unknown.'obs_window') * (1.15)) * (1000000)))" \
