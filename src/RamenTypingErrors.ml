@@ -128,7 +128,7 @@ let print_expr funcs condition oc =
   | LengthType -> p ": arguments must be compatible with the LENGTH operator"
   | PrevNull -> p " must be null as it is drawn from the previous tuple"
   | Integer w_opt -> p " must be an integer%a" p_opt_width w_opt
-  | Signed w_opt -> p " must be a signed integer%a" p_opt_width w_opt
+  | Signed w_opt -> p " must be a signed numeric%a" p_opt_width w_opt
   | Unsigned w_opt -> p " must be an unsigned integer%a" p_opt_width w_opt
   | Numeric -> p " must be numeric"
   | Numeric_Or_Numerics -> p " must be numeric or a list/vector of numerics"
