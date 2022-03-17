@@ -250,9 +250,10 @@ struct
     in
     upgrade_from Versions.sync_conf
 
-  let load conf srv no_source_examples =
+  let load conf allow_upgrade srv no_source_examples =
     let fname = file_name conf in
-    if not (Files.exists fname) then try_upgrade conf fname ;
+    if allow_upgrade && not (Files.exists fname) then
+      try_upgrade conf fname ;
     try
       let fd = Files.safe_open fname [ O_RDONLY ] 0o640 in
       finally
@@ -763,7 +764,8 @@ let create_new_server_keys srv_pub_key_file srv_priv_key_file =
 let start
       conf ~while_ ports ports_sec srv_pub_key_file srv_priv_key_file
       ignore_file_perms no_source_examples archive_total_size
-      archive_recall_cost oldest_site incidents_history_length_ =
+      archive_recall_cost oldest_site incidents_history_length_
+      allow_upgrade =
   incidents_history_length := incidents_history_length_ ;
   (* When using secure socket, the user *must* provide the path to
    * the server key files, even if it does not exist yet. They will
@@ -893,7 +895,7 @@ let start
   C.info_or_test conf "Loading latest configuration snapshot..." ;
   (* Not so easy: some values must be overwritten (such as server
    * versions, startup time...) *)
-  if Snapshot.load conf srv no_source_examples then
+  if Snapshot.load conf allow_upgrade srv no_source_examples then
     clean_old conf srv oldest_site
   else
     populate_init conf srv no_source_examples archive_total_size

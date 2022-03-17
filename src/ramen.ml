@@ -447,6 +447,9 @@ let incidents_history_length =
 let ignore_file_perms =
   flag_of_opt CliInfo.ignore_file_perms
 
+let allow_upgrade =
+  flag_of_opt CliInfo.allow_upgrade
+
 let confserver =
   Term.(
     (const RamenCliCmd.confserver
@@ -464,7 +467,8 @@ let confserver =
       $ archive_total_size
       $ archive_recall_cost
       $ oldest_site
-      $ incidents_history_length),
+      $ incidents_history_length
+      $ allow_upgrade),
     info_of_cmd CliInfo.confserver)
 
 (* confclient will dump, read or write conf values according to the presence
@@ -1261,7 +1265,8 @@ let start =
       $ max_last_incidents_kept
       $ max_incident_age
       $ incidents_history_length
-      $ execomp_quarantine),
+      $ execomp_quarantine
+      $ allow_upgrade),
     info_of_cmd CliInfo.start)
 
 (*

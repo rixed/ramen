@@ -474,6 +474,14 @@ let incidents_history_length =
     docv = "" ;
     typ = Scalar }
 
+let allow_upgrade =
+  { names = [ "allow-upgrade" ] ;
+    env = "RAMEN_ALLOW_UPGRADE" ;
+    doc = "If no previous configuration exist, try to upgrade from a previous \
+           version." ;
+    docv = "" ;
+    typ = Flag }
+
 let conf_key =
   { names = [ "key" ; "k" ] ;
     env = "" ;
@@ -1051,7 +1059,7 @@ let start =
              incidents_history_length ; gc_loop ; archivist_loop ;
              update_allocs ; reconf_workers ; del_ratio ; compress_older ;
              max_fpr ; timeout_idle_kafka_producers ; debounce_delay ;
-             max_last_incidents_kept ; max_incident_age ] @
+             max_last_incidents_kept ; max_incident_age ; allow_upgrade ] @
            copts }
 
 let variants =
@@ -1113,7 +1121,8 @@ let confserver =
              confserver_port ; confserver_port_sec ; server_pub_key ;
              server_priv_key ; ignore_file_perms ; no_source_examples ;
              default_archive_total_size ; default_archive_recall_cost ;
-             oldest_restored_site ; incidents_history_length ; persist_dir ]
+             oldest_restored_site ; incidents_history_length ; persist_dir ;
+             allow_upgrade ]
              @ copts }
 
 let confclient =

@@ -283,7 +283,7 @@ let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
 let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ports_sec srv_pub_key_file srv_priv_key_file ignore_file_perms
                no_source_examples archive_total_size archive_recall_cost
-               oldest_restored_site incidents_history_length () =
+               oldest_restored_site incidents_history_length allow_upgrade () =
   RamenCliCheck.confserver conf ports ports_sec srv_pub_key_file srv_priv_key_file
                            incidents_history_length ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
@@ -293,7 +293,7 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                            srv_priv_key_file ignore_file_perms
                            no_source_examples archive_total_size
                            archive_recall_cost oldest_restored_site
-                           incidents_history_length ;
+                           incidents_history_length allow_upgrade ;
   Option.may exit !Processes.quit
 
 let confclient conf key value del if_exists follow () =
@@ -1447,7 +1447,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
           del_ratio compress_older
           max_fpr kafka_producers_timeout debounce_delay max_last_incidents_kept
           max_incident_age incidents_history_length
-          execomp_quarantine () =
+          execomp_quarantine allow_upgrade () =
   let ports =
     if ports <> [] then ports
     else [ Default.confserver_port_str ] in
@@ -1518,7 +1518,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
     ~default_archive_total_size ~default_archive_recall_cost
     ~oldest_restored_site ~incidents_history_length ~debug ~quiet
     ~keep_temp_files ~reuse_prev_files ~variant ~initial_export_duration
-    ~bundle_dir ~colors () |>
+    ~bundle_dir ~colors ~allow_upgrade () |>
     add_pid ServiceNames.confserver ;
   RamenSubcommands.run_choreographer
     ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~debug ~quiet
