@@ -106,7 +106,7 @@ RUN opam install --yes depext
 RUN opam depext --noninteractive \
       conf-gsl conf-blas conf-lapack conf-pkg-config sqlite3
 RUN opam repo add --set-default ocalme \
-      git://github.com/rixed/ocalme-opam-repository.git
+      https://github.com/rixed/ocalme-opam-repository.git
 RUN opam repo priority ocalme 1
 
 # Install all ramen dependencies using opam
