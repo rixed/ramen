@@ -94,7 +94,7 @@ RUN opam install --yes depext && \
     opam depext --noninteractive \
       conf-gsl conf-blas conf-lapack conf-pkg-config sqlite3 && \
     opam repo add --set-default ocalme \
-      git://github.com/rixed/ocalme-opam-repository.git && \
+      https://github.com/rixed/ocalme-opam-repository.git && \
     opam repo priority ocalme 1 && \
     opam install --yes inotify qtest ipaddr csv
 
