@@ -25,15 +25,15 @@ let null_handler =
     process_files = ignore }
 
 let process_once ?(timeout= ~-.1.) handlers =
-  let collect_all_monitored_files handlers =
+  let collect_all_monitored_files () =
     List.fold_left (fun files handler ->
       handler.register_files files
     ) ([], [], []) handlers
-  and process_all_changed_files handlers files =
+  and process_all_changed_files files =
     List.iter (fun handler ->
       handler.process_files files
     ) handlers in
-  let rfiles, wfiles, efiles = collect_all_monitored_files handlers in
+  let rfiles, wfiles, efiles = collect_all_monitored_files () in
   if debug then
     !logger.debug "TcpSocket: selecting amongst %d+%d+%d files (timeo:%f)"
       (List.length rfiles) (List.length wfiles) (List.length efiles) timeout ;
@@ -44,7 +44,7 @@ let process_once ?(timeout= ~-.1.) handlers =
   | [], [], _ ->
       !logger.debug "Nothing selected"
   | changed_files ->
-      process_all_changed_files handlers changed_files
+      process_all_changed_files changed_files
 
 (* We want to read/write entire messages so we need to buffer inputs and
  * outputs: *)
@@ -159,8 +159,7 @@ let send peer bytes =
 
 let close_peer reason peer =
   if debug then
-    !logger.debug "TcpSocket: close_peer %s because of %s"
-      peer.name reason ;
+    !logger.debug "TcpSocket: close_peer %s because of %s" peer.name reason ;
   Option.may (fun fd ->
     (* Make sure other threads see None before we close the fd *)
     peer.fd <- None ;
