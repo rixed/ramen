@@ -294,6 +294,11 @@ struct
   let dummy_buf = Bytes.create 1
 
   let send t bytes =
+    (* Without that explicit yield and in the absence of other scheduling point
+     * (such as releasing the giant lock by logging for instance), the select
+     * thread would not be scheduled often enough, resulting in *slow*
+     * processing of incoming messages *)
+    Thread.yield () ;
     send t.peer bytes ;
     (* Signal the processing thread: *)
     ignore (Unix.write t.ctrl_w dummy_buf 0 1)
@@ -304,6 +309,8 @@ struct
       Condition.signal t.recvd_cond)
 
   let get_msg t =
+    (* See [send] regarding this explicit yield *)
+    Thread.yield () ;
     if debug then !logger.debug "TcpSocket: get_msg..." ;
     with_lock t.recvd_lock (fun () ->
       if t.recvtimeo > 0. && Queue.is_empty t.recvd then (
