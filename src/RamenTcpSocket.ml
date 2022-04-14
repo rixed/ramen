@@ -435,28 +435,31 @@ struct
     let sockaddr = ADDR_INET (bind_addr, port) in
     let domain = domain_of_sockaddr sockaddr in
     let accepter_sock = socket ~cloexec:true domain SOCK_STREAM 0 in
+    set_nonblock accepter_sock ;
+    set_close_on_exec accepter_sock ;
     setsockopt accepter_sock SO_REUSEADDR true ;
-    try
-      set_nonblock accepter_sock ;
-      set_close_on_exec accepter_sock ;
-      if debug then
-        !logger.debug "TcpSocket: binding to %s" (string_of_sockaddr sockaddr) ;
+    if debug then
+      !logger.debug "TcpSocket: binding to %s" (string_of_sockaddr sockaddr) ;
+    (try
       bind accepter_sock sockaddr ;
       (* Have a large pool of incoming SYNs in case many daemons and workers
        * rush to connect at once: *)
-      listen accepter_sock 100 ;
-      let t =
-        { name = service_name ;
-          peers = [] ;
-          accepter_sock ;
-          handler = null_handler } in
-      t.handler <-
-        { register_files = Accepter.register_files t ;
-          process_files = Accepter.process_files t make_session on_msg } ;
-      t
+      listen accepter_sock 100
     with e ->
+      !logger.error "Cannot bind and listen to %s: %s"
+        (string_of_sockaddr sockaddr)
+        (Printexc.to_string e) ;
       close accepter_sock ;
-      raise e
+      raise e) ;
+    let t =
+      { name = service_name ;
+        peers = [] ;
+        accepter_sock ;
+        handler = null_handler } in
+    t.handler <-
+      { register_files = Accepter.register_files t ;
+        process_files = Accepter.process_files t make_session on_msg } ;
+    t
 
   let shutdown t =
     if debug then

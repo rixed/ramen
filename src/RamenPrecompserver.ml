@@ -66,8 +66,8 @@ let start conf ~while_ =
         N.md5 (Value.Alert.to_string alert)
     | _ -> "" in
   (* If we already have that info and it's still valid, do nothing: *)
-  let refresh_info session path ext =
-    let clt = option_get "refresh_info" __LOC__ session.ZMQClient.clt in
+  let still_fresh session path ext =
+    let clt = option_get "still_fresh" __LOC__ session.ZMQClient.clt in
     let info_key = Key.Sources (path, "info") in
     match (Client.find clt info_key).value with
     | exception Not_found ->
@@ -84,7 +84,7 @@ let start conf ~while_ =
         false in
   let compile session ?(force=false) path ext =
     let clt = option_get "compile" __LOC__ session.ZMQClient.clt in
-    if not force && refresh_info session path ext then (
+    if not force && still_fresh session path ext then (
       !logger.info "Current info for %a (%s) is still fresh"
         N.src_path_print path
         ext ;
