@@ -3,7 +3,7 @@
 DEFINE f1 AS
   YIELD
     1 + (previous.count |? -1) AS count,
-    u32?(1) + (previous.ncount |? -1) AS ncount
+    1u32? + (previous.ncount |? -1) AS ncount
   EVERY 0.1s;
 
 DEFINE f2 AS

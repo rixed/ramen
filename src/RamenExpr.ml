@@ -886,11 +886,11 @@ let and_partition p e =
             ~units:e.units And es in
   of_nary e1s, of_nary e2s
 
-let make_stateful lifespan skip_nulls operation =
-  make (Stateful { lifespan ; skip_nulls ; operation })
+let make_stateful ?units ?nullable lifespan skip_nulls operation =
+  make ?units ?nullable (Stateful { lifespan ; skip_nulls ; operation })
 
-let make_stateless ?units operation =
-  make ?units (Stateless operation)
+let make_stateless ?units ?nullable operation =
+  make ?units ?nullable (Stateless operation)
 
 module Parser =
 struct
@@ -922,8 +922,9 @@ struct
       ) |<| (
         (* Cannot use [T.Parser.p] because it would be ambiguous with the
          * compound values from expressions: *)
-        T.Parser.(empty_list |<| scalar ~min_int_width:32) >>:
-        fun c ->
+        T.Parser.(empty_list |<| scalar ~min_int_width:32) ++
+        optional ~def:false (char '?' >>: fun _ -> true) >>:
+        fun (c, nullable) ->
           (* We'd like to consider all constants as dimensionless, but that'd
              be a pain (for instance, COALESCE(x, 0) would be invalid if x had
              a unit, while by leaving the const unit unspecified it has the
@@ -932,7 +933,7 @@ struct
             if T.(is_a_num (type_of_value c)) then
               Some Units.dimensionless
             else None in*)
-          make_stateless (SL0 (Const c))
+          make_stateless ~nullable (SL0 (Const c))
       )
     ) m
 
