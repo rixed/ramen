@@ -1753,12 +1753,15 @@ struct
         where == default_where && key == default_key &&
         commit == default_commit
       and not_listen =
-        listen = None || from != default_from || every != default_every
+        listen == default_listen || from != default_from ||
+        every != default_every
       and not_instrumentation = instrumentation = ""
       and not_read =
-        read = None || from != default_from || every != default_every
-      and not_event_time = event_time = default_event_time in
-      if not_listen && not_read && not_instrumentation then
+        read == default_read_clause || from != default_from ||
+        every != default_every
+      and not_event_time = event_time == default_event_time
+      and not_select = from == default_from && select == default_select in
+      if not_listen && not_read && not_instrumentation && not not_select then
         let commit_before, commit_cond, flush_how, notifications =
           List.fold_left (fun (b, c, f, n as prev) -> function
             | CommitSpec -> prev
@@ -1787,12 +1790,12 @@ struct
                     commit_before ; commit_cond ; flush_how ; from ;
                     every ; aggregate_factors }
       else if not_aggregate && not_read && not_event_time &&
-              not_instrumentation && listen <> None then
+              not_instrumentation && listen != default_listen then
         let net_addr, port, ip_proto, proto = Option.get listen in
         ListenFor { net_addr ; port ; proto ; ip_proto ; factors }
       else if not_aggregate && not_listen &&
               not_instrumentation &&
-              read <> None then
+              read != default_read_clause then
         let source, format = Option.get read
         and readExternal_factors = factors in
         ReadExternal { source ; format ; event_time ; readExternal_factors }

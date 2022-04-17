@@ -1,5 +1,4 @@
-DEFINE logs AS
-DEFINE PERSIST FOR 15min http AS
+DEFINE logs PERSIST FOR 15min http AS
   SELECT
     now AS start,
     now + RANDOM AS stop,
