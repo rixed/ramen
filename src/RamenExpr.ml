@@ -1337,18 +1337,22 @@ struct
     let m = "function" :: m in
     (* Note: min and max of nothing are NULL but sum of nothing is 0, etc *)
     (
-      (afun1 "age" >>: fun e -> make_stateless (SL1 (Age, e))) |<|
+      (afun1 "age" >>: fun e ->
+        make_stateless ~units:Units.seconds (SL1 (Age, e))) |<|
       (afun1 "force" >>: fun e -> make_stateless (SL1 (Force, e))) |<|
       (afun1 "abs" >>: fun e -> make_stateless (SL1 (Abs, e))) |<|
       (afun1 "length" >>: fun e -> make_stateless (SL1 (Length, e))) |<|
       (afun1 "lower" >>: fun e -> make_stateless (SL1 (Lower, e))) |<|
       (afun1 "upper" >>: fun e -> make_stateless (SL1 (Upper, e))) |<|
       (afun1 "uuid_of_u128" >>: fun e -> make_stateless (SL1 (UuidOfU128, e))) |<|
-      (worD "now" >>: fun () -> make_stateless (SL0 Now)) |<|
+      (worD "now" >>: fun () ->
+        make_stateless ~units:Units.seconds_since_epoch (SL0 Now)) |<|
       (worD "random" >>: fun () -> make_stateless (SL0 Random)) |<|
       (worD "pi" >>: fun () -> make_stateless (SL0 Pi)) |<|
-      (worD "#start" >>: fun () -> make_stateless (SL0 EventStart)) |<|
-      (worD "#stop" >>: fun () -> make_stateless (SL0 EventStop)) |<|
+      (worD "#start" >>: fun () ->
+        make_stateless ~units:Units.seconds_since_epoch (SL0 EventStart)) |<|
+      (worD "#stop" >>: fun () ->
+        make_stateless ~units:Units.seconds_since_epoch (SL0 EventStop)) |<|
       (afun1 "exp" >>: fun e -> make_stateless (SL1 (Exp, e))) |<|
       (afun1 "log" >>: fun e -> make_stateless (SL1 (Log, e))) |<|
       (afun1 "log10" >>: fun e -> make_stateless (SL1 (Log10, e))) |<|
@@ -1468,7 +1472,7 @@ struct
       (afun2 "format_time" >>: fun (e1, e2) ->
          make_stateless (SL2 (Strftime, e1, e2))) |<|
       (afun1 "parse_time" >>: fun e ->
-         make_stateless (SL1 (Strptime, e))) |<|
+         make_stateless ~units:Units.seconds_since_epoch (SL1 (Strptime, e))) |<|
       (afun1 "chr" >>: fun e ->
          match int_of_const e with
          | Some v ->
