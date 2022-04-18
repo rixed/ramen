@@ -895,7 +895,8 @@ let start
   C.info_or_test conf "Loading latest configuration snapshot..." ;
   (* Not so easy: some values must be overwritten (such as server
    * versions, startup time...) *)
-  if Snapshot.load conf allow_upgrade srv no_source_examples then
+  if not conf.C.test &&
+     Snapshot.load conf allow_upgrade srv no_source_examples then
     clean_old conf srv oldest_site
   else
     populate_init conf srv no_source_examples archive_total_size
