@@ -1186,9 +1186,13 @@ let tail conf func_name_or_code with_header with_units sep null raw
             let cols =
               Array.mapi (fun i idx ->
                 match idx with
-                | -2 -> Some (ValDate t2)
-                | -1 -> Some (ValDate t1)
-                | idx -> formatter head_typ.(i).units tuple.(idx)
+                | -2 ->
+                    Some (ValDate t2)
+                | -1 ->
+                    Some (ValDate t1)
+                | idx ->
+                    let v = try tuple.(idx) with Invalid_argument _ -> VNull in
+                    formatter head_typ.(i).units v
               ) head_idx in
             print cols ;
             decr counter ;
