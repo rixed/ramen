@@ -70,7 +70,7 @@ let compile_info conf ~while_ session src_path info comp mtime =
     with
       | Exit ->
           ()
-      | e ->
+      | e when not conf.C.test ->
           IntCounter.inc ~labels:["status", "failure"]
             (stats_compilations_count conf.C.persist_dir) ;
           let retry_date = Unix.time () +. !execomp_quarantine in

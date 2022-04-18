@@ -727,7 +727,7 @@ let run conf server_url api graphite use_external_compiler max_simult_compils
     !logger.debug "Waiting for %s termination..." what ;
     Thread.join thd in
   let ok = ref false in
-  log_and_ignore_exceptions (fun () ->
+  log_exceptions ~what:"run test" (fun () ->
     start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
       ok := run_test conf session ~while_ (Files.dirname test_file) test_spec ;
       !logger.debug "Finished tests" ;
@@ -755,7 +755,7 @@ let run conf server_url api graphite use_external_compiler max_simult_compils
               s.Value.RuntimeStats.tot_cpu
               (Uint64.to_string s.max_ram)
               err_report))
-          stats)) () ;
+          stats)) ;
   if !ok then !logger.info "Test %s: Success" name
   else !logger.error "Test %s: FAILURE" name ;
   quit_confserver := true ;

@@ -102,7 +102,7 @@ let start conf ~while_ =
         IntCounter.inc ~labels:["status", "ok"]
           (stats_precompilations_count conf.C.persist_dir)
       with Exit -> ()
-         | e ->
+         | e when not conf.C.test ->
             !logger.warning "Cannot compile %a: %s"
               N.src_path_print path
               (Printexc.to_string e) ;
