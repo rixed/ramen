@@ -137,7 +137,7 @@
         // Returns the ascii char for the given code
         | Chr
         // a LIKE operator using globs, infix
-        | Like string // pattern (using %, _ and \ )
+        | Like (bool; string) // case sensitivity and pattern (using %, _ and \ )
         // General fitting function that takes 1 arguments: a list of values
         // which can be either numeric values or vectors/lists/tuples of
         // numeric values. If there is only one value, it's supposed to be the

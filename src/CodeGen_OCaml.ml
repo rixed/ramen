@@ -1608,12 +1608,14 @@ and emit_expr_ ~env ~context ~opc oc expr =
         [ ConvTo TString, PropagateNull ;
           ConvTo TString, PropagateNull ] oc [e1; e2]
   | Finalize,
-    Stateless (SL1 (Like p, e)),
+    Stateless (SL1 (Like (cs, p), e)),
     TBool ->
       let pattern = Globs.compile ~star:'%' ~placeholder:'_' ~escape:'\\' p in
       Printf.fprintf oc "(let pattern_ = Globs.%a in "
         Globs.print_pattern_ocaml pattern ;
-      emit_functionN ~env ~opc ~nullable "Globs.matches pattern_ "
+      let func =
+        Printf.sprintf "Globs.matches ~case_sensitive:%b pattern_ " cs in
+      emit_functionN ~env ~opc ~nullable func
         [ ConvTo TString, PropagateNull ] oc [ e ];
       Printf.fprintf oc ")"
   | Finalize,

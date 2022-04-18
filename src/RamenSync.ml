@@ -446,7 +446,7 @@ struct
 
   type prepared_key = string
   let prepare_key = Key.to_string
-  let matches = Globs.matches
+  let matches = Globs.matches ~case_sensitive:true
 end
 
 (* Unfortunately there is no association between the key and the type for

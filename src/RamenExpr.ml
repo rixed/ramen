@@ -422,8 +422,11 @@ and print_text ?(max_depth=max_int) with_types oc text =
       Printf.fprintf oc "GET(%a, %a)" p e1 p e2
   | Stateless (SL2 (Percentile, e1, e2)) ->
       Printf.fprintf oc "%ath PERCENTILE(%a)" p e2 p e1
-  | Stateless (SL1 (Like pat, e)) ->
-      Printf.fprintf oc "(%a) LIKE %S" p e pat
+  | Stateless (SL1 (Like (cs, pat), e)) ->
+      Printf.fprintf oc "(%a) %sLIKE %S"
+        p e
+        (if cs then "CASE SENSITIVE " else "")
+        pat
   | Stateless (SL1s (Max, es)) ->
       Printf.fprintf oc "GREATEST %a" print_args es
   | Stateless (SL1s (Min, es)) ->
@@ -1052,13 +1055,27 @@ struct
 
   and low_prec_left_assoc m =
     let m = "comparison operator" :: m in
+    let case_sensitive =
+      optional ~def:false (
+        strinG "case" -- blanks -- strinG "sensitive" -- blanks >>:
+          fun () -> true) in
+    let like not_ cs e1 e2 =
+      match string_of_const e2 with
+      | None ->
+          raise (Reject "LIKE pattern must be a string constant")
+      | Some p ->
+          make_stateless (
+            if not_ then SL1 (Not, make_stateless (SL1 (Like (cs, p), e1)))
+            else SL1 (Like (cs, p), e1)) in
     let op =
       that_string ">=" |<| that_string ">" |<|
       that_string "<>" |<| that_string "<=" |<| that_string "<" |<|
       that_string "=" |<| that_string "!=" |<| that_string "in" |<|
       (strinG "not" -- blanks -- worD "in" >>: fun () -> "not in") |<|
-      that_string "like" |<|
-      (strinG "not" -- blanks -- worD "like" >>: fun () -> "not like") |<|
+      (case_sensitive +- that_string "like" >>:
+        function true -> "cs-like" | false -> "like") |<|
+      (strinG "not" -- blanks -+ case_sensitive +- worD "like" >>:
+        function true -> "not cs-like" | false -> "not like") |<|
       ((that_string "starts" |<| that_string "ends") +- blanks +- worD "with")
     and reduce e1 op e2 = match op with
       | ">" -> make_stateless (SL2 (Gt, e1, e2))
@@ -1083,14 +1100,13 @@ struct
           | _ ->
               make_stateless (SL1 (Not, make_stateless (SL2 (In, e1, e2)))))
       | "like" ->
-          (match string_of_const e2 with
-          | None -> raise (Reject "LIKE pattern must be a string constant")
-          | Some p -> make_stateless (SL1 (Like p, e1)))
+          like false false e1 e2
       | "not like" ->
-          (match string_of_const e2 with
-          | None -> raise (Reject "LIKE pattern must be a string constant")
-          | Some p ->
-              make_stateless (SL1 (Not, make_stateless (SL1 (Like p, e1)))))
+          like true false e1 e2
+      | "cs-like" ->
+          like false true e1 e2
+      | "not cs-like" ->
+          like true true e1 e2
       | "starts" | "starts with" -> make_stateless (SL2 (StartsWith, e1, e2))
       | "ends" | "ends with" -> make_stateless (SL2 (EndsWith, e1, e2))
       | _ -> assert false in

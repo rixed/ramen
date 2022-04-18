@@ -32,7 +32,7 @@ let services = "v2" (* last: split sites/services *)
 let replays = "v2" (* Replace final_rb with more flexible recipient *)
 
 (* Format of the RamenSync keys, values and protocol messages *)
-let sync_conf = "v48" (* last: Added IMMEDIATELY lifespan *)
+let sync_conf = "v49" (* last: Added CASE SENSITIVE LIKE *)
 
 (* Code generation: sources, binaries, marshaled types... *)
-let codegen = "v107_"^ dessser_version ^"_"^ sync_conf (* last: Added IMMEDIATELY lifespan *)
+let codegen = "v108_"^ dessser_version ^"_"^ sync_conf (* last: Added CASE SENSITIVE LIKE *)

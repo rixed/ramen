@@ -73,7 +73,7 @@ let compile ?(star='*') ?(placeholder='?') ?(escape='\\') =
    * Note: split return the list of pieces _reverted_: *)
   let rec split prev s =
     if s = "" then prev else (
-      match search_forward split_re s 0 with
+      match Str.search_forward split_re s 0 with
       | exception Not_found ->
         String (unescape s) :: prev
       | o ->
@@ -138,44 +138,51 @@ let string_ends_with s e =
     loop (i+1) in
   loop 0
 
+let char_eq cs c1 c2 =
+  let to_lower = Char.lowercase_ascii in
+  if cs then c1 = c2 else to_lower c1 = to_lower c2
+
 (* Tells if c.[i..] matches s: *)
-let substring_match c i s =
+let substring_match cs c i s =
   if length s > length c - i then false
   else
     try
       for j = 0 to length s - 1 do
-        if s.[j] <> c.[i + j] then raise Exit
+        if not (char_eq cs s.[j] c.[i + j]) then raise Exit
       done ;
       true
-    with Exit -> false
+    with Exit ->
+      false
 
-let rec match_chunks c from len = function
+let rec match_chunks cs c from len = function
   | [] ->
       from >= len
   | [ AnyString m ] ->
       len - from >= m
   | AnyChar :: rest ->
       from < len &&
-      match_chunks c (from + 1) len rest
+      match_chunks cs c (from + 1) len rest
   | AnyString m :: String s :: rest as chunks ->
       assert (length s > 0) ;
-      (match Str.(search_forward (regexp_string s) c (from + m)) with
+      (* TODO: precompute that regexp in the String constructor *)
+      let re = Str.(if cs then regexp_string else regexp_string_case_fold) s in
+      (match Str.(search_forward re c (from + m)) with
       | exception Not_found -> false
       | i ->
         (* Either the substring at i is the one we wanted to match: *)
-        match_chunks c (i + length s) len rest ||
+        match_chunks cs c (i + length s) len rest ||
         (* or it is still part of the star and we should look further away: *)
-        match_chunks c (i + 1) len chunks)
+        match_chunks cs c (i + 1) len chunks)
   | String s :: rest ->
       assert (length s > 0) ;
-      substring_match c from s &&
-      match_chunks c (from + length s) len rest
+      substring_match cs c from s &&
+      match_chunks cs c (from + length s) len rest
   | AnyString _ :: AnyString _ :: _
   | AnyString _ :: AnyChar :: _ ->
       assert false
 
-let matches p c =
-  match_chunks c 0 (length c) p.chunks
+let matches ?(case_sensitive=false) p c =
+  match_chunks case_sensitive c 0 (length c) p.chunks
 
 (*$= matches & ~printer:string_of_bool
   true  (matches (compile "") "")
@@ -183,16 +190,22 @@ let matches p c =
   true  (matches (compile "*") "glop glop")
   false (matches (compile "\\*") "glop glop")
   true  (matches (compile "glop") "glop")
+  true  (matches (compile "gLOp") "glop")
+  false (matches ~case_sensitive:true (compile "gLOp") "glop")
   false (matches (compile "glop") "pas glop")
   false (matches (compile "glop") "glo")
   false (matches (compile "glop") "lop")
   false (matches (compile "glop") "")
   true  (matches (compile "glop*") "glop")
   true  (matches (compile "glop*") "glop glop")
+  true  (matches (compile "GLOP*") "glop glop")
+  false (matches ~case_sensitive:true (compile "GLOP*") "glop glop")
   false (matches (compile "glop\\*") "glop glop")
   false (matches (compile "glop*") "pas glop")
   false (matches (compile "*glop") "")
   true  (matches (compile "*glop") "glop")
+  true  (matches (compile "*gLOp") "glop")
+  false (matches ~case_sensitive:true (compile "*gLOp") "glop")
   false (matches (compile "\\*glop") "glop")
   false (matches (compile "*glop") "glop foo")
   true  (matches (compile "*glop") "pas glop")
@@ -201,6 +214,8 @@ let matches p c =
   false (matches (compile "*glop*") "foo")
   true  (matches (compile "*glop*") "glop")
   true  (matches (compile "*glop*") "pas glop")
+  true  (matches (compile "*gLOp*") "pas glop")
+  false (matches ~case_sensitive:true (compile "*gLOp*") "pas glop")
   true  (matches (compile "*glop*") "glop foo")
   true  (matches (compile "*glop*") "pas glop foo")
   true  (matches (compile "pas*glop*") "pas foo glop")
@@ -221,8 +236,8 @@ let matches p c =
   false (matches (compile "foo\\*") "foobar")
  *)
 
-let matches_substring p c o l =
-  match_chunks c o l p.chunks
+let matches_substring ?(case_sensitive=false) p c o l =
+  match_chunks case_sensitive c o l p.chunks
 
 (* Tells if the pattern has any kind of wildcard (`*` or `?`) *)
 let has_wildcard p =
