@@ -338,6 +338,12 @@ let run conf
     [ "target_config" ;
       "sources/"^ (src_path :> string) ^ "/info" ] in
   (* We need a short timeout when waiting for a new key in [get_key]: *)
-  start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
-    do_run ~while_ session program_name report_period on_site debug ?cwd params
-           replace)
+  on_exception
+    (fun _ ->
+      let ext = Filename.extension (program_name :> string) in
+      if ext <> "" then
+        !logger.info "Are you sure the source name has the extension %S?" ext)
+    (fun () ->
+      start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
+        do_run ~while_ session program_name report_period on_site debug ?cwd
+               params replace))

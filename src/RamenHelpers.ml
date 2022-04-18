@@ -65,12 +65,17 @@ let retry
   in
   loop 1
 
-let log_exceptions ~what f =
+let on_exception on_err f =
   try f ()
   with e ->
     let bt = Printexc.get_raw_backtrace () in
-    if e <> Exit then print_exception ~what e ;
+    on_err e ;
     Printexc.raise_with_backtrace e bt
+
+let log_exceptions ~what f =
+  on_exception
+    (fun e -> if e <> Exit then print_exception ~what e)
+    f
 
 let log_and_ignore_exceptions ?what f x =
   try f x
