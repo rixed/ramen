@@ -112,7 +112,7 @@ let make_right_justify vals width =
     else
       String.make (width - len) ' ' ^ s
 
-let make_dot_align vals width =
+let make_dot_align ~na vals width =
   (* It will be right aligned once padded to the right to align the dots
    * (or the end): *)
   let after_dot s = (* number of chars after the dot, including the dot *)
@@ -124,8 +124,10 @@ let make_dot_align vals width =
     ) 0 vals in
   let right_justify = make_right_justify [] width in
   fun s ->
-    let after = after_dot s in
-    let s = s ^ String.make (max_after - after) ' ' in
+    let s =
+      if s = na then s else
+      let after = after_dot s in
+      s ^ String.make (max_after - after) ' ' in
     right_justify s
 
 let print_subtable_pretty ~with_header ~na ~flush head lines =
@@ -141,7 +143,7 @@ let print_subtable_pretty ~with_header ~na ~flush head lines =
               | Some (ValInt _) ->
                   fmts.(i) <- Some make_right_justify ; has_unset
               | Some (ValFlt _) ->
-                  fmts.(i) <- Some make_dot_align ; has_unset
+                  fmts.(i) <- Some (make_dot_align ~na) ; has_unset
               | Some (ValDate _) ->
                   fmts.(i) <- Some make_left_justify ; has_unset
               | Some (ValDuration _) ->
