@@ -114,10 +114,13 @@ let avg_add (count, kahan_state) x =
 let avg_finalize (count, kahan_state) =
   Kahan.finalize kahan_state /. float_of_int count
 
+let nullable_float f =
+  if Float.is_nan f then None else Some f
+
 (* Perform a normal division but returns Null in case of nan: *)
 let div_or_null a b =
   let q = a /. b in
-  if Float.is_nan q then None else Some q
+  nullable_float q
 
 let sqrt_or_null a =
   if a < 0. then None else Some (sqrt a)
@@ -127,11 +130,11 @@ let null_if_nan2 op a b =
    * nullable NaN value. If it is not the case the compilation of the
    * generated OCaml code will fail when type checking an Option.get: *)
   let p = op a b in
-  if Float.is_nan p then None else Some p
+  nullable_float p
 
 let null_if_nan1 op a =
   let p = op a in
-  if Float.is_nan p then None else Some p
+  nullable_float p
 
 (* Multiply a string by an integer *)
 let string_repeat s n =
