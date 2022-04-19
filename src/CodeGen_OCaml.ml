@@ -2462,6 +2462,22 @@ and emit_expr_ ~env ~context ~opc oc expr =
       finalize_state ~env ~opc ~nullable n my_state
         "CodeGenLib.Distinct.finalize" [] oc []
   | InitState,
+    Stateful { operation = SF2 (Derive, _, _) ; _ },
+    _ ->
+      wrap_nullable ~nullable oc (fun oc ->
+        String.print oc "CodeGenLib.Derive.init")
+  | UpdateState,
+    Stateful { skip_nulls = n ; operation = SF2 (Derive, e, t) ; _ },
+    _ ->
+      update_state ~env ~opc ~nullable n my_state [ e ; t ]
+        "CodeGenLib.Derive.add" oc
+        [ ConvTo TFloat, PassAsNull ; ConvTo TFloat, PropagateNull ]
+  | Finalize,
+    Stateful { skip_nulls = n ; operation = SF2 (Derive, _, _) ; _ },
+    TFloat ->
+      finalize_state ~env ~opc ~nullable ~impl_return_nullable:true n my_state
+        "CodeGenLib.Derive.finalize" [] oc []
+  | InitState,
     Stateful { operation = SF3 (Hysteresis, _, _, _) ; _ },
     TBool ->
       wrap_nullable ~nullable oc (fun oc ->
@@ -4193,6 +4209,8 @@ let otype_of_state e =
       Printf.sprintf2 "%a CodeGenLib.Distinct.state%s"
         (print_expr_typ ~skip_nulls) e
         nullable
+  | Stateful { operation = SF2 (Derive, _, _) ; _ } ->
+      Printf.sprintf2 "CodeGenLib.Derive.state%s" nullable
   | Stateful { operation = SF1 (AggrAvg, _) ; _ } ->
       "(int * (float * float))"^ nullable
   | Stateful { operation = SF1 ((AggrFirst|AggrLast|AggrMin|AggrMax), _) ; _ } ->

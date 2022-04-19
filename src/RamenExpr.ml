@@ -488,6 +488,9 @@ and print_text ?(max_depth=max_int) with_types oc text =
                operation = SF1 (Distinct, e1) } ->
       Printf.fprintf oc "DISTINCT%s %a" (st g n) p e1
   | Stateful { lifespan = g ; skip_nulls = n ;
+               operation = SF2 (Derive, e1, e2) } ->
+      Printf.fprintf oc "DERIVE%s(%a, %a)" (st g n) p e1 p e2
+  | Stateful { lifespan = g ; skip_nulls = n ;
                operation = SF2 (ExpSmooth, e1, e2) } ->
       Printf.fprintf oc "SMOOTH%s(%a, %a)" (st g n) p e1 p e2
   | Stateful { lifespan = g ; skip_nulls = n ;
@@ -1469,6 +1472,10 @@ struct
          make_stateful g n (SF4 (Remember false, fpr, default_start, dur, e))) |<|
       (afun1_sf "distinct" >>: fun ((g, n), e) ->
          make_stateful g n (SF1 (Distinct, e))) |<|
+      (afun2_sf "derive" >>: fun ((g, n), e, t) ->
+         make_stateful g n (SF2 (Derive, e, t))) |<|
+      (afun1_sf "derive" >>: fun ((g, n), e) ->
+         make_stateful g n (SF2 (Derive, e, default_start))) |<|
       (afun3_sf "hysteresis" >>: fun ((g, n), value, accept, max) ->
          make_stateful g n (SF3 (Hysteresis, value, accept, max))) |<|
       (afun4_sf "histogram" >>:

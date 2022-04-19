@@ -256,7 +256,10 @@
           | Sample
           // Nullifies all values but a few, based on number of inputs, which must
           // be const:
-          | OneOutOf ]; this; this)
+          | OneOutOf
+          // Trivial derivative since one can smooth independently.
+          // Initial value is NULL.
+          | Derive ]; this; this)
         | SF3 (
           // If the current time is t, the seasonal, moving average of period p on k
           // seasons is the average of v(t-p), v(t-2p), ... v(t-kp). Note the absence

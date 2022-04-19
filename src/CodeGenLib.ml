@@ -440,6 +440,32 @@ module Distinct = struct
   let finalize st = st.last_was_distinct
 end
 
+module Derive = struct
+  (* Return the last derivative (or NULL) *)
+  type state =
+    { has_last : bool ; (* false -> last_val and last_time unset *)
+      last_val : float ;
+      last_time : float ;
+      last_deriv : float option (* remembered between add and finalize *) }
+
+  let init =
+    { has_last = false ; last_val = 0. ; last_time = 0. ; last_deriv = None }
+
+  let add st x_opt t =
+    match x_opt with
+    | None ->
+        init
+    | Some x ->
+        if not st.has_last then
+          { has_last = true ; last_val = x ; last_time = t ; last_deriv = None }
+        else
+          let dx = x -. st.last_val and dt = t -. st.last_time in
+          let d = nullable_float (dx /. dt) in
+          { has_last = true ; last_val = x ; last_time = t ; last_deriv = d }
+
+  let finalize st = st.last_deriv
+end
+
 module Top = struct
   (* Heavy Hitters wrappers: *)
 
