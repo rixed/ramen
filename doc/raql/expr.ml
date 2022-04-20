@@ -299,7 +299,7 @@ let exprs =
       [ [ cdata "STRING -> FLOAT?" ] ]
       (* Divide by 24 so that this does not depend on the time zone: *)
       [ "(PARSE_TIME \"1976-01-28 12:00:00.9\") // 24h", "2218" ;
-        "(PARSE_TIME \"12/25/2005\") // 24h", "13141" ] ;
+        "(PARSE_TIME \"12/25/2005\") // 24h IN [13141; 13142]", "true" ] ;
     make "chr" ~sections:Section.[types;string]
       "ASCII character of a given code"
       [ p [ cdata "Convert the given integer (must be below 255) into the \
