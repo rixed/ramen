@@ -143,6 +143,9 @@ $info_pages = [
       'blog/2022-02.html' => [
         'date' => 'February 2022',
         'title' => 'What happened those last two years?' ],
+      'blog/2022-04.html' => [
+        'date' => 'April 2022',
+        'title' => 'Severing the umbilical cord' ],
     ] ],
 ];
 ?>
