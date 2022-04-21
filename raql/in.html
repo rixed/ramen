@@ -2,7 +2,7 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>in (RaQL expression)</title>
-</head>
+<meta charset="utf-8"/></head>
 <body><h1>Membership test</h1>
 <h2>Syntax</h2>
 <p>…expr… IN …expr…</p>
@@ -15,14 +15,20 @@
 <p>Test if the first operand is a member of the second one.</p>
 <p>The second operand can be either an array or vector, a STRING (in which case the first operand must be a string and s substring search will be performed) or a CIDR (in which case the first operand must be an IP address).</p>
 <h2>Examples</h2>
-<p><b>SELECT 42 IN [1; 2; 3]…</b>
-</p>
-<p>  FALSE</p>
-<p><b>SELECT &quot;oo&quot; IN &quot;foobar&quot;…</b>
-</p>
-<p>  TRUE</p>
-<p><b>SELECT 192.168.10.21 IN 192.168.00.0/16…</b>
-</p>
-<p>  TRUE</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>42 IN [1; 2; 3]</td>
+<td>FALSE</td>
+</tr>
+<tr><td>&quot;oo&quot; IN &quot;foobar&quot;</td>
+<td>TRUE</td>
+</tr>
+<tr><td>192.168.10.21 IN 192.168.00.0/16</td>
+<td>TRUE</td>
+</tr>
+</tbody>
+</table>
 </body>
 </html>

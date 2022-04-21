@@ -2,7 +2,7 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>comparison (RaQL expression)</title>
-</head>
+<meta charset="utf-8"/></head>
 <body><h1>Comparison operators</h1>
 <h2>Syntax</h2>
 <p>…expr… &gt;= …expr…</p>
@@ -13,21 +13,27 @@
 <p>Non-strict comparison operators.</p>
 <p>Values of any type can be compared, but both values must have the same type.</p>
 <h2>Examples</h2>
-<p><b>SELECT 1 &gt;= 0…</b>
-</p>
-<p>  TRUE</p>
-<p><b>SELECT 1 &gt;= 1…</b>
-</p>
-<p>  TRUE</p>
-<p><b>SELECT TRUE &gt;= FALSE…</b>
-</p>
-<p>  TRUE</p>
-<p><b>SELECT &quot;foo&quot; &lt;= &quot;bar&quot;…</b>
-</p>
-<p>  FALSE</p>
-<p><b>SELECT (5; 1) &lt;= (5; 2)…</b>
-</p>
-<p>  TRUE</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>1 &gt;= 0</td>
+<td>TRUE</td>
+</tr>
+<tr><td>1 &gt;= 1</td>
+<td>TRUE</td>
+</tr>
+<tr><td>TRUE &gt;= FALSE</td>
+<td>TRUE</td>
+</tr>
+<tr><td>&quot;foo&quot; &lt;= &quot;bar&quot;</td>
+<td>FALSE</td>
+</tr>
+<tr><td>(5; 1) &lt;= (5; 2)</td>
+<td>TRUE</td>
+</tr>
+</tbody>
+</table>
 <h2>See Also</h2>
 <a href="equality.html">Equality test</a>
 <a href="strict-comparison.html">Comparison operators</a>

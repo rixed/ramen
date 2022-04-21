@@ -2,7 +2,7 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>peek (RaQL expression)</title>
-</head>
+<meta charset="utf-8"/></head>
 <body><h1>Read some bytes into a wider integer</h1>
 <h2>Syntax</h2>
 <p>PEEK …int-type… [[BIG | LITTLE] ENDIAN] …string…</p>
@@ -18,23 +18,29 @@
 <h2>Limitations</h2>
 <p>Some integer widths are not yet implemented.</p>
 <h2>Examples</h2>
-<p><b>SELECT PEEK U32 LITTLE ENDIAN &quot;\002\001\000\000&quot;…</b>
-</p>
-<p>  258</p>
-<p><b>SELECT PEEK U32 LITTLE ENDIAN &quot;\002\001&quot;…</b>
-</p>
-<p>  NULL</p>
-<p><b>SELECT PEEK I16 BIG ENDIAN &quot;\002\001&quot;…</b>
-</p>
-<p>  513</p>
-<p><b>SELECT PEEK U8 &quot;\004\003\002\001&quot;…</b>
-</p>
-<p>  4</p>
-<p><b>SELECT PEEK U32 LITTLE ENDIAN [0xC0u8; 0xA8u8; 0x00u8; 0x01u8]…</b>
-</p>
-<p>  16820416</p>
-<p><b>SELECT PEEK U32 BIG ENDIAN CAST([0xC0; 0xA8; 0x00; 0x01] AS U8[4])…</b>
-</p>
-<p>  3232235521</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>PEEK U32 LITTLE ENDIAN &quot;\002\001\000\000&quot;</td>
+<td>258</td>
+</tr>
+<tr><td>PEEK U32 LITTLE ENDIAN &quot;\002\001&quot;</td>
+<td>NULL</td>
+</tr>
+<tr><td>PEEK I16 BIG ENDIAN &quot;\002\001&quot;</td>
+<td>513</td>
+</tr>
+<tr><td>PEEK U8 &quot;\004\003\002\001&quot;</td>
+<td>4</td>
+</tr>
+<tr><td>PEEK U32 LITTLE ENDIAN [0xC0u8; 0xA8u8; 0x00u8; 0x01u8]</td>
+<td>16820416</td>
+</tr>
+<tr><td>PEEK U32 BIG ENDIAN CAST([0xC0; 0xA8; 0x00; 0x01] AS U8[4])</td>
+<td>3232235521</td>
+</tr>
+</tbody>
+</table>
 </body>
 </html>

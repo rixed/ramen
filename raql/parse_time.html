@@ -2,7 +2,7 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>parse_time (RaQL expression)</title>
-</head>
+<meta charset="utf-8"/></head>
 <body><h1>Format a date</h1>
 <h2>Syntax</h2>
 <p>PARSE_TIME …string-expr…</p>
@@ -13,13 +13,19 @@
 <p>Beware that PARSE_TIME assumes all dates are in the local time zone.</p>
 <p>The result is always nullable.</p>
 <h2>Examples</h2>
-<p><b>SELECT (PARSE_TIME &quot;1976-01-28 12:00:00.9&quot;) // 24h…</b>
-</p>
-<p>  2218</p>
-<p><b>SELECT (PARSE_TIME &quot;12/25/2005&quot;) // 24h…</b>
-</p>
-<p>  13141</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>(PARSE_TIME &quot;1976-01-28 12:00:00.9&quot;) // 24h</td>
+<td>2218</td>
+</tr>
+<tr><td>(PARSE_TIME &quot;12/25/2005&quot;) // 24h</td>
+<td>13141</td>
+</tr>
+</tbody>
+</table>
 <h2>See Also</h2>
-<a href="format_time.html">format a timestamp as a date and time</a>
+<a href="format_time.html">Format a timestamp as a date and time</a>
 </body>
 </html>

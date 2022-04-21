@@ -2,8 +2,8 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>format_time (RaQL expression)</title>
-</head>
-<body><h1>format a timestamp as a date and time</h1>
+<meta charset="utf-8"/></head>
+<body><h1>Format a timestamp as a date and time</h1>
 <h2>Syntax</h2>
 <p>FORMAT_TIME(…string-expr…, …num-expr…)</p>
 <h2>Typing</h2>
@@ -25,12 +25,18 @@
 <li>%u: day of week (as a number, 0 being Sunday)</li>
 </ul>
 <h2>Examples</h2>
-<p><b>SELECT FORMAT_TIME(&quot;Sunday was day #%u&quot;, 1645354800)…</b>
-</p>
-<p>  &quot;Sunday was day #0&quot;</p>
-<p><b>SELECT FORMAT_TIME(&quot;%Y-%m-%dT%H:%M:%S&quot;, 1645354800)…</b>
-</p>
-<p>  &quot;2022-02-20T12:00:00.00&quot;</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>FORMAT_TIME(&quot;Sunday was day #%u&quot;, 1645354800)</td>
+<td>&quot;Sunday was day #0&quot;</td>
+</tr>
+<tr><td>FORMAT_TIME(&quot;%Y-%m-%dT%H:%M:%S&quot;, 1645354800)</td>
+<td>&quot;2022-02-20T12:00:00.00&quot;</td>
+</tr>
+</tbody>
+</table>
 <h2>See Also</h2>
 <a href="parse_time.html">Format a date</a>
 </body>

@@ -2,7 +2,7 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>like (RaQL expression)</title>
-</head>
+<meta charset="utf-8"/></head>
 <body><h1>Comparing strings with patterns</h1>
 <h2>Syntax</h2>
 <p>…string-expr… LIKE &quot;pattern&quot;</p>
@@ -17,27 +17,39 @@
 <p>The result is true if the left string matches the pattern, or false otherwise.</p>
 <p>Note that the pattern cannot be any string expression but must be a string constant.</p>
 <h2>Examples</h2>
-<p><b>SELECT &quot;foobar&quot; LIKE &quot;foo%&quot;…</b>
-</p>
-<p>  true</p>
-<p><b>SELECT &quot;foobar&quot; LIKE &quot;foo\\%&quot;…</b>
-</p>
-<p>  false</p>
-<p><b>SELECT &quot;foobar&quot; LIKE &quot;f%r&quot;…</b>
-</p>
-<p>  true</p>
-<p><b>SELECT &quot;foobar&quot; LIKE &quot;f__b_r&quot;…</b>
-</p>
-<p>  true</p>
-<p><b>SELECT &quot;foobar&quot; LIKE &quot;fo_b%&quot;…</b>
-</p>
-<p>  true</p>
-<p><b>SELECT &quot;foobar&quot; LIKE &quot;%baz&quot;…</b>
-</p>
-<p>  false</p>
-<p><b>SELECT &quot;foobar&quot; LIKE &quot;&quot;…</b>
-</p>
-<p>  false</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>&quot;foobar&quot; LIKE &quot;foo%&quot;</td>
+<td>true</td>
+</tr>
+<tr><td>&quot;foobar&quot; NOT LIKE &quot;foo&quot;</td>
+<td>true</td>
+</tr>
+<tr><td>&quot;foobar&quot; LIKE &quot;foo\\%&quot;</td>
+<td>false</td>
+</tr>
+<tr><td>&quot;foobar&quot; LIKE &quot;f%r&quot;</td>
+<td>true</td>
+</tr>
+<tr><td>&quot;foobar&quot; NOT LIKE &quot;%oo%&quot;</td>
+<td>false</td>
+</tr>
+<tr><td>&quot;foobar&quot; LIKE &quot;f__b_r&quot;</td>
+<td>true</td>
+</tr>
+<tr><td>&quot;foobar&quot; LIKE &quot;fo_b%&quot;</td>
+<td>true</td>
+</tr>
+<tr><td>&quot;foobar&quot; LIKE &quot;%baz&quot;</td>
+<td>false</td>
+</tr>
+<tr><td>&quot;foobar&quot; LIKE &quot;&quot;</td>
+<td>false</td>
+</tr>
+</tbody>
+</table>
 <h2>See Also</h2>
 <a href="endswith.html">String-ends-with operator</a>
 <a href="startswith.html">String-starts-with operator</a>

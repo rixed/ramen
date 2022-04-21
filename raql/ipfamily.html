@@ -2,10 +2,11 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>ipfamily (RaQL expression)</title>
-</head>
+<meta charset="utf-8"/></head>
 <body><h1>Returns the version of an IP</h1>
 <h2>Syntax</h2>
 <p>IPFAMILY …ip-expr…</p>
+<p>IP_FAMILY …ip-expr…</p>
 <h2>Typing</h2>
 <p>IPv4 -&gt; unsigned-int</p>
 <p>IPv6 -&gt; unsigned-int</p>
@@ -13,12 +14,18 @@
 <h2>Description</h2>
 <p>Returns either 4 if the IP is an IPv4 or 6 if the IP is an IPv6.</p>
 <h2>Examples</h2>
-<p><b>SELECT IPFAMILY 135.181.17.92…</b>
-</p>
-<p>  4</p>
-<p><b>SELECT IPFAMILY 2a01:4f9:4b:55b0::2…</b>
-</p>
-<p>  6</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>IPFAMILY 135.181.17.92</td>
+<td>4</td>
+</tr>
+<tr><td>IPFAMILY 2a01:4f9:4b:55b0::2</td>
+<td>6</td>
+</tr>
+</tbody>
+</table>
 <h2>See Also</h2>
 <a href="countrycode.html">Country code of an IP</a>
 </body>

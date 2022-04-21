@@ -2,19 +2,28 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>log10 (RaQL expression)</title>
-</head>
+<meta charset="utf-8"/></head>
 <body><h1>Decimal logarithm</h1>
 <h2>Syntax</h2>
 <p>LOG10 …numeric-expr…</p>
 <h2>Typing</h2>
-<p>numeric -&gt; FLOAT</p>
+<p>numeric -&gt; FLOAT?</p>
 <h2>Description</h2>
 <p>Compute the decimal logarithm of the operand.</p>
-<p>Returns NaN on negative operands.</p>
+<p>Returns NULL on negative operands.</p>
 <h2>Examples</h2>
-<p><b>SELECT LOG10 100…</b>
-</p>
-<p>  2</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>LOG10 100</td>
+<td>2</td>
+</tr>
+<tr><td>LOG10(-1)</td>
+<td>NULL</td>
+</tr>
+</tbody>
+</table>
 <h2>See Also</h2>
 <a href="exp.html">Exponential function</a>
 <a href="log.html">Natural logarithm</a>

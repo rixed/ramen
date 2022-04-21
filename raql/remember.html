@@ -2,7 +2,7 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>remember (RaQL expression)</title>
-</head>
+<meta charset="utf-8"/></head>
 <body><h1>Remember values for some time</h1>
 <p>this is an aggregate function. As such, it accepts a single operand which can wither be a scalar, in which case it will operate in turn on each item of the group, or an array or a vector in which case it will operate on each value in sequence and return the result (in practice, this process is delayed until the group is submitted for performance reasons)</p>
 <p>User can choose to skip over NULL values or to include them in the computation with one of the modifiers <em>SKIP NULLS</em>
@@ -23,9 +23,10 @@
 <h2>Description</h2>
 <p>Uses a series of Bloom-filters to remember any value for a given duration.</p>
 <p>Returns TRUE if the value have been already encountered up to a configurable time <em>D</em>
- in the past (3rd operand).</p>
+ in the past (second operand).</p>
 <p>The rate of false positive is provided (as the first operand) so that the trade-off between memory consumption and accuracy is easy to configure.</p>
-<p>The 4th and last operand is the value to be remembered.</p>
+<p>The third operand is the value to be remembered.</p>
+<p>Optionally, a fourth operand can set explicitly the time to be used as current, overriding the event-time.</p>
 <p>When a new value is remembered, the <b>REMEMBER</b>
  function will refresh its memory so that this value will be remembered for the next <em>D</em>
  duration, whereas the <b>RECALL</b>
@@ -33,6 +34,6 @@
  after it&apos;s first encountered.</p>
 <h2>See Also</h2>
 <a href="count.html">Count</a>
-<a href="distinct.html">Tells if each item is distinct</a>
+<a href="distinct.html">Tells if an item is new</a>
 </body>
 </html>

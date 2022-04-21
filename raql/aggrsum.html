@@ -2,7 +2,7 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>aggrsum (RaQL expression)</title>
-</head>
+<meta charset="utf-8"/></head>
 <body><h1>Sum (aggregate)</h1>
 <p>this is an aggregate function. As such, it accepts a single operand which can wither be a scalar, in which case it will operate in turn on each item of the group, or an array or a vector in which case it will operate on each value in sequence and return the result (in practice, this process is delayed until the group is submitted for performance reasons)</p>
 <p>User can choose to skip over NULL values or to include them in the computation with one of the modifiers <em>SKIP NULLS</em>
@@ -22,15 +22,21 @@
 <h2>Description</h2>
 <p>Compute the sum of the values.</p>
 <h2>Examples</h2>
-<p><b>SELECT SUM [ 3; 6; 2; 4; 5 ]…</b>
-</p>
-<p>  20</p>
-<p><b>SELECT SUM SKIP NULLS [ u32?(3) ; NULL ]…</b>
-</p>
-<p>  3</p>
-<p><b>SELECT SUM KEEP NULLS [ u32?(3) ; NULL ]…</b>
-</p>
-<p>  NULL</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>SUM [ 3; 6; 2; 4; 5 ]</td>
+<td>20</td>
+</tr>
+<tr><td>SUM SKIP NULLS [ u32?(3) ; NULL ]</td>
+<td>3</td>
+</tr>
+<tr><td>SUM KEEP NULLS [ u32?(3) ; NULL ]</td>
+<td>NULL</td>
+</tr>
+</tbody>
+</table>
 <h2>See Also</h2>
 <a href="aggravg.html">Average (aggregate)</a>
 </body>

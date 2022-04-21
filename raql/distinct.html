@@ -2,8 +2,8 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>distinct (RaQL expression)</title>
-</head>
-<body><h1>Tells if each item is distinct</h1>
+<meta charset="utf-8"/></head>
+<body><h1>Tells if an item is new</h1>
 <p>this is an aggregate function. As such, it accepts a single operand which can wither be a scalar, in which case it will operate in turn on each item of the group, or an array or a vector in which case it will operate on each value in sequence and return the result (in practice, this process is delayed until the group is submitted for performance reasons)</p>
 <p>User can choose to skip over NULL values or to include them in the computation with one of the modifiers <em>SKIP NULLS</em>
  to skip NULL values (the default) and <em>KEEP NULLS</em>
@@ -21,18 +21,26 @@
 <p>t sequence -&gt; BOOL</p>
 <h2>Description</h2>
 <p>Accurately tells if the same item was already met in the aggregate.</p>
+<p>Can be used in combination with <b>COUNT</b>
+ to count how many distinct items are present in the aggregate.</p>
 <p>See <b>REMEMBER</b>
  for a safer approximation of this.</p>
 <h2>Examples</h2>
-<p><b>SELECT DISTINCT [ 1; 2; 3 ]…</b>
-</p>
-<p>  TRUE</p>
-<p><b>SELECT DISTINCT [ 1; 2; 1 ]…</b>
-</p>
-<p>  FALSE</p>
-<p><b>SELECT COUNT DISTINCT [ 1; 2; 1 ]…</b>
-</p>
-<p>  0</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>DISTINCT [ 1; 2; 3 ]</td>
+<td>TRUE</td>
+</tr>
+<tr><td>DISTINCT [ 1; 2; 1 ]</td>
+<td>FALSE</td>
+</tr>
+<tr><td>COUNT DISTINCT [ 1; 2; 1 ]</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
 <h2>See Also</h2>
 <a href="count.html">Count</a>
 <a href="remember.html">Remember values for some time</a>

@@ -2,10 +2,11 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>countrycode (RaQL expression)</title>
-</head>
+<meta charset="utf-8"/></head>
 <body><h1>Country code of an IP</h1>
 <h2>Syntax</h2>
 <p>COUNTRYCODE …ip-expr…</p>
+<p>COUNTRY_CODE …ip-expr…</p>
 <h2>Typing</h2>
 <p>IPv4 -&gt; STRING?</p>
 <p>IPv6 -&gt; STRING?</p>
@@ -16,12 +17,18 @@
 <p>Given the embedded database might change from one version of Ramen to the next, this function is not deterministic across upgrades.</p>
 <p>This function should be only used as a hint.</p>
 <h2>Examples</h2>
-<p><b>SELECT COUNTRYCODE 5.182.236.0…</b>
-</p>
-<p>  &quot;AT&quot;</p>
-<p><b>SELECT COUNTRYCODE 2a00:1450:400f:804::2004…</b>
-</p>
-<p>  &quot;IE&quot;</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>COUNTRYCODE 5.182.236.0</td>
+<td>&quot;AT&quot;</td>
+</tr>
+<tr><td>COUNTRYCODE 2a00:1450:400f:804::2004</td>
+<td>&quot;IE&quot;</td>
+</tr>
+</tbody>
+</table>
 <h2>See Also</h2>
 <a href="ipfamily.html">Returns the version of an IP</a>
 </body>

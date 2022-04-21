@@ -50,7 +50,7 @@
       <a class="" href="glossary.html">Glossary</a>
         </li>
           <li>
-      <a class="is-current" href="blog.html">Blog posts</a>
+      <a class="" href="blog.html">Blog posts</a>
           <ul>
               <li><a class="" href="blog/2018-12.html">One-liners</a></li>
               <li><a class="" href="blog/2019-01.html">Projection of deep compound types</a></li>
@@ -68,23 +68,20 @@
 </div>
 
 <div id="page">
-<h1>Blog posts</h1>
 
-<p>Some blog posts on specific features as they are being worked on. Might helps understand the trade offs, design decisions and blunders.</p>
+<h1>Severing the umbilical cord</h1>
+<p class="date">2022-04-18</p>
 
-<ul>
-<li><a href="blog/2018-12.html">December 2018</a>: One-liners</li>
-<li><a href="blog/2019-01.html">January 2019</a>: Projection of deep compound types</li>
-<li><a href="blog/2019-02.html">February 2019</a>: Benchmark against KSQL</li>
-<li><a href="blog/2019-03.html">Mars 2019</a>: One degree of scale</li>
-<li><a href="blog/2019-05.html">May 2019</a>: Who need two different message queues?</li>
-<li><a href="blog/2019-07.html">July 2019</a>: Does C++ devs worth more than web devs?</li>
-<li><a href="blog/2019-12.html">December 2019</a>: Walk through deep field selection</li>
-<li><a href="blog/2019-12_.html">December 2019</a>: Walk through replays</li>
-<li><a href="blog/2022-02.html">February 2022</a>: What happened those last two years?</li>
-<li><a href="blog/2022-04.html">April 2022</a>: Severing the umbilical cord</li>
-</ul>
+<p>Despite Ramen being open source, it has always been developed as a component of a commercial project (itself not open source). Initially, it was an experiment to replace a product hinging on a database with one designed around a stream processor.</p>
 
-</div>
-</body>
-</html>
+<p>Shortly thereafter though, the original company was acquired by a much larger one, and in the aftermath of that acquisition the original product was merged into a larger one. The non-anticipated stream-processor experiment disappeared from the official roadmap, and some pieces of Ramen were put to good use to implement some parts of the alerting pipeline.</p>
+
+<p>Once the dust had settled down I decided that I would try to convince this much larger corporation to reconsider its roadmap and to use either Ramen, or Ramen inspired techniques, to make its monitoring product more flexible. Therefore March and April were largely devoted to give presentations and fix the most visible bugs.</p>
+
+<p>This effort was unsuccessful and it eventually became evident that pivoting toward a stream processor was never going to happen.</p>
+
+<p>Despite Ramen development being still funded, this situation was not satisfying for anyone, and I therefore decided to quit that position and be free to search for other use cases that would be a better fit for Ramen; or to rethink things more thoroughly. My former employer, in exchange for support, agreed to let Ramen go free.</p>
+
+<p>I'm therefore looking for a new industrial user/backer. Ideally, to benefit from Ramen in this present stage this new user's monitoring/alerting must still be in its infancy; Or it must suffer either from lack of flexibility or performance, or be merely too expensive.</p>
+
+<p>To be honest, unless an interesting beta tester emerges in the following months Ramen as a comprehensive monitoring solution might never happen.</p>

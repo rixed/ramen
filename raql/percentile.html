@@ -2,7 +2,7 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>percentile (RaQL expression)</title>
-</head>
+<meta charset="utf-8"/></head>
 <body><h1>Compute percentiles</h1>
 <h2>Syntax</h2>
 <p>…num-const…th PERCENTILE …expr…[ …num1…; …num2; … ] PERCENTILE …expr…</p>
@@ -16,11 +16,17 @@
 <p>When several percentiles are requested, the return value is a vector of the corresponding requested percentiles. If only one percentile was asked for, then it is returned directly.</p>
 <p>Note that if you have several percentiles to compute it is much more efficient to make use of the vector syntax to compute all in one go than to perform several individual percentile operations.</p>
 <h2>Examples</h2>
-<p><b>SELECT 90th PERCENTILE [3; 5; 0; 2; 7; 8; 1; 9; 6; 10; 4]…</b>
-</p>
-<p>  9</p>
-<p><b>SELECT [10th; 90th] PERCENTILE [3; 5; 0; 2; 7; 8; 1; 9; 6; 10; 4]…</b>
-</p>
-<p>  [1; 9]</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>90th PERCENTILE [3; 5; 0; 2; 7; 8; 1; 9; 6; 10; 4]</td>
+<td>9</td>
+</tr>
+<tr><td>[10th; 90th] PERCENTILE [3; 5; 0; 2; 7; 8; 1; 9; 6; 10; 4]</td>
+<td>[1; 9]</td>
+</tr>
+</tbody>
+</table>
 </body>
 </html>

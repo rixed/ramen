@@ -2,7 +2,7 @@
           PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
           "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en"><head><title>reldiff (RaQL expression)</title>
-</head>
+<meta charset="utf-8"/></head>
 <body><h1>Relative difference</h1>
 <h2>Syntax</h2>
 <p>RELDIFF(…num-expr…, …num-expr…)</p>
@@ -13,21 +13,27 @@
 <p>MIN(ABS(A-B), MAX(A, B)) / MAX(ABS(A-B), MAX(A, B))</p>
 <p>Returns 0 when A = B.</p>
 <h2>Examples</h2>
-<p><b>SELECT RELDIFF(1, 1)…</b>
-</p>
-<p>  0</p>
-<p><b>SELECT RELDIFF(10, 9)…</b>
-</p>
-<p>  0.1</p>
-<p><b>SELECT RELDIFF(9, 10)…</b>
-</p>
-<p>  0.1</p>
-<p><b>SELECT RELDIFF(-9, -10)…</b>
-</p>
-<p>  0.1</p>
-<p><b>SELECT RELDIFF(1, -10)…</b>
-</p>
-<p>  1.1</p>
+<table><thead><tr><th>expression</th>
+<th>evaluates to</th>
+</tr>
+</thead>
+<tbody><tr><td>RELDIFF(1, 1)</td>
+<td>0</td>
+</tr>
+<tr><td>RELDIFF(10, 9)</td>
+<td>0.1</td>
+</tr>
+<tr><td>RELDIFF(9, 10)</td>
+<td>0.1</td>
+</tr>
+<tr><td>RELDIFF(-9, -10)</td>
+<td>0.1</td>
+</tr>
+<tr><td>RELDIFF(1, -10)</td>
+<td>1.1</td>
+</tr>
+</tbody>
+</table>
 <h2>See Also</h2>
 <a href="sub.html">Subtraction</a>
 </body>
