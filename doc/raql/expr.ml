@@ -661,8 +661,8 @@ let exprs =
       [ [ cdata "STRING -> num -> STRING" ] ]
       [ "FORMAT_TIME(\"Sunday was day #%u\", 1645354800)",
           "\"Sunday was day #0\"" ;
-        "FORMAT_TIME(\"%Y-%m-%dT%H:%M:%S\", 1645354800)",
-          "\"2022-02-20T12:00:00.00\"" ] ;
+        "FORMAT_TIME(\"%Y-%m-%d\", 1645354800)",
+          "\"2022-02-20\"" ] ;
     make "index" ~sections:Section.[string]
       "Find the first or last occurrence of a character"
       [ p [ cdata "Returns the position of the first (or last) occurrence of \
