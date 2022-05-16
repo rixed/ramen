@@ -403,47 +403,57 @@ let emit_assert_let ?name ?var oc v f =
  * FIXME: this is hardcoded for IPs and CIDRs, but should be generalized for
  * any sum type, be it user defined or not!
  * For integers, it means that width is <= and sign is also <=. *)
-let emit_le id1 oc id2 =
-  Printf.fprintf oc
-    "(or (= %s %s) \
-         (and ((_ is int) %s) \
-              ((_ is int) %s) \
-              (< (bv2nat (int-bytes %s)) \
-                 (bv2nat (int-bytes %s))) \
-              (or (int-signed %s) (not (int-signed %s)))) \
-         (and (= float %s) \
-              ((_ is int) %s) \
-              (not (= (int-bytes %s) #b1111))) \
-         (and (= %s %s) \
-              (or (= %s %s) (= %s %s))) \
-         (and (= %s %s) \
-              (or (= %s %s) (= %s %s))))"
-      id1 id2
-      id2
-        id1
+let emit_le ?(is_integer=false) id1 oc id2 =
+  if is_integer then
+    Printf.fprintf oc
+      "(or (= %s %s) \
+           (and (< (bv2nat (int-bytes %s)) \
+                   (bv2nat (int-bytes %s))) \
+                (or (int-signed %s) (not (int-signed %s)))))"
         id1 id2
-        id2 id1
-      id2
-        id1 id1
-      t_ip id2
-        t_ip4 id1 t_ip6 id1
-      t_cidr id2
-        t_cidr4 id1 t_cidr6 id1
+          id1 id2
+          id2 id1
+  else
+    Printf.fprintf oc
+      "(or (= %s %s) \
+           (and ((_ is int) %s) \
+                ((_ is int) %s) \
+                (< (bv2nat (int-bytes %s)) \
+                   (bv2nat (int-bytes %s))) \
+                (or (int-signed %s) (not (int-signed %s)))) \
+           (and (= float %s) \
+                ((_ is int) %s) \
+                (not (= (int-bytes %s) #b1111))) \
+           (and (= %s %s) \
+                (or (= %s %s) (= %s %s))) \
+           (and (= %s %s) \
+                (or (= %s %s) (= %s %s))))"
+        id1 id2
+        id2
+          id1
+          id1 id2
+          id2 id1
+        id2
+          id1 id1
+        t_ip id2
+          t_ip4 id1 t_ip6 id1
+        t_cidr id2
+          t_cidr4 id1 t_cidr6 id1
 
-let emit_assert_le ?name id1 oc id2 =
-  emit_assert ?name oc (fun oc -> emit_le id1 oc id2)
+let emit_assert_le ?name ?is_integer id1 oc id2 =
+  emit_assert ?name oc (fun oc -> emit_le ?is_integer id1 oc id2)
 
 (* id = the largest type from id1 and id2: *)
-let emit_max id id1 oc id2 =
+let emit_max ?is_integer id id1 oc id2 =
   Printf.fprintf oc
     "(ite %a (= %s %s) \
              (= %s %s))"
-    (emit_le id1) id2
+    (emit_le ?is_integer id1) id2
     id id2
     id id1
 
-let emit_assert_max ?name id oc id1 id2 =
-  emit_assert ?name oc (fun oc -> emit_max id id1 oc id2)
+let emit_assert_max ?name ?is_integer id oc id1 id2 =
+  emit_assert ?name oc (fun oc -> emit_max ?is_integer id id1 oc id2)
 
 (* Named constraint used when an argument type is constrained: *)
 let emit_assert_nullable oc e =
@@ -864,7 +874,8 @@ let emit_constraints tuple_sizes records field_names
           emit_assert ~name oc (fun oc ->
             Printf.fprintf oc "(and %a %a)"
               (emit_eq (n_of_expr x)) (n_of_expr fst)
-              ((if is_short then emit_le else emit_eq) (t_of_expr x))
+              ((if is_short then emit_le ~is_integer:false else emit_eq)
+                  (t_of_expr x))
                 (Printf.sprintf "(vector-type %s)" eid))
         ) es ;
         if is_short then
@@ -990,13 +1001,28 @@ let emit_constraints tuple_sizes records field_names
       emit_assert_id_eq_typ tuple_sizes records field_names eid oc TFloat
 
   | Stateless (SL1 (Minus, x)) ->
-      (* - The only argument must be numeric;
-       * - The result must not be smaller than x;
-       * - The result has same nullability than x;
-       * - The result is signed or float. *)
-      emit_assert_numeric oc x ;
-      emit_assert_le (t_of_expr x) oc eid ;
-      emit_assert_signed oc e ;
+      (* - If the only argument x is a float or a signed integer, then the
+       *   result is the same;
+       * - Otherwise x must be an (unsigned) integer and the result is then
+       *   a signed integer of a larger size;
+       * - The result has same nullability than x; *)
+      let tx = t_of_expr x in
+      emit_assert oc (fun oc ->
+        Printf.fprintf oc
+          "(ite (is-signed %s) \
+             (= %s %s) \
+             (and ((_ is int) %s) \
+                  ((_ is int) %s) \
+                  (int-signed %s) \
+                  (= (int-bytes %s) \
+                     (int-bytes %s))))"
+          tx
+          eid tx
+          tx
+          eid
+          eid
+          eid
+          tx) ;
       emit_assert_eq (n_of_expr x) oc nid
 
   | Stateless (SL1 (Age, x)) ->
@@ -1360,8 +1386,7 @@ let emit_constraints tuple_sizes records field_names
        * - Nullability propagates. *)
       emit_assert_integer oc e1 ;
       emit_assert_integer oc e2 ;
-      emit_assert_integer oc e ;
-      emit_assert_max eid oc (t_of_expr e1) (t_of_expr e2) ;
+      emit_assert_max ~is_integer:true eid oc (t_of_expr e1) (t_of_expr e2) ;
       emit_assert_let oc
         (Printf.sprintf "(or %s %s)" (n_of_expr e1) (n_of_expr e2))
         (emit_eq nid)
@@ -3094,6 +3119,10 @@ let emit_smt2 parents tuple_sizes records field_names condition prog_name funcs
   String.print oc
     "(define-fun is-unsigned ((t Type)) Bool\n\
        (and ((_ is int) t) (not (int-signed t))))\n" ;
+  String.print oc
+    "(define-fun is-signed ((t Type)) Bool\n\
+       (or (= float t)\n\
+           (and ((_ is int) t) (int-signed t))))\n" ;
   Printf.fprintf oc
      ";\n\
      ; Declarations:\n\
