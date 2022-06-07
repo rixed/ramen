@@ -739,6 +739,7 @@ CAMLprim value read_ip(value tx, value off_)
   size_t offs = Long_val(off_);
   struct ip_sum_head head;
   read_words(wrtx, offs, (char *)&head, sizeof head);
+  assert(head.nullmask == 0);
   v = caml_alloc(1, head.tag);
   if (head.tag == 0) { // V4
     Store_field(v, 0, read_uint32(tx, Val_long(offs + sizeof head)));

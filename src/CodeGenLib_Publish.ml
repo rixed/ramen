@@ -260,16 +260,17 @@ let output_to_rb rb serialize_tuple sersize_of_tuple fieldmask
     let offs =
       RingBufLib.write_message_header tx 0 head ;
       RingBufLib.message_header_sersize head in
-    let offs =
+    let offs' =
       match tuple_opt with
       | Some tuple -> serialize_tuple fieldmask tx offs tuple
       | None -> offs in
     (* start = stop = 0. => times are unset *)
     let start, stop = Option.default (0., 0.) start_stop in
     enqueue_commit tx start stop ;
-    if offs <> sersize then
-      !logger.error "offs=%d whereas sersize=%d" offs sersize ;
-    assert (offs = sersize)
+    if offs' <> sersize then
+      !logger.error "Outputing to %d@%s, offs=%d whereas sersize=%d"
+        offs (RingBuf.tx_fname tx) offs' sersize ;
+    assert (offs' = sersize)
   )
 
 type 'a out_rb =

@@ -65,8 +65,8 @@ let ptr_of_tx tx =
   let len = apply (ext_identifier "RingBuf.tx_size") [ tx ] in
   ptr_of_address (address_of_u64 addr) len
 
-(* Takes a fieldmask, a tx, an offset and a heap value, and returns the new
- * offset. *)
+(* Takes a fieldmask [ma], a tx, an offset and a heap value [v], and returns
+ * the new offset. *)
 let serialize mn compunit =
   let cmt =
     Printf.sprintf2 "Serialize a value of type %a"

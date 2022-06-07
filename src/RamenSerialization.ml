@@ -7,6 +7,7 @@ open RamenLog
 open RamenHelpersNoLog
 open RamenHelpers
 module DT = DessserTypes
+module DE = DessserExpressions
 module T = RamenTypes
 module E = RamenExpr
 module N = RamenName
@@ -24,35 +25,32 @@ let read_array_of_values mn tx start_offs =
   if verbose_serialization then
     !logger.info "read_array_of_values: in_type = %a, starting at offset %d"
       DT.print_mn mn start_offs ;
+  (* Ramen's value are always non-nullable records with no default value, so
+   * they will always be present (bit=0), skip (and check) the prefix
+   * (note that only one byte of bitmask is cleared by dessser): *)
+  let pref = (RingBuf.read_word tx start_offs) land 0xffff in
+  if pref <> 0x1 then !logger.error "prefix = %x at offset %d, tx = %t" pref start_offs (hex_print (RingBuf.read_raw_tx tx)) ;
+  assert (pref = 0x0001) ;
+  let start_offs = start_offs + DessserRamenRingBuffer.word_size in
   let tuple_len = T.num_columns mn in
-  (* If there can be a nullmask, then there is one, and its size is given as a
-   * prefix: *)
-  let has_nullmask, _ =
-    DessserRamenRingBuffer.NullMaskWidth.of_type mn.DT.typ in
-  let nullmask_words, bi =
-    if has_nullmask then
-      Uint8.to_int (RingBuf.read_u8 tx start_offs), 8
-    else
-      0, 0 in
+  let fieldmask_words, bi = Uint8.to_int (RingBuf.read_u8 tx start_offs), 8 in
   if verbose_serialization then
-    !logger.info "has_nullmask = %b, nullmask_words = %d"
-      has_nullmask nullmask_words ;
-  assert (nullmask_words > 0 || not has_nullmask) ;
+    !logger.info "fieldmask_words = %d" fieldmask_words ;
+  assert (fieldmask_words > 0) ;
   if verbose_serialization then (
-    let nullmask_str =
-      if nullmask_words = 0 then "" else
+    let fieldmask_str =
       Printf.sprintf " (first is 0x%04x)"
         (RingBuf.read_u32 tx start_offs |> Uint32.to_int) in
-    !logger.info "De-serializing a tuple of type %a with nullmask of \
+    !logger.info "De-serializing a tuple of type %a with fieldmask of \
                   %d words%s, starting at offset %d, up to %d bytes"
       DT.print_mn mn
-      nullmask_words nullmask_str
+      fieldmask_words fieldmask_str
       start_offs
       (tx_size tx - start_offs)
   ) ;
   let tuple = Array.make tuple_len Raql_value.VNull in
   let offs =
-    start_offs + DessserRamenRingBuffer.word_size * nullmask_words in
+    start_offs + DessserRamenRingBuffer.word_size * fieldmask_words in
   T.fold_columns (fun (offs, bi, i) fn mn ->
     if N.is_private fn then
       !logger.warning "Asked to deserialize private field %a!"
@@ -62,22 +60,29 @@ let read_array_of_values mn tx start_offs =
         N.field_print fn i
         DT.print_mn mn
         offs bi ;
-    let value, offs', bi' =
-      if mn.DT.nullable &&
-         not (get_bit tx start_offs bi)
-      then (
-        if verbose_serialization then !logger.info "...value is NULL" ;
-        None, offs, bi+1
+    let value, offs' =
+      if get_bit tx start_offs bi then (
+        (* Value is absent, take default: *)
+        let value_expr =
+          match mn.DT.default with
+          | Some v -> v
+          | None -> DE.default_mn mn in
+        let value = T.of_const_expr value_expr in
+        if verbose_serialization then
+          !logger.info "...value is absent, use default: %a"
+            T.print value ;
+        Some value, offs
       ) else (
+        (* Value is present *)
         let value, offs' = RingBufLib.read_value tx offs mn.DT.typ in
         if verbose_serialization then
           !logger.info "...value of type %a at offset %d..%d: %a"
             DT.print_mn mn
             offs offs' T.print value ;
-        Some value, offs', if mn.DT.nullable then bi+1 else bi
+        Some value, offs'
       ) in
     Option.may (Array.set tuple i) value ;
-    offs', bi', i+1
+    offs', bi+1, i+1
   ) (offs, bi, 0) mn |> ignore ;
   tuple
 

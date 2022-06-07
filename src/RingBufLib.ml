@@ -10,6 +10,7 @@ module N = RamenName
 module Files = RamenFiles
 open Raql_value
 
+(* Return sersizes in bytes for any given type: *)
 let sersize_of_unit = 0
 let sersize_of_float = round_up_to_rb_word 8
 let sersize_of_char = round_up_to_rb_word 1
@@ -38,7 +39,7 @@ let sersize_of_null = 0
 let sersize_of_eth = round_up_to_rb_word 6
 (* Cidrs are encoded as records, so with a nullmask: *)
 let sersize_of_cidrv4 = round_up_to_rb_word 1 + sersize_of_ipv4 + sersize_of_u8
-let sersize_of_cidrv6 = round_up_to_rb_word 1 + sersize_of_ipv6 + sersize_of_u16
+let sersize_of_cidrv6 = round_up_to_rb_word 1 + sersize_of_ipv6 + sersize_of_u8
 let sersize_of_string s =
   sersize_of_u32 + round_up_to_rb_word (String.length s)
 
@@ -195,7 +196,7 @@ let rec read_value tx offs vt =
 
 and read_constructed_value tx t offs o bi =
   let v, o' =
-    if t.DT.nullable && not (get_bit tx offs bi) then VNull, !o
+    if t.DT.nullable && get_bit tx offs bi then VNull, !o
     else read_value tx !o t.DT.typ in
   o := o' ;
   v
@@ -210,7 +211,8 @@ and read_tuple ts tx offs =
     let bi = ref 8 in
     Array.map (fun t ->
       let v = read_constructed_value tx t offs o !bi in
-      if t.DT.nullable then incr bi ;
+      (* Until only null values have a bit: *)
+      if true || t.DT.nullable then incr bi ;
       v
     ) ts in
   v, !o
@@ -227,7 +229,7 @@ and read_record kts tx offs =
 
 (* Vectors and lists have a nullmask if their items are nullable. *)
 and read_vector d t tx offs =
-  let has_nullmask = t.DT.nullable in
+  let has_nullmask = true in
   let nullmask_words =
     if not has_nullmask then 0 else
       RingBuf.read_u8 tx offs |> Uint8.to_int in
@@ -242,7 +244,7 @@ and read_list t tx offs =
   let d = read_u32 tx offs |> Uint32.to_int in
   let offs = offs + sersize_of_u32 in
   assert (d < 999999) ;
-  let has_nullmask = t.DT.nullable in
+  let has_nullmask = true in
   let nullmask_words =
     if not has_nullmask then 0 else
       RingBuf.read_u8 tx offs |> Uint8.to_int in

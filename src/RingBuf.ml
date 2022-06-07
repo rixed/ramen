@@ -204,6 +204,7 @@ external bytes_tx : int -> tx = "wrap_bytes_tx"
  * deserialize. Independent of any ringbuffer. *)
 external tx_of_bytes : Bytes.t -> tx = "wrap_tx_of_bytes"
 
+external write_word : tx -> int -> int -> unit = "write_word"
 external write_float : tx -> int -> float -> unit = "write_float"
 external write_char : tx -> int -> char -> unit = "write_word"
 external write_string : tx -> int -> string -> unit = "write_str"

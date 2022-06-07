@@ -4,6 +4,7 @@
 open Batteries
 open Stdint
 open RamenHelpersNoLog
+open RamenLog
 open DessserTypes
 module DT = DessserTypes
 module N = RamenName
@@ -232,6 +233,21 @@ let rec type_of_value =
   | VMap m ->
       let k, v = sub_types_of_map m in
       TMap (k, v)
+
+(* Default values are given as expressions in dessser but oftentimes we need
+ * them as ramen's value: *)
+let rec of_const_expr = function
+  | DT.E0 (Null _) -> VNull
+  | E1 (NotNull, e) -> of_const_expr e
+  | E0 (Float f) -> VFloat f
+  | E0 (String s) -> VString s
+  | E0 (Bool b) -> VBool b
+  | E0 (Char c) -> VChar c
+  | E0 (I8 i) -> VI8 i
+  | e ->
+      !logger.error "Cannot convert from expression %a to value"
+        (DT.print_expr ~max_depth:5) e ;
+      todo "of_const_expr"
 
 (*
  * Printers
