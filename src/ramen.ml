@@ -444,6 +444,10 @@ let incidents_history_length =
   let i = info_of_opt CliInfo.incidents_history_length in
   Arg.(value (opt int Default.incidents_history_length i))
 
+let purge_incidents_every =
+  let i = info_of_opt CliInfo.purge_incidents_every in
+  Arg.(value (opt int Default.purge_incidents_every i))
+
 let ignore_file_perms =
   flag_of_opt CliInfo.ignore_file_perms
 
@@ -468,6 +472,7 @@ let confserver =
       $ archive_recall_cost
       $ oldest_site
       $ incidents_history_length
+      $ purge_incidents_every
       $ allow_upgrade),
     info_of_cmd CliInfo.confserver)
 
@@ -1265,6 +1270,7 @@ let start =
       $ max_last_incidents_kept
       $ max_incident_age
       $ incidents_history_length
+      $ purge_incidents_every
       $ execomp_quarantine
       $ allow_upgrade),
     info_of_cmd CliInfo.start)

@@ -474,6 +474,14 @@ let incidents_history_length =
     docv = "" ;
     typ = Scalar }
 
+let purge_incidents_every =
+  { names = [ "purge-incidents-every" ] ;
+    env = "RAMEN_PURGE_INCIDENTS_EVERY" ;
+    doc = "Purge olf incidents from the configuration every that many \
+           seconds." ;
+    docv = "" ;
+    typ = Scalar }
+
 let allow_upgrade =
   { names = [ "allow-upgrade" ] ;
     env = "RAMEN_ALLOW_UPGRADE" ;
@@ -1056,7 +1064,8 @@ let start =
              server_pub_key ; server_priv_key ; ignore_file_perms ;
              no_source_examples ; default_archive_total_size ;
              default_archive_recall_cost ; oldest_restored_site ;
-             incidents_history_length ; gc_loop ; archivist_loop ;
+             incidents_history_length ; purge_incidents_every ;
+             gc_loop ; archivist_loop ;
              update_allocs ; reconf_workers ; del_ratio ; compress_older ;
              max_fpr ; timeout_idle_kafka_producers ; debounce_delay ;
              max_last_incidents_kept ; max_incident_age ; allow_upgrade ] @
@@ -1121,8 +1130,8 @@ let confserver =
              confserver_port ; confserver_port_sec ; server_pub_key ;
              server_priv_key ; ignore_file_perms ; no_source_examples ;
              default_archive_total_size ; default_archive_recall_cost ;
-             oldest_restored_site ; incidents_history_length ; persist_dir ;
-             allow_upgrade ]
+             oldest_restored_site ; incidents_history_length ;
+             purge_incidents_every ; persist_dir ; allow_upgrade ]
              @ copts }
 
 let confclient =

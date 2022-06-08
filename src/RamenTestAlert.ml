@@ -224,9 +224,10 @@ let run conf test_file () =
   and ports = [ string_of_int confserver_port ]
   and ports_sec = []
   and incidents_history_length = Default.incidents_history_length
+  and purge_incidents_every = Default.purge_incidents_every
   in
   RamenCliCheck.confserver conf ports ports_sec srv_pub_key_file srv_priv_key_file
-                           incidents_history_length ;
+                           incidents_history_length purge_incidents_every ;
   RamenCliCheck.alerter !test_spec.max_fpr ;
   (* TODO: factorize subprocesses handling with RamenCliCmd.start, into an
    * object that manages pids, stopped, last_signalled and offer a function

@@ -147,6 +147,10 @@ let reschedule_clock = 15.
 (* How many resolved past incidents to keep in the configuration tree: *)
 let incidents_history_length = 500
 
+(* How frequently confserver should go through the whole config and purge
+ * old log entries, in seconds: *)
+let purge_incidents_every = 10
+
 (* How long must execompserer wait before retrying to compile a program after
  * a compilation error: *)
 let execomp_quarantine = 300.

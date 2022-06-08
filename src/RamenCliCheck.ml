@@ -23,7 +23,7 @@ let choreographer conf =
     failwith "Cannot start the choreographer without --confserver."
 
 let confserver conf ports ports_sec srv_pub_key_file srv_priv_key_file
-               incidents_history_length =
+               incidents_history_length purge_incidents_every =
   (* Some not-so-common options makes no sense for confserver and are likely
    * a user error: *)
   let check_unset what suggestion s =
@@ -44,7 +44,9 @@ let confserver conf ports ports_sec srv_pub_key_file srv_priv_key_file
   if ports_sec = [] && not (N.is_empty srv_priv_key_file) then
     failwith "--private-key makes no sense without --secure." ;
   if incidents_history_length < 0 then
-    failwith "--incidents-history-length must be positive."
+    failwith "--incidents-history-length must be positive." ;
+  if purge_incidents_every < 0 then
+    failwith "--purge-incidents-every must be positive."
 
 let check_opt_level = function
   | 0 | 1 | 2 | 3 -> ()

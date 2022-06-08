@@ -434,7 +434,7 @@ let update_last_tuples srv site fq instance seq =
  * but that kind of data structure is verbose (TODO). *)
 let incidents_history_length = ref Default.incidents_history_length
 
-let update_incidents_history srv new_uuid =
+let purge_incidents_history_ srv new_uuid =
   (* A hash with all keys per uuid: *)
   let uuid_keys = Hashtbl.create (10 * !incidents_history_length) in
   (* Then a map to store the LastStateChangeNotif per uuid: *)
@@ -479,13 +479,24 @@ let update_incidents_history srv new_uuid =
     )
   done
 
+let last_purged_incidents_history = ref 0
+
+let purge_incidents_every = ref Default.purge_incidents_every
+
+let purge_incidents_history srv new_uuid =
+  let now = Unix.time () |> int_of_float in
+  if now - !last_purged_incidents_history > !purge_incidents_every then (
+    last_purged_incidents_history := now ;
+    purge_incidents_history_ srv new_uuid
+  )
+
 let purge_old_keys srv = function
   | CltCmd.NewKey (Key.(Tails (site, fq, instance, LastTuple seq)), _, _, _)
   | SetKey (Key.(Tails (site, fq, instance, LastTuple seq)), _) ->
       update_last_tuples srv site fq instance seq
   | NewKey (Key.(Incidents (uuid, LastStateChangeNotif)), _, _, _)
   | SetKey (Key.(Incidents (uuid, LastStateChangeNotif)), _) ->
-      update_incidents_history srv uuid
+      purge_incidents_history srv uuid
   | _ -> ()
 
 let is_ramen = function
@@ -765,8 +776,9 @@ let start
       conf ~while_ ports ports_sec srv_pub_key_file srv_priv_key_file
       ignore_file_perms no_source_examples archive_total_size
       archive_recall_cost oldest_site incidents_history_length_
-      allow_upgrade =
+      purge_incidents_every_ allow_upgrade =
   incidents_history_length := incidents_history_length_ ;
+  purge_incidents_every := purge_incidents_every_ ;
   (* When using secure socket, the user *must* provide the path to
    * the server key files, even if it does not exist yet. They will
    * be created in that case. *)

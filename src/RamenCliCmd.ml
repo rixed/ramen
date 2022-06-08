@@ -283,9 +283,10 @@ let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
 let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ports_sec srv_pub_key_file srv_priv_key_file ignore_file_perms
                no_source_examples archive_total_size archive_recall_cost
-               oldest_restored_site incidents_history_length allow_upgrade () =
+               oldest_restored_site incidents_history_length purge_incidents_every
+               allow_upgrade () =
   RamenCliCheck.confserver conf ports ports_sec srv_pub_key_file srv_priv_key_file
-                           incidents_history_length ;
+                           incidents_history_length purge_incidents_every ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.confserver ;
   start_prometheus_thread ServiceNames.confserver ;
@@ -293,7 +294,8 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                            srv_priv_key_file ignore_file_perms
                            no_source_examples archive_total_size
                            archive_recall_cost oldest_restored_site
-                           incidents_history_length allow_upgrade ;
+                           incidents_history_length purge_incidents_every
+                           allow_upgrade ;
   Option.may exit !Processes.quit
 
 let confclient conf key value del if_exists follow () =
@@ -1450,7 +1452,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
           gc_loop archivist_loop allocs reconf_workers
           del_ratio compress_older
           max_fpr kafka_producers_timeout debounce_delay max_last_incidents_kept
-          max_incident_age incidents_history_length
+          max_incident_age incidents_history_length purge_incidents_every
           execomp_quarantine allow_upgrade () =
   let ports =
     if ports <> [] then ports
@@ -1459,7 +1461,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   let sync_url = List.hd ports in
   let conf = { conf with C.sync_url = sync_url } in
   RamenCliCheck.confserver conf ports ports_sec srv_pub_key_file srv_priv_key_file
-                           incidents_history_length ;
+                           incidents_history_length purge_incidents_every ;
   RamenCliCheck.choreographer conf ;
   RamenCliCheck.execompserver conf max_simult_compils execomp_quarantine
                               opt_level ;
@@ -1487,6 +1489,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
   and default_archive_recall_cost = nice_string_of_float archive_recall_cost
   and oldest_restored_site = nice_string_of_float oldest_restored_site
   and incidents_history_length = string_of_int incidents_history_length
+  and purge_incidents_every = string_of_int purge_incidents_every
   and debug = !logger.log_level = Debug
   and quiet = !logger.log_level = Quiet
   and keep_temp_files = conf.C.keep_temp_files
@@ -1520,7 +1523,8 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
     ~daemonize ~to_stdout ~to_syslog ~prefix_log_with_name ~insecure ~secure
     ~public_key ~private_key ~ignore_file_perms ~no_source_examples
     ~default_archive_total_size ~default_archive_recall_cost
-    ~oldest_restored_site ~incidents_history_length ~debug ~quiet
+    ~oldest_restored_site ~incidents_history_length ~purge_incidents_every
+    ~debug ~quiet
     ~keep_temp_files ~reuse_prev_files ~variant ~initial_export_duration
     ~bundle_dir ~colors ~allow_upgrade () |>
     add_pid ServiceNames.confserver ;
