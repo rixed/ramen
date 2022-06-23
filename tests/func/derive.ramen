@@ -1,0 +1,10 @@
+-- vim: ft=sql expandtab
+
+DEFINE f AS
+  SELECT
+    (previous.start |? 0) + 1 AS start,
+    3 * start AS x,
+    IF RANDOM > 0.5 THEN x AS nx, -- nullable x
+    DERIVE x AS dx,
+    DERIVE KEEP NULLS nx AS dnx
+  EVERY 0.1s;

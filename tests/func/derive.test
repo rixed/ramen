@@ -1,0 +1,10 @@
+{
+  programs = [ { src = "derive.ramen" } ];
+  outputs = {
+    "derive/f" => {
+      present = [
+        { "dx" => "3"; "dnx" => "3" };
+        { "dx" => "3"; "dnx" => "NULL" } ]
+    }
+  }
+}
