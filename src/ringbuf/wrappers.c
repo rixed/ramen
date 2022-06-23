@@ -502,7 +502,7 @@ static time_t last_err = 0;
 static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char const *src, size_t size)
 {
   if (size + offs > wrtx->alloced) {
-    TIMED_PRINT("%d: ERROR while writing: size (%zu) + offs (%zu) > alloced (%zu)\n", (int)getpid(), size, offs, wrtx->alloced);
+    TIMED_PRINT("%d: ERROR while writing %s: size (%zu) + offs (%zu) > alloced (%zu)\n", (int)getpid(), wrtx->rb->fname, size, offs, wrtx->alloced);
     DUMP_BACKTRACE();
     fflush(stdout);
     assert(exceptions_inited);
@@ -510,7 +510,7 @@ static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
   }
 
   if (size > MAX_RINGBUF_MSG_SIZE) {
-    TIMED_PRINT("%d: ERROR while writing: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", (int)getpid(), size);
+    TIMED_PRINT("%d: ERROR while writing %s: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", (int)getpid(), wrtx->rb->fname, size);
     DUMP_BACKTRACE();
     fflush(stdout);
     assert(exceptions_inited);
@@ -530,13 +530,13 @@ static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
 static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char *dst, size_t size)
 {
   if (offs + size > wrtx->alloced) {
-    TIMED_PRINT("%d: ERROR while reading: offs (%zu) + size (%zu) > alloced (%zu)\n", (int)getpid(), offs, size, wrtx->alloced);
+    TIMED_PRINT("%d: ERROR while reading %s: offs (%zu) + size (%zu) > alloced (%zu)\n", (int)getpid(), wrtx->rb->fname, offs, size, wrtx->alloced);
     fflush(stdout);
     assert(exceptions_inited);
     caml_raise_constant(*exn_Damaged);
   }
   if (size > MAX_RINGBUF_MSG_SIZE) {
-    TIMED_PRINT("%d: ERROR while reading: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", (int)getpid(), size);
+    TIMED_PRINT("%d: ERROR while reading %s: size (%zu) > " STR(MAX_RINGBUF_MSG_SIZE) "\n", (int)getpid(), wrtx->rb->fname, size);
     fflush(stdout);
     assert(exceptions_inited);
     caml_raise_constant(*exn_Damaged);

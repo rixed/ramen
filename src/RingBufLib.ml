@@ -5,9 +5,9 @@ open RamenHelpers
 open Stdint
 open RingBuf
 module DT = DessserTypes
-module T = RamenTypes
-module N = RamenName
 module Files = RamenFiles
+module N = RamenName
+module T = RamenTypes
 open Raql_value
 
 (* Return sersizes in bytes for any given type: *)
@@ -183,7 +183,7 @@ let rec read_value tx offs vt =
       let v, offs = read_vector d t tx offs in
       VVec v, offs
   | TArr t ->
-      let v, offs = read_list t tx offs in
+      let v, offs = read_array t tx offs in
       VArr v, offs
   | TSet _ ->
       todo "unserialization of sets"
@@ -196,13 +196,14 @@ let rec read_value tx offs vt =
 
 and read_constructed_value tx t offs o bi =
   let v, o' =
-    if t.DT.nullable && get_bit tx offs bi then VNull, !o
+    if DessserRamenRingBuffer.BitMaskWidth.has_bit t &&
+       get_bit tx offs bi then VNull, !o
     else read_value tx !o t.DT.typ in
   o := o' ;
   v
 
-(* Tuples and records come with a mandatory nullmask, whereas vectors and lists
- * have a nullmask only if their items are actually nullable. *)
+(* Tuples, records and sums come with a mandatory nullmask, whereas vectors and
+ * lists have a nullmask only if their items are actually nullable. *)
 and read_tuple ts tx offs =
   let nullmask_words = RingBuf.read_u8 tx offs |> Uint8.to_int in
   let o = ref (offs + DessserRamenRingBuffer.word_size * nullmask_words) in
@@ -212,7 +213,7 @@ and read_tuple ts tx offs =
     Array.map (fun t ->
       let v = read_constructed_value tx t offs o !bi in
       (* Until only null values have a bit: *)
-      if true || t.DT.nullable then incr bi ;
+      if DessserRamenRingBuffer.BitMaskWidth.has_bit t then incr bi ;
       v
     ) ts in
   v, !o
@@ -227,9 +228,9 @@ and read_record kts tx offs =
   let v = Array.map2 (fun (k, _) v -> k, v) ser vs in
   v, offs'
 
-(* Vectors and lists have a nullmask if their items are nullable. *)
+(* Vectors/lists have a nullmask if their items (of type [t]) are nullable. *)
 and read_vector d t tx offs =
-  let has_nullmask = true in
+  let has_nullmask = DessserRamenRingBuffer.BitMaskWidth.has_bit t in
   let nullmask_words =
     if not has_nullmask then 0 else
       RingBuf.read_u8 tx offs |> Uint8.to_int in
@@ -240,11 +241,12 @@ and read_vector d t tx offs =
       read_constructed_value tx t offs o bi) in
   v, !o
 
-and read_list t tx offs =
+and read_array t tx offs =
   let d = read_u32 tx offs |> Uint32.to_int in
-  let offs = offs + sersize_of_u32 in
+  if d >= 999999 then !logger.error "read_array: d = %d at offset %d" d offs ;
   assert (d < 999999) ;
-  let has_nullmask = true in
+  let offs = offs + sersize_of_u32 in
+  let has_nullmask = DessserRamenRingBuffer.BitMaskWidth.has_bit t in
   let nullmask_words =
     if not has_nullmask then 0 else
       RingBuf.read_u8 tx offs |> Uint8.to_int in

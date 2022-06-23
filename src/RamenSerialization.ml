@@ -28,10 +28,12 @@ let read_array_of_values mn tx start_offs =
   (* Ramen's value are always non-nullable records with no default value, so
    * they will always be present (bit=0), skip (and check) the prefix
    * (note that only one byte of bitmask is cleared by dessser): *)
-  let pref = (RingBuf.read_word tx start_offs) land 0xffff in
-  if pref <> 0x1 then !logger.error "prefix = %x at offset %d, tx = %t" pref start_offs (hex_print (RingBuf.read_raw_tx tx)) ;
+  (*let pref = (RingBuf.read_word tx start_offs) land 0xffff in
+  if pref <> 0x1 then
+    !logger.error "prefix = %x at offset %d, tx = %t"
+      pref start_offs (hex_print (RingBuf.read_raw_tx tx)) ;
   assert (pref = 0x0001) ;
-  let start_offs = start_offs + DessserRamenRingBuffer.word_size in
+  let start_offs = start_offs + DessserRamenRingBuffer.word_size in *)
   let tuple_len = T.num_columns mn in
   let fieldmask_words, bi = Uint8.to_int (RingBuf.read_u8 tx start_offs), 8 in
   if verbose_serialization then
@@ -60,8 +62,9 @@ let read_array_of_values mn tx start_offs =
         N.field_print fn i
         DT.print_mn mn
         offs bi ;
+    let has_bit = DessserRamenRingBuffer.BitMaskWidth.has_bit mn in
     let value, offs' =
-      if get_bit tx start_offs bi then (
+      if has_bit && get_bit tx start_offs bi then (
         (* Value is absent, take default: *)
         let value_expr =
           match mn.DT.default with
@@ -81,8 +84,9 @@ let read_array_of_values mn tx start_offs =
             offs offs' T.print value ;
         Some value, offs'
       ) in
+    let bi = if has_bit then bi + 1 else bi in
     Option.may (Array.set tuple i) value ;
-    offs', bi+1, i+1
+    offs', bi, i + 1
   ) (offs, bi, 0) mn |> ignore ;
   tuple
 

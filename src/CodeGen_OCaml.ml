@@ -30,6 +30,7 @@ module Helpers = CodeGen_Helpers
 module N = RamenName
 module O = RamenOperation
 module Orc = RamenOrc
+module Ser = RamenSerialization
 module T = RamenTypes
 module Variable = RamenVariable
 module VSI = RamenSync.Value.SourceInfo
@@ -2976,8 +2977,10 @@ let rec emit_sersize_of_var indent typ oc var =
   ) else (
     let nullmask_words =
       match typ.DT.typ with
-      | TArr _ ->
-          -1 (* special *)
+      | TArr t ->
+          if DessserRamenRingBuffer.BitMaskWidth.has_bit t then
+            -1 (* special *)
+          else 0
       | typ ->
           DessserRamenRingBuffer.BitMaskWidth.words_of_type typ in
     let nullmask_sz = nullmask_words * DessserRamenRingBuffer.word_size in
@@ -3020,19 +3023,24 @@ let rec emit_sersize_of_var indent typ oc var =
     | TUsr { name = "Cidr" ; _ } ->
         p "(RingBufLib.sersize_of_cidr %s)" var
     | TArr t ->
-        (* So var is the name of an array of some values of type t, which can
-         * be a constructed type which sersize can't be known statically.
+        (* So [var] is the name of an array of some values of type [t], which
+         * can be a constructed type which sersize can't be known statically.
          * So at first sight we have to generate code that will iter through
          * the values and for each, know or compute its size, etc. This is
-         * what we do here, but in cases where t has a well known sersize we
+         * what we do here, but in cases where [t] has a well known sersize we
          * could generate much faster code of course: *)
         p "(" ;
         p "  Array.fold_left (fun s_ v_ -> s_ +" ;
         emit_sersize_of_var (indent + 2) t oc "v_" ;
-        p "  ) (%d + DessserRamenRingBuffer.round_up_const_bits (\
-                       8 (* bitmask size *) + Array.length %s)) %s"
-          (* start from the size prefix and nullmask: *)
-          RingBufLib.sersize_of_u32 var var ;
+        if DessserRamenRingBuffer.BitMaskWidth.has_bit t then
+          p "  ) (%d + DessserRamenRingBuffer.round_up_const_bits (\
+                         8 (* bitmask size *) + Array.length %s)) %s"
+            (* start from the size prefix and nullmask: *)
+            RingBufLib.sersize_of_u32 var var
+        else (* No nullmask: *)
+          p "  ) %d %s"
+            (* start from the size prefix: *)
+            RingBufLib.sersize_of_u32 var ;
         p ")"
     | TUsr { name = ("Ip4" | "Ip6" | "Cidr4" | "Cidr6") ; _ } ->
         (* Those have a nullmask but a fixed size: *)
@@ -3243,7 +3251,7 @@ let emit_sersize_of_tuple indent name oc typ =
     let mn = RamenTuple.to_record typ in
     DessserRamenRingBuffer.BitMaskWidth.words_of_type mn.DT.typ in
   let nullmask_bytes = DessserRamenRingBuffer.word_size * nullmask_words in
-  p "  let sz_ = %d (* outermost bitmask *) + %d (* record bitmask *) in"
+  p "  let sz_ = (* %d (* outermost bitmask *) + *) %d (* record bitmask *) in"
     DessserRamenRingBuffer.word_size
     nullmask_bytes ;
   let copy indent oc (out_var, typ) =
@@ -3277,48 +3285,61 @@ let emit_sersize_of_tuple indent name oc typ =
 (* Emits the code to serialize a value.
  * [start_offs_var] is where the nullmask can be found, while [offs_var] is the
  * current offset.
- * Outputs the new current offset and null bit offset: *)
+ * Outputs the new current offset and nullmask bit offset: *)
 let rec emit_serialize_value
     indent start_offs_var offs_var nulli_var val_var oc typ =
   let p fmt = emit oc indent fmt in
-  if typ.DT.nullable then (
+  if DessserRamenRingBuffer.BitMaskWidth.has_bit typ then (
     (* Write either nothing (since the nullmask is initialized with 0) or
      * the nullmask bit and the value *)
     p "(match %s with" val_var ;
     p "| None ->" ;
     if verbose_serialization then
-      p "    !logger.debug \"Set nullmask bit %%d\" %s ;" nulli_var ;
+      p "    !logger.info \"Set nullmask bit %%d\" %s ;" nulli_var ;
     p "    RingBuf.set_bit tx_ %s %s ;" start_offs_var nulli_var ;
-    p "    %s, %s + 1" offs_var nulli_var ;
+    p "    %s" offs_var ;
     p "| Some %s ->" val_var ;
-    emit_serialize_value (indent + 3) start_offs_var offs_var "nulli_"
+    p "    let offs_, _ =" ;
+    emit_serialize_value (indent + 5) start_offs_var offs_var nulli_var
                          val_var oc { typ with nullable = false} ;
-    p ")"
+    p "    in offs_"  ;
+    p "), %s + 1" nulli_var
   ) else (
-    let emit_write_array indent _start_offs_var offs_var dim_var t =
+    (* [mn] is the type of the array items: *)
+    let emit_write_array indent _start_offs_var offs_var dim_var mn =
+      let has_bit = DessserRamenRingBuffer.BitMaskWidth.has_bit mn in
       let p fmt = emit oc indent fmt in
       p "(" ;
       p "  let start_arr_ = %s in" offs_var ;
-      p "  let nullmask_bytes_ = DessserRamenRingBuffer.bytes_of_const_bits %s in"
-        dim_var ;
-      p "  let nullmask_words_ = \
-             nullmask_bytes_ + 1 |> DessserRamenRingBuffer.words_of_const_bytes in" ;
-      if verbose_serialization then
-        p "  !logger.debug \"Serializing an array of size %%d at offset %%d \
-                with %%d words of nullmask\" %s %s nullmask_words_ ;"
-          dim_var offs_var ;
-      (* Also zero the length for faster memset: *)
-      p "  if nullmask_bytes_ > 0 then \
-             RingBuf.zero_bytes tx_ start_arr_ (1 + nullmask_bytes_) ;" ;
-      p "  RingBuf.write_u8 tx_ start_arr_ (Uint8.of_int nullmask_words_) ;" ;
-      p "  let offs_ = start_arr_ + %d * nullmask_words_ in"
-        DessserRamenRingBuffer.word_size ;
+      if has_bit then (
+        p "  let nullmask_bytes_ = DessserRamenRingBuffer.bytes_of_const_bits %s in"
+          dim_var ;
+        p "  let nullmask_words_ = \
+               nullmask_bytes_ + 1 |> DessserRamenRingBuffer.words_of_const_bytes in" ;
+        if verbose_serialization then
+          p "  !logger.info \"Serializing an array of size %%d at offset %%d \
+                  with %%d words of nullmask\" %s %s nullmask_words_ ;"
+            dim_var offs_var ;
+        (* Also zero the length for faster memset: *)
+        p "  if nullmask_bytes_ > 0 then \
+               RingBuf.zero_bytes tx_ start_arr_ (1 + nullmask_bytes_) ;" ;
+        p "  RingBuf.write_u8 tx_ start_arr_ (Uint8.of_int nullmask_words_) ;" ;
+        p "  let offs_ = start_arr_ + %d * nullmask_words_ in"
+          DessserRamenRingBuffer.word_size
+      ) else (
+        if verbose_serialization then
+          p "  !logger.info \"Serializing an array of size %%d at offset %%d \
+                  with no nullmask\" %s %s ;"
+            dim_var offs_var ;
+        p "  let offs_ = start_arr_ in"
+      ) ;
       p "  let offs_, _ =" ;
       p "    Array.fold_left (fun (offs_, nulli_) v_ ->" ;
-      emit_serialize_value (indent + 3) "start_arr_" "offs_" "nulli_" "v_" oc t ;
+      emit_serialize_value (indent + 3) "start_arr_" "offs_" "nulli_" "v_" oc mn ;
       p "    ) (offs_, 8) %s in" val_var ;
-      p "  offs_, %s + 1" nulli_var ;
+      p "  offs_, %s" nulli_var ;
       p ")"
+    (* records always have a nullmask: *)
     and emit_write_record indent _start_offs_var offs_var kts =
       let p fmt = emit oc indent fmt in
       p "(" ;
@@ -3327,11 +3348,12 @@ let rec emit_serialize_value
       let nullmask_words =
         1 + nullmask_bytes |> DessserRamenRingBuffer.words_of_const_bits in
       if verbose_serialization then
-        p "  !logger.debug \"Serializing a tuple of %d elements at offset %%d (nullmask words=%d, %%s)\" %s %a ;"
+        p "  !logger.info \"Serializing a tuple of %d elements at offset %%d \
+               (nullmask words=%d): %a\" %s ;"
           (Array.length kts)
           nullmask_words
-          offs_var
-          (Array.print (pair_print String.print DT.print_mn)) kts ;
+          (Array.print (pair_print String.print DT.print_mn)) kts
+          offs_var ;
       let item_var k = val_var ^"_"^ k |>
                        RamenOCamlCompiler.make_valid_ocaml_identifier in
       p "  let %a = %s in"
@@ -3339,30 +3361,26 @@ let rec emit_serialize_value
           String.print oc (item_var k))) kts
         val_var ;
       p "  let start_tup_ = %s in" offs_var ;
-      if nullmask_words > 0 then (
-        (* Also zero the length for faster memset: *)
-        if nullmask_bytes > 0 then
-          p "RingBuf.zero_bytes tx_ start_tup_ %d ;" (1 + nullmask_bytes) ;
-        p "  RingBuf.write_u8 tx_ start_tup_ (Uint8.of_int %d) ;" nullmask_words ;
-        p "  let offs_ = start_tup_ + %d (* nullmask *) in"
+      (* Also zero the length for faster memset: *)
+      if nullmask_bytes > 0 then
+        p "RingBuf.zero_bytes tx_ start_tup_ %d ;" (1 + nullmask_bytes) ;
+      (* Records and tuple always have a nullmask with prefix, even if empty: *)
+      p "  RingBuf.write_u8 tx_ start_tup_ (Uint8.of_int %d) ;" nullmask_words ;
+      p "  let offs_ = start_tup_ + %d (* nullmask *) in"
           (DessserRamenRingBuffer.word_size * nullmask_words) ;
-      ) else (
-        p "  let offs_ = start_tup_ in"
-      ) ;
       (* We must obviously serialize in serialization order: *)
       let ser = RingBufLib.ser_order kts in
       let bi = ref 8 in
       Array.iter (fun (k, t) ->
         p "  let offs_, _ =" ;
-        let nulli_var = "nulli_" in
-        p "  let %s = %d in" nulli_var !bi ;
-        if t.DT.nullable then incr bi ;
+        let nulli_var = string_of_int !bi in
+        if DessserRamenRingBuffer.BitMaskWidth.has_bit t then incr bi ;
         (* else the nulli_ variable should not be used anywhere! *)
         emit_serialize_value (indent + 3) "start_tup_" "offs_" nulli_var
                              (item_var k) oc t ;
         p "  in"
       ) ser ;
-      p "offs_, %s + 1" nulli_var ;
+      p "offs_, %s" nulli_var ;
       p ")" ;
     in
     match typ.DT.typ with
@@ -3382,13 +3400,14 @@ let rec emit_serialize_value
     (* Scalar types: *)
     | t ->
         if verbose_serialization then
-          p "!logger.debug \"Serializing %s (%%s) at offset %%d\" (dump %s) %s ;"
-            val_var val_var offs_var ;
+          p "!logger.info \"Serializing %s (%%s) at offset %%d, bi=%%d\" \
+              (dump %s) %s %s ;"
+            val_var val_var offs_var nulli_var ;
         p "RingBuf.write_%s tx_ %s %s ;" (Helpers.id_of_typ t) offs_var val_var ;
         p "%s +" offs_var ;
         emit_sersize_of_var
           (indent + 1) { typ with nullable = false } oc val_var ;
-        p "  , %s + 1" nulli_var
+        p "  , %s" nulli_var
   )
 
 (* Emit a function called [name] and taking as parameter a fieldmask, then a tx,
@@ -3401,14 +3420,15 @@ let emit_serialize_function indent name oc typ =
     let mn = RamenTuple.to_record typ in
     DessserRamenRingBuffer.BitMaskWidth.words_of_type mn.DT.typ in
   let has_nullmask = nullmask_words > 0 in
+  assert has_nullmask ; (* Because records always have a nullmask *)
   let nullmask_bytes = DessserRamenRingBuffer.word_size * nullmask_words in
   if verbose_serialization then
-    p "    !logger.debug \"Serialize a tuple, nullmask_words:%d\" ;"
+    p "    !logger.info \"Serialize a tuple, nullmask_words:%d\" ;"
       nullmask_words ;
-  (* The outermost value is always a non-nullable record and always present: *)
+(*  (* The outermost value is always a non-nullable record and always present: *)
   p "    RingBuf.write_word tx_ start_offs_ 0x00000001 ;" ;
   p "    let start_offs_ = start_offs_ + %d (* outermost bitmask *) in"
-    DessserRamenRingBuffer.word_size ;
+    DessserRamenRingBuffer.word_size ; *)
   (* Callbacks [copy] and [skip] have to return the offset and null index
    * but we have several offsets and several null index (when copying full
    * compund types) ; we therefore enforce the rule that those variables
@@ -3751,10 +3771,10 @@ let emit_listen_on opc name net_addr port ip_proto proto =
 let rec emit_deserialize_value
     indent tx_var start_offs_var offs_var nulli_var oc typ =
   let p fmt = emit oc indent fmt in
-  let emit_for_array tx_var offs_var dim_var oc t =
+  (* [mn] is the type of the array item: *)
+  let emit_for_array tx_var offs_var dim_var oc mn =
     p "let arr_start_ = %s in" offs_var ;
-    (* Vectors/lists always come with a bitmask: *)
-    let has_nullmask = true in
+    let has_nullmask = DessserRamenRingBuffer.BitMaskWidth.has_bit mn in
     if has_nullmask then (
       p "let nullmask_words_ = RingBuf.read_u8 %s %s |> Uint8.to_int in"
         tx_var offs_var ;
@@ -3776,13 +3796,13 @@ let rec emit_deserialize_value
     p "  let v_, o_ =" ;
     p "    let offs_arr_ = !offs_arr_ in" ;
     emit_deserialize_value (indent + 1) tx_var "arr_start_" "offs_arr_"
-                           nulli_var oc t ;
+                           nulli_var oc mn ;
     p "    in" ;
     p "  offs_arr_ := o_ ; v_" ;
     p ") in v_, !offs_arr_"
   and emit_for_record kts =
     p "let tuple_start_ = %s in" offs_var ;
-    (* Records/tuples always have a nullmask, maybe empty *)
+    (* Records/tuples always have a nullmask, possibly empty *)
     p "let nullmask_words_ = RingBuf.read_u8 %s %s |> Uint8.to_int in"
       tx_var offs_var ;
     p "let offs_tup_ = \
@@ -3797,14 +3817,15 @@ let rec emit_deserialize_value
       p "let %s, offs_tup_ =" (item_var k) ;
       emit_deserialize_value (indent + 1) tx_var "tuple_start_" "offs_tup_"
                              "bi_" oc t ;
-      incr bi ;
+      if DessserRamenRingBuffer.BitMaskWidth.has_bit t then incr bi ;
       p "  in"
     ) ser ;
     p "%a, offs_tup_"
       (array_print_as_tuple (fun oc (k, _) ->
         String.print oc (item_var k))) kts
   in
-  if typ.DT.nullable then (
+  if DessserRamenRingBuffer.BitMaskWidth.has_bit typ then (
+    assert typ.nullable ; (* If not, then typ has a default value: TODO *)
     p "if RingBuf.get_bit %s %s %s then None, %s else ("
       tx_var start_offs_var nulli_var offs_var ;
     p "  let v_, %s =" offs_var ;
@@ -3815,8 +3836,8 @@ let rec emit_deserialize_value
     p ")"
   ) else (
     match typ.DT.typ with
-    (* Constructed types are prefixed with a nullmask and then read item
-     * by item: *)
+    (* Constructed types may be prefixed with a nullmask.
+     * They are then read item by item: *)
     | TTup ts ->
         Array.mapi (fun i t -> string_of_int i, t) ts |>
         emit_for_record
@@ -3849,25 +3870,27 @@ let emit_deserialize_function indent name ~opc typ =
   p "let %s tx_ start_offs_ =" name ;
   let indent = indent + 1 in
   let p fmt = emit opc.code indent fmt in
-  (* Ramen's value are always non-nullable records with no default value, so
+(*  (* Ramen's value are always non-nullable records with no default value, so
    * they will always be present (bit=0), skip (and check) the prefix
    * (note that only one byte of bitmask is cleared by dessser): *)
+  (* TODO: non record outermost values, which bitmask is only optional *)
   p "let pref_ = (RingBuf.read_word tx_ start_offs_) land 0xffff in" ;
   p "assert (pref_ = 0x0001) ;" ;
-  p "let start_offs_ = start_offs_ + %d in" DessserRamenRingBuffer.word_size ;
-  (* Given top level value is a record, it always has its own bitmask: *)
+  p "let start_offs_ = start_offs_ + %d in" DessserRamenRingBuffer.word_size ; *)
+  (* Given top level value is a record, it always has its own bitmask, if only
+   * with 0 bits: *)
   let has_nullmask = true in
   if has_nullmask then (
     p "let nullmask_words_ = RingBuf.read_u8 tx_ start_offs_ |> Uint8.to_int in" ;
     p "let offs_ = start_offs_ + %d * nullmask_words_ in"
       DessserRamenRingBuffer.word_size ;
     if verbose_serialization then
-      p "!logger.debug \"Deserializing a tuple with %%d words of nullmask\" \
+      p "!logger.info \"Deserializing a tuple with %%d words of nullmask\" \
           nullmask_words_ ;"
   ) else (
     p "let offs_ = start_offs_ in" ;
     if verbose_serialization then
-      p "!logger.debug \"Deserializing a tuple with no nullmask\" ;"
+      p "!logger.info \"Deserializing a tuple with no nullmask\" ;"
   ) ;
   List.fold_left (fun nulli ft ->
     let id = id_of_field_name ~tuple:In ft.RamenTuple.name in
@@ -3876,7 +3899,7 @@ let emit_deserialize_function indent name ~opc typ =
     emit_deserialize_value (indent + 1) "tx_" "start_offs_" "offs_"
                            "bi_" opc.code ft.typ ;
     p "  in" ;
-    nulli + 1
+    if DessserRamenRingBuffer.BitMaskWidth.has_bit ft.typ then nulli + 1 else nulli
   ) (if has_nullmask then 8 else 0) typ |> ignore ;
   (* We want to output the tuple with fields ordered according to the
    * select clause specified order, not according to serialization order: *)

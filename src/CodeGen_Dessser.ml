@@ -32,6 +32,9 @@ module RingBuf2Value = DessserHeapValue.Materialize (DessserRamenRingBuffer.Des)
 
 module RowBinary2Value = DessserHeapValue.Materialize (DessserRowBinary.Des)
 
+(* let () =
+  DessserExpressions.dump_debug := true *)
+
 let rowbinary_to_value ?config mn compunit =
   let open DE.Ops in
   let compunit, e, _ = RowBinary2Value.make ?config mn compunit in

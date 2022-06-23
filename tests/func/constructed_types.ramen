@@ -4,7 +4,7 @@ DEFINE tuple_exercise AS
   FROM (SELECT sum 1 AS tick EVERY 1 SECOND)
   SELECT ( 1st ("one"; tick; sum tick) ;
            2nd(2nd (42; (1; 17); tick+1)) ) AS some_tup,
-         "glop" as _glop,
+         "glop" AS _glop,
          [ (_glop; 42; _glop) ; ("pin"; 2; "pon") ] AS some_vec,
          { one : 1st some_tup ;
            seventeen: 2nd some_tup ;
