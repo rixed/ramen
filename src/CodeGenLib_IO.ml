@@ -200,6 +200,10 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
    * boundary. *)
   let buffer = ref (Bytes.create 0) in
   let buffer_len = ref 0 in  (* used size, as opposed to capacity *)
+  let reset_buffer_and_fail msg =
+    buffer := Bytes.create 0 ;
+    buffer_len := 0 ;
+    failwith msg in
   let capacity () = Bytes.length !buffer in
   let append_msg str =
     let capa = capacity () in
@@ -208,7 +212,10 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
     if new_len > capa then (
       let new_capa = capa + new_len * 2 in
       if new_capa > 50_000_000 then
-        failwith "Reached max buffer size for a single tuple" ;
+        (* There is no hope to parse anything in this kafka message, but we
+         * can retry from scratch with the next message. Let's thus clean the
+         * buffer: *)
+        reset_buffer_and_fail"Reached max buffer size for a single tuple" ;
       !logger.info "New Kafka read buffer capacity: %d" new_capa ;
       let new_buffer = Bytes.create new_capa in
       Bytes.blit !buffer 0 new_buffer 0 !buffer_len ;
@@ -236,7 +243,7 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
       let tot_consumed = loop 0 in
       RamenWatchdog.disable watchdog ;
       if tot_consumed = 0 then
-        failwith "Cannot decode anything from that whole message" ;
+        reset_buffer_and_fail "Cannot decode anything from that whole message" ;
       let new_len = !buffer_len - tot_consumed in
       if new_len > 0 then
         (if single_partition then !logger.debug else !logger.warning)
