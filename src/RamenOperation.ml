@@ -146,7 +146,7 @@ let print_kafka_specs with_types oc specs =
       (E.print with_types) partitions
   ) specs.partitions ;
   Printf.fprintf oc " WITH OPTIONS %a"
-    (pretty_list_print ~uppercase:true (fun oc (n, e) ->
+    (List.print ~first:"" ~last:"" ~sep:", " (fun oc (n, e) ->
       Printf.fprintf oc "%S = %a" n (E.print with_types) e))
       specs.options
 
