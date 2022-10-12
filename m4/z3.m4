@@ -22,7 +22,7 @@ AC_DEFUN([AC_CHECK_Z3],
     [AC_MSG_ERROR([Cannot find z3 in the path.])])
 
   # Check z3 version
-  Z3VERSION=$($Z3 --version | sed -n -e 's+^.*\([[0-9]].[[0-9]].[[0-9]]\).*$+\1+p')
+  Z3VERSION=$($Z3 --version | sed 's/^.*version \(.*\) -.*bit$/\1'/)
   AC_SUBST([Z3VERSION])
 
   Z3_MIN_VERSION="4.6.0"
