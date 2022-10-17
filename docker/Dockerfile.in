@@ -86,7 +86,7 @@ RUN cd /root && \
 
 # Install all ramen dependencies using opam
 RUN cd /root && \
-    git clone https://github.com/rixed/ramen.git && \
+    git clone https://github.com/Accedian/ramen.git && \
     cd ramen && \
     git checkout v@PACKAGE_VERSION@
 
