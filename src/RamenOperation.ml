@@ -173,8 +173,10 @@ let print_csv_specs oc specs =
     Printf.fprintf oc " SEPARATOR %a" RamenParsing.print_char specs.separator ;
   if specs.null <> Default.csv_null then
     Printf.fprintf oc " NULL %S" specs.null ;
-  if not specs.may_quote then
-    Printf.fprintf oc " NO QUOTES" ;
+  (match specs.may_quote with
+  | None -> Printf.fprintf oc " NO QUOTES" ;
+  | Some '"' -> () (* Default *)
+  | Some c -> Printf.fprintf oc " QUOTE WITH %C" c) ;
   if specs.escape_seq <> "" then
     Printf.fprintf oc " ESCAPE WITH %S" specs.escape_seq ;
   if specs.vectors_of_chars_as_string then
@@ -1461,9 +1463,10 @@ struct
        opt_blanks) ++
      optional ~def:Default.csv_null (
        strinG "null" -- opt_blanks -+ quoted_string +- opt_blanks) ++
-     optional ~def:true (
-       optional ~def:true (strinG "no" -- blanks >>: fun () -> false) +-
-       strinGs "quote" +- blanks) ++
+     optional ~def:(Some '"') (
+       (strinG "no" -- blanks -- strinGs "quote" -- blanks >>: fun () -> None) |||
+       (strinG "quote" -- optional ~def:() (blanks -- strinG "with") --
+       blanks -+ some quoted_char +- opt_blanks)) ++
      optional ~def:"" (
        strinG "escape" -- optional ~def:() (blanks -- strinG "with") --
        opt_blanks -+ quoted_string +- opt_blanks) ++
