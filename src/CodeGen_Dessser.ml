@@ -1756,7 +1756,7 @@ let emit_reader ~r_env compunit field_of_params func_op
           separator = specs.separator ;
           newline = Some '\n' ;
           (* FIXME: Dessser do not do "maybe" quoting yet *)
-          quote = if specs.may_quote then Some '"' else None ;
+          quote = specs.may_quote ;
           null = specs.null ;
           (* FIXME: make this configurable from RAQL: *)
           true_ = Default.csv_true ;

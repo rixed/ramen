@@ -122,12 +122,13 @@
       [ CSV {
           separator: char;
           null: string;
-          // If true, expect some quoted fields. Otherwise quotes are just part
-          // of the value:
-          may_quote: bool default false;
+          // If not null, expect some fields quoted with that char.
+          // Otherwise quotes are just part of the value:
+          may_quote: char? default null;
           escape_seq: string default "";
           fields: $field_type[[]];
           vectors_of_chars_as_string: bool default false;
+          // Clickhouse uses a weird syntax for compound values:
           clickhouse_syntax: bool default false;
         }
       // ClickHouse RowBinary format taken from NamesAndTypes.cpp for version 1
