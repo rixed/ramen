@@ -1880,21 +1880,21 @@ struct
                       (f1 bool?, f2 i32)")
 
    "READ FROM KAFKA TOPIC \"foo\" WITH OPTIONS \\
-      \"foo.bar\" = \"glop\" AND \"metadata.broker.list\" = \"localhost:9002\" \\
+      \"foo.bar\" = \"glop\", \"metadata.broker.list\" = \"localhost:9002\" \\
       AS CSV (f1 BOOL?, f2 I32)" \
       (test_op "read from kafka topic \"foo\" with options \\
         \"foo.bar\"=\"glop\", \"metadata.broker.list\" = \"localhost:9002\" \\
         as csv (f1 bool?, f2 i32)")
 
    "READ FROM KAFKA TOPIC \"foo\" PARTITIONS [0] WITH OPTIONS \\
-      \"foo.bar\" = \"glop\" AND \"metadata.broker.list\" = \"localhost:9002\" \\
+      \"foo.bar\" = \"glop\", \"metadata.broker.list\" = \"localhost:9002\" \\
       AS CSV (f1 BOOL?, f2 I32)" \
       (test_op "read from kafka topic \"foo\" partitions [0] with options \\
         \"foo.bar\"=\"glop\", \"metadata.broker.list\" = \"localhost:9002\" \\
         as csv (f1 bool?, f2 i32)")
 
     "READ FROM KAFKA TOPIC \"foo\" PARTITIONS [0; 1] WITH OPTIONS \\
-      \"foo.bar\" = \"glop\" AND \"metadata.broker.list\" = \"localhost:9002\" \\
+      \"foo.bar\" = \"glop\", \"metadata.broker.list\" = \"localhost:9002\" \\
       AS CSV (f1 BOOL?, f2 I32)" \
       (test_op "read from kafka topic \"foo\" partitions [ 0 ; 1 ] with options \\
         \"foo.bar\"=\"glop\", \"metadata.broker.list\" = \"localhost:9002\" \\
