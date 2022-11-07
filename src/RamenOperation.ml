@@ -208,7 +208,7 @@ let print_row_binary_specs oc fields =
       | _ ->
           Printf.sprintf2 "ClickHouseFor(%a)" DT.print_mn typ) ;
     if typ.DT.nullable then Printf.fprintf oc ")" in
-  Printf.fprintf oc "AS ROWBINARY\n" ;
+  Printf.fprintf oc "AS ROWBINARY (\n" ;
   Printf.fprintf oc "  columns format version: 1\n" ;
   Printf.fprintf oc "  %d columns:" (List.length fields) ;
   List.iter (fun f ->
@@ -216,7 +216,7 @@ let print_row_binary_specs oc fields =
       N.field_print f.RamenTuple.name
       print_type_as_clickhouse f.typ
   ) fields ;
-  Printf.fprintf oc ";"
+  Printf.fprintf oc ");"
 
 let print_external_format oc = function
   | CSV specs ->
