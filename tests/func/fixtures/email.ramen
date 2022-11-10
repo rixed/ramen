@@ -1,0 +1,20 @@
+-- vim: ft=sql expandtab
+
+DEFINE emails AS
+  READ FROM FILE "email.csv"
+  AS CSV
+    SEPARATOR "\t"
+    NULL "\\N"
+    NO QUOTES
+    ESCAPE WITH "\\"
+    CLICKHOUSE SYNTAX
+  (
+    columns format version: 1
+    6 columns:
+    `from` Nullable(String)
+    `to` Array(String)
+    `cc` Array(String)
+    `id` Nullable(String)
+    `files` Array(String)
+    `content_types` Array(String)
+  );

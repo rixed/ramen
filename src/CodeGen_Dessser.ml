@@ -1752,7 +1752,7 @@ let emit_reader ~r_env compunit field_of_params func_op
   let deserializer =
     match format with
     | CSV specs ->
-        let config = DessserCsv.{
+        let config = DessserConfigs.Csv.{
           separator = specs.separator ;
           newline = Some '\n' ;
           (* FIXME: Dessser do not do "maybe" quoting yet *)

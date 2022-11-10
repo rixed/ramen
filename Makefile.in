@@ -690,6 +690,7 @@ tests/func/season.x: tests/func/fixtures/earthquakes.x
 tests/func/sort.x: tests/func/fixtures/earthquakes.x
 tests/func/top_expr.x: tests/func/fixtures/cars.x
 tests/func/tuples.x: tests/func/fixtures/n123.x
+tests/func/array_of_strings.x: tests/func/fixtures/email.x
 
 
 # GeoIP database
