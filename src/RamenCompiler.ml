@@ -167,7 +167,7 @@ let reader_deserializer conf func func_src_name =
               vectors_of_chars_as_string =
                 specs.vectors_of_chars_as_string } in
             CodeGen_Dessser.csv_to_value ~config
-        | RowBinary _ ->
+        | RowBinary ->
             CodeGen_Dessser.rowbinary_to_value ?config:None in
       let can_use_cpp = false in (* FIXME *)
       let compiler =

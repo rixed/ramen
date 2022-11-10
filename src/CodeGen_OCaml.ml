@@ -4881,7 +4881,7 @@ let emit_operation name top_half_name func_op in_type
     let source_name = name ^"_source"
     and parser_name = name ^"_format"
     and format_name =
-      match format with CSV _ -> "CSV" | RowBinary _ -> "RowBinary" in
+      match format with CSV _ -> "CSV" | RowBinary -> "RowBinary" in
     (match source with
     | File specs ->
         emit_read_file opc param_env env_env globals_env source_name specs

@@ -1744,7 +1744,7 @@ let emit_reader ~r_env compunit field_of_params func_op
   let reader_name = (func_name : N.func :> string) ^"_reader"
   and parser_name = (func_name :> string) ^"_format"
   and format_name =
-    match format with O.CSV _ -> "CSV" | O.RowBinary _ -> "RowBinary" in
+    match format with O.CSV _ -> "CSV" | O.RowBinary -> "RowBinary" in
   (* Generate the function to unserialize the values: *)
   let out_type = O.out_record_of_operation ~with_priv:true func_op in
   let in_typ =
@@ -1765,7 +1765,7 @@ let emit_reader ~r_env compunit field_of_params func_op
           vectors_of_chars_as_string =
             specs.vectors_of_chars_as_string } in
         csv_to_value ~config
-    | RowBinary _ ->
+    | RowBinary ->
         rowbinary_to_value ?config:None in
   let compunit, _, _ =
     let compunit, e = deserializer in_typ compunit in

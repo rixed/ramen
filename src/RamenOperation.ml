@@ -158,16 +158,11 @@ let print_external_source with_types oc = function
 
 let fold_external_format init _f = function
   | CSV _ -> init
-  | RowBinary _ -> init
+  | RowBinary -> init
 
 let map_external_format _f x = x
 
-let fields_of_external_format = function
-  | CSV { fields ; _ }
-  | RowBinary fields ->
-      fields
-
-let print_csv_specs oc specs =
+let print_csv_specs oc specs fields =
   Printf.fprintf oc "AS CSV" ;
   if specs.separator <> Default.csv_separator then
     Printf.fprintf oc " SEPARATOR %a" RamenParsing.print_char specs.separator ;
@@ -184,7 +179,7 @@ let print_csv_specs oc specs =
   if specs.clickhouse_syntax then
     Printf.fprintf oc " CLICKHOUSE SYNTAX" ;
   Printf.fprintf oc " %a"
-    RamenTuple.print_typ specs.fields
+    RamenTuple.print_typ fields
 
 let print_row_binary_specs oc fields =
   let print_type_as_clickhouse oc typ =
@@ -218,10 +213,10 @@ let print_row_binary_specs oc fields =
   ) fields ;
   Printf.fprintf oc ");"
 
-let print_external_format oc = function
+let print_external_format fields oc = function
   | CSV specs ->
-      print_csv_specs oc specs
-  | RowBinary fields ->
+      print_csv_specs oc specs fields
+  | RowBinary ->
       print_row_binary_specs oc fields
 
 let print_site_identifier oc = function
@@ -311,10 +306,10 @@ and print with_types oc op =
         RamenEventTime.print oc et
       ) aggregate_event_time
 
-  | ReadExternal { source ; format ; event_time ; _ } ->
+  | ReadExternal { source ; format ; fields ; event_time ; _ } ->
     Printf.fprintf oc "%tREAD FROM %a %a" sp
       (print_external_source with_types) source
-      (print_external_format) format ;
+      (print_external_format fields) format ;
     Option.may (fun et ->
       sp oc ;
       RamenEventTime.print oc et
@@ -429,11 +424,11 @@ let event_time_of_operation op =
         List.filter_map (fun sf ->
           filter_time_type sf.expr.E.typ sf.alias
         ) aggregate_fields
-    | ReadExternal { event_time ; format ; _ } ->
+    | ReadExternal { event_time ; fields ; _ } ->
         event_time,
-        fields_of_external_format format |>
         List.filter_map (fun ft ->
-          filter_time_type ft.RamenTuple.typ ft.name)
+          filter_time_type ft.RamenTuple.typ ft.name
+        ) fields
     | ListenFor { proto ; _ } ->
         RamenProtocols.event_time_of_proto proto, []
   and event_time_from_fields fields =
@@ -533,8 +528,8 @@ let out_type_of_operation ?(reorder=true) ~with_priv op =
             typ = sf.expr.typ ;
             units = sf.expr.units }
         ) aggregate_fields
-    | ReadExternal { format ; _ } ->
-        fields_of_external_format format
+    | ReadExternal { fields ; _ } ->
+        fields
     | ListenFor { proto ; _ } ->
         RamenProtocols.tuple_typ_of_proto proto in
   let typ =
@@ -1131,10 +1126,9 @@ let checked ?(unit_tests=false) params globals op =
       check_factors field_names factors ;
       op
 
-    | ReadExternal ({ source ; format ; event_time ;
+    | ReadExternal ({ source ; fields ; event_time ;
                       readExternal_factors ; _ } as readExternal) ->
-      let field_names = fields_of_external_format format |>
-                        List.map (fun t -> t.RamenTuple.name) in
+      let field_names = List.map (fun t -> t.RamenTuple.name) fields in
       let event_time =
         Option.map (checked_event_time field_names) event_time in
       check_factors field_names readExternal_factors ;
@@ -1444,13 +1438,6 @@ struct
         net_addr, port, ip_proto, proto) m
 
   let csv_specs m =
-    let fields_schema m =
-      let m = "tuple schema" :: m in
-      (
-        char '(' -- opt_blanks -+
-          several ~sep:list_sep RamenTuple.Parser.field +-
-        opt_blanks +- char ')'
-      ) m in
     let m = "CSV format" :: m in
     (optional ~def:Default.csv_separator (
        strinG "separator" -- opt_blanks -+ (
@@ -1479,39 +1466,48 @@ struct
        ) +- opt_blanks) ++
      optional ~def:false (
        strinG "clickhouse" -- opt_blanks -- strinG "syntax" -- opt_blanks >>:
-         fun () -> true) ++
-     fields_schema >>:
-     fun ((((((separator, null), may_quote), escape_seq),
-            vectors_of_chars_as_string), clickhouse_syntax),
-          fields) ->
+         fun () -> true) >>:
+     fun (((((separator, null), may_quote), escape_seq),
+            vectors_of_chars_as_string), clickhouse_syntax) ->
        if String.of_char separator = null then
          raise (Reject "Invalid CSV separator") ;
-       { separator ; null ; may_quote ; escape_seq ; fields ;
+       { separator ; null ; may_quote ; escape_seq ;
          vectors_of_chars_as_string ; clickhouse_syntax }) m
 
-  let row_binary_specs =
-    char '(' -- opt_blanks -+
-    DessserParser.clickhouse_names_and_types +-
-    opt_blanks +- char ')' >>: function
-      | TRec mns ->
-          RowBinary (
+  let list_of_fields m =
+    let m = "list of fields" :: m in
+    (
+      several ~sep:list_sep RamenTuple.Parser.field
+    ) m
+
+  let names_and_types m =
+    let m = "NamesAndTypes" :: m in
+    (
+      DessserParser.clickhouse_names_and_types >>: function
+        | TRec mns ->
             Array.enum mns /@
             (fun (n, mn) ->
               let name = N.field n
               and typ = mn in
               RamenTuple.{ name ; typ ; units = None ;
                                 doc = "" ; aggr = None }) |>
-            List.of_enum)
-      | _ ->
-          assert false
+            List.of_enum
+        | _ ->
+            assert false
+    ) m
 
   let external_format m =
     let m = "external data format" :: m in
     (
       strinG "as" -- blanks -+ (
         (strinG "csv" -- blanks -+ csv_specs >>: fun s -> CSV s) |<|
-        (strinG "rowbinary" -- blanks -+ row_binary_specs)
-      )
+        (strinG "rowbinary" >>: fun () -> RowBinary)
+      ) +- opt_blanks +- char '(' +- opt_blanks ++
+      (
+        list_of_fields |||
+        names_and_types
+      ) +-
+      opt_blanks +- char ')'
     ) m
 
   let file_specs m =
@@ -1589,7 +1585,8 @@ struct
     | EveryClause of E.t option
     | ListenClause of (string * Uint16.t * IpProtocol.t * RamenProtocols.t)
     | InstrumentationClause of string
-    | ReadClause of (external_source * external_format)
+    | ReadClause of
+        (external_source * (external_format * RamenTuple.field_typ list))
   (* A special from clause that accept globs, used to match workers in
    * instrumentation operations. *)
   let from_pattern m =
@@ -1799,9 +1796,10 @@ struct
       else if not_aggregate && not_listen &&
               not_instrumentation &&
               read != default_read_clause then
-        let source, format = Option.get read
+        let source, (format, fields) = Option.get read
         and readExternal_factors = factors in
-        ReadExternal { source ; format ; event_time ; readExternal_factors }
+        ReadExternal { source ; format ; fields ; event_time ;
+                       readExternal_factors }
       else
         raise (Reject "Incompatible mix of clauses")
     ) m
