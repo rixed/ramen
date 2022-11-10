@@ -1,0 +1,15 @@
+{
+  programs = [
+    { src = "fixtures/email.ramen" };
+    { src = "array_of_strings.ramen" };
+  ];
+  outputs = {
+    "array_of_strings/f1" => {
+      timeout = 5;
+      present = [
+        { "from" => "\"\\\"bdp\\\" <bdp@localhost>\"" ;
+          "content_types" => "[\"multipart/alternative\"; \"text/plain\"; \"image/jpeg\"; \"image/jpeg\"; \"image/jpeg\"]" }
+      ]
+    }
+  }
+}
