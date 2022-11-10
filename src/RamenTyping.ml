@@ -2478,8 +2478,7 @@ let id_or_type_of_field op path =
        * Record expression to locate the actual expression which id we
        * should equate to the callers' expression. *)
       Id (find_expr_of_path_in_selected_fields aggregate_fields path).E.uniq_num
-  | O.ReadExternal { format ; _ } ->
-      let fields = O.fields_of_external_format format in
+  | O.ReadExternal { fields ; _ } ->
       FieldType (find_field_type "CSV" fields)
   | O.ListenFor { proto ; _ } ->
       FieldType (find_field_type (RamenProtocols.string_of_proto proto)

@@ -126,13 +126,13 @@
           // Otherwise quotes are just part of the value:
           may_quote: char? default null;
           escape_seq: string default "";
-          fields: $field_type[[]];
           vectors_of_chars_as_string: bool default false;
           // Clickhouse uses a weird syntax for compound values:
           clickhouse_syntax: bool default false;
         }
       // ClickHouse RowBinary format taken from NamesAndTypes.cpp for version 1
-      | RowBinary $field_type[[]] ];
+      | RowBinary ];
+    fields: $field_type[[]];
     event_time: $event_time?;
     factors: $field_name[[]];
   }
