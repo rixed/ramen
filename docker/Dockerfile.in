@@ -107,7 +107,7 @@ RUN cd /root/ramen && \
 # of time later.
 RUN cd /root/ramen && make dep && make -j3 && git clean -fdx
 
-# Buidl and install ramen (via de deb package)
+# Build and install ramen (via de deb package)
 RUN cd /root/ramen && \
     ./configure && \
     make dep && \
