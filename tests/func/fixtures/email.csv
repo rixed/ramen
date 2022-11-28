@@ -1,4 +1,4 @@
 "xxxxxxxxxx" <xxxxxxxxx@xxxxxxx.com>	['Xxxxxxxxxxx <xxxxxxxx@gmail.com>']	[]	<CEC7902D.1A0ED%xxxxxxxxx@xxxxxxx.com>	[]	[]
-sample sender <sample.sender@example.com>	['sample receiver 1 <sample.receiver.1@example.com>','sample receiver 2 <sample.receiver.2@example.com>']	['sample receiver 3 <sample.receiver.3@example.com>','sample receiver 4 <sample.receiver.4@example.com>']	\N	[]	[]
+sample sender <sample.sender@example.com>	['sample receiver 1 <sample.receiver.1@example.com>', 'sample receiver 2 <sample.receiver.2@example.com>']	['sample receiver 3 <sample.receiver.3@example.com>', 'sample receiver 4 <sample.receiver.4@example.com>']	\N	[]	[]
 \N	[]	[]	\N	[]	[]
-"bdp" <bdp@localhost>	['"bdp" <bdp@localhost>']	[]	<001201d7abfb$1b689a20$5239ce60$@localhost>	['fileExample.txt','image.jpg','image2.jpg','image3.jpg']	['multipart/alternative','text/plain','image/jpeg','image/jpeg','image/jpeg']
+"bdp" <bdp@localhost>	['"bdp" <bdp@localhost>']	[]	<001201d7abfb$1b689a20$5239ce60$@localhost>	['fileExample.txt', 'image.jpg','image2.jpg', 'image3.jpg']	['multipart/alternative', 'text/plain', 'image/jpeg', 'image/jpeg','image/jpeg']

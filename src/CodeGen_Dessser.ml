@@ -1755,6 +1755,8 @@ let emit_reader ~r_env compunit field_of_params func_op
         let config = DessserConfigs.Csv.{
           separator = specs.separator ;
           newline = Some '\n' ;
+          (* TODO: make this configurable: *)
+          trimmed = "" ;
           (* FIXME: Dessser do not do "maybe" quoting yet *)
           quote = specs.may_quote ;
           null = specs.null ;
