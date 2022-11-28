@@ -157,6 +157,8 @@ let reader_deserializer conf func func_src_name =
             let config = DessserConfigs.Csv.{
               separator = specs.separator ;
               newline = Some '\n' ;
+              (* TODO: Make this configurable: *)
+              trimmed = "" ;
               (* FIXME: Dessser do not do "maybe" quoting yet *)
               quote = specs.may_quote ;
               null = specs.null ;
