@@ -75,10 +75,13 @@ let thread_names = ref ThreadNames.empty
 let make_single_logger ?logdir ?(prefix="") log_level =
   let output = match logdir with Some s -> Directory s | _ -> Stdout in
   let prefix = ref (make_prefix prefix) in
-  let rate_limit = rate_limit 30 in
+  let rate_limit_err = rate_limit 30
+  and rate_limit_wrn = rate_limit 30
+  and rate_limit_nfo = rate_limit 30
+  and rate_limit_dbg = rate_limit 30 in
   let skip = ref 0 in
   let last_mday = ref None in
-  let do_log ?(error_prefix="") is_err col fmt =
+  let do_log ?(error_prefix="") is_err rate_limit col fmt =
     let open Unix in
     let now = time () in
     let tm = localtime now in
@@ -89,7 +92,7 @@ let make_single_logger ?logdir ?(prefix="") log_level =
     let p =
       (* Only errors are rate limited, but other messages do interrupt an
        * error sequence: *)
-      if is_err && rate_limit now then (
+      if rate_limit now then (
         incr skip ;
         Printf.ifprintf
       ) else (
@@ -122,13 +125,13 @@ let make_single_logger ?logdir ?(prefix="") log_level =
             changed_day_pref (col time_pref) !prefix thread_name error_prefix in
         IO.flush oc ;
         ret) in
-  let error fmt = do_log true red fmt ~error_prefix:"(E)"
-  and warning fmt = do_log true yellow fmt ~error_prefix:"(W)"
+  let error fmt = do_log true rate_limit_err red fmt ~error_prefix:"(E)"
+  and warning fmt = do_log true rate_limit_wrn yellow fmt ~error_prefix:"(W)"
   and info fmt =
-    if log_level <> Quiet then do_log false green fmt
+    if log_level <> Quiet then do_log false rate_limit_nfo green fmt
     else Printf.ifprintf stderr fmt
   and debug fmt =
-    if log_level = Debug then do_log false identity fmt
+    if log_level = Debug then do_log false rate_limit_dbg identity fmt
     else Printf.ifprintf stderr fmt
   in
   { log_level ; error ; warning ; info ; debug ; output ; prefix ; alt = None }
