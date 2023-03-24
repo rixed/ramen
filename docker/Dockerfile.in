@@ -101,13 +101,14 @@ RUN opam install --yes depext && \
 
 RUN cd /root/ramen && \
     ./configure && \
+    opam install --yes lmdb.1.0 && \
     opam install --yes --deps-only .
 
 # Perform a first build to get the submodule compiled already which save a lot
 # of time later.
 RUN cd /root/ramen && make dep && make -j3 && git clean -fdx
 
-# Build and install ramen (via de deb package)
+# Build and install ramen (via the deb package)
 RUN cd /root/ramen && \
     ./configure && \
     make dep && \
