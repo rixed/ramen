@@ -232,12 +232,21 @@ let read_kafka_topic consumer topic partitions offset quit_flag while_ k =
           (* As long as we managed to consume something, then it's
            * OK to fail now: *)
           let has_more = i > 0 in
-          let consumed = k !buffer i !buffer_len has_more in
-          !logger.debug "consume_message: consumed %d/%d bytes"
-            consumed rem_bytes ;
-          if consumed > 0 then
-            loop (i + consumed)
-          else i
+          match k !buffer i !buffer_len has_more with
+          | exception e ->
+              let bt = Printexc.get_raw_backtrace () in
+              !logger.error "Parsing error %s at offset %d/%d:\n%s[MSG START:]%s"
+                (Printexc.to_string e)
+                i !buffer_len
+                (Bytes.sub_string !buffer 0 i)
+                (Bytes.sub_string !buffer i rem_bytes) ;
+              Printexc.raise_with_backtrace e bt
+          | consumed ->
+              !logger.debug "consume_message: consumed %d/%d bytes"
+                consumed rem_bytes ;
+              if consumed > 0 then
+                loop (i + consumed)
+              else i
         ) else i in
       RamenWatchdog.enable watchdog ;
       let tot_consumed = loop 0 in
