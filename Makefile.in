@@ -1624,7 +1624,7 @@ endif
 
 docker: docker/Dockerfile
 	@echo 'Building docker image'
-	$(DOCKER_BUILD) --squash -t rixed/ramen:latest -f '$<' docker/
+	DOCKER_BUILDKIT=1 $(DOCKER_BUILD) --ssh default --squash -t rixed/ramen:latest -f '$<' docker/
 	@echo 'Pushing to local hub as localhost:5000/ramen'
 	docker tag rixed/ramen localhost:5000/ramen
 	docker push localhost:5000/ramen
@@ -1645,7 +1645,7 @@ docker-dev: docker/Dockerfile-dev
 	  distrib=`echo $$distrib_tag | cut -d, -f1` ;\
 	  tag=`echo $$distrib_tag | cut -d, -f2` ;\
 	  echo 'Building ramen-dev docker image from '$$distrib ;\
-	  $(DOCKER_BUILD) -t rixed/ramen-dev:$$tag \
+	  DOCKER_BUILDKIT=1 $(DOCKER_BUILD) --ssh default -t rixed/ramen-dev:$$tag \
 	                  -f docker/Dockerfile-dev \
 	                  --build-arg distrib=$$distrib docker/ ;\
 	done
