@@ -84,8 +84,10 @@ RUN cd /root && \
     make install && \
     DEBIAN_FRONTEND=noninteractive apt-get purge --yes python
 
+RUN mkdir -p -m 0600 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts
+
 # Install all ramen dependencies using opam
-RUN cd /root && \
+RUN --mount=type=ssh cd /root && \
     git clone git@github.com:Accedian/ramen.git && \
     cd ramen && \
     git checkout v@PACKAGE_VERSION@
