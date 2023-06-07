@@ -211,4 +211,5 @@ let subst_dict =
   "Z"             (subst_dict ["c", "Z"] "${a,b,c|coalesce}")
   "Y"             (subst_dict ["b", "Y"; "c" , "Z"] "${a,b,c|coalesce}")
   "?"             (subst_dict ~null:"?" [] "${a,b,c|coalesce}")
+  "\"12\""        (subst_dict ~null:"?" ["server.zone.id", "12"] "${${zone},${client.zone.id},${server.zone.id},${source.zone.id},${dest.zone.id}|coalesce|json}")
  *)
