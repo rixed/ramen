@@ -43,7 +43,9 @@ let subst_dict =
           [ name, None ]
       | _ ->
           failwith ("bad arity for operator "^ name) in
-    let var_is_null v = v = Some "" || v = Some "0" || v = Some "false" || v = None in
+    let var_is_null = function
+      | Some ("" | "0" | "false") | None -> true
+      | n -> n = null in
     let filter_of_name = function
       | "int" ->
           foreach (string_of_int % int_of_float % float_of_string)
@@ -206,9 +208,10 @@ let subst_dict =
   "42"            (subst_dict ["b", " 42 "] "${${${a|?a:b}}|int}")
   "42"            (subst_dict ["a", " 42 "] "${${a|?${a}:${b}}|int}")
   "42"            (subst_dict ["b", " 42 "] "${${a|?${a}:${b}}|int}")
-  "X"             (subst_dict ["a", "X"] "${a|coalesce}")
-  "Y"             (subst_dict ["b", "Y"] "${a,b|coalesce}")
-  "Z"             (subst_dict ["c", "Z"] "${a,b,c|coalesce}")
-  "Y"             (subst_dict ["b", "Y"; "c" , "Z"] "${a,b,c|coalesce}")
+  "X"             (subst_dict ~null:"null" ["a", "X"] "${a|coalesce}")
+  "Y"             (subst_dict ~null:"null" ["b", "Y"] "${a,b|coalesce}")
+  "Z"             (subst_dict ~null:"null" ["c", "Z"] "${a,b,c|coalesce}")
+  "Z"             (subst_dict ~null:"null" ["c", "Z"] "${a,b,c,d,e,f|coalesce}")
+  "z"             (subst_dict ~null:"null" ["b", "Y"; "Y", "z"; "c" , "Z"] "${a,${b},c|coalesce}")
   "?"             (subst_dict ~null:"?" [] "${a,b,c|coalesce}")
  *)
