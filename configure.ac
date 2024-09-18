@@ -45,6 +45,11 @@ AC_CHECK_OCAML_PKG(stdint)
 AC_CHECK_OCAML_PKG(syslog)
 AC_CHECK_OCAML_PKG(uuidm)
 
+AC_CHECK_LIB(sodium, sodium_init, , [exit 1])
+AC_CHECK_LIB(rdkafka, rd_kafka_version_str, , [exit 1])
+AC_CHECK_LIB(ssl, SSL_in_init, , [exit 1])
+AC_CHECK_LIB(sasl2, sasl_done, , [exit 1])
+
 AC_CHECK_Z3
 
 AC_LANG([C++])
