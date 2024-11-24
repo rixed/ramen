@@ -88,7 +88,7 @@ src/RamenDepLibs.ml.frominst: $(OCAML_WHERE)/ramen/META
 	  rm $(OCAML_WHERE)/ramen/META.for_bootstrap ;\
 	fi
 
-$(OCAML_WHERE)/ramen/META:
+$(OCAML_WHERE)/ramen/META: META
 	@echo "It seems ramen is not yet installed, bootstrapping ocamlfind..."
 	mkdir -p $(OCAML_WHERE)/ramen
 	cp META $@
