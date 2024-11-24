@@ -760,6 +760,7 @@ let emit_intro oc =
   let p fmt = emit oc 0 fmt in
   p "/* This code is automatically generated. Edition is futile. */" ;
   p "#include <cassert>" ;
+  p "#include <iostream>" ;
   p "#include <orc/OrcFile.hh>" ;
   p "extern \"C\" {" ;
   p "#  include <limits.h> /* CHAR_BIT */" ;

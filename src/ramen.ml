@@ -70,7 +70,7 @@ let key secure =
 let info_of_opt ?docs opt =
   let env =
     if opt.CliInfo.env = "" then None
-    else Some (Term.env_info opt.env) in
+    else Some (Cmd.Env.info opt.env) in
   let doc =
     if opt.doc = "" then None else Some opt.doc in
   let docv =
@@ -83,7 +83,7 @@ let flag_of_opt ?docs opt =
   Arg.(value (flag i))
 
 let info_of_cmd cmd =
-  Term.info ~doc:cmd.CliInfo.doc cmd.name
+  Cmd.info ~doc:cmd.CliInfo.doc cmd.name
 
 let persist_dir =
   let i = info_of_opt ~docs:Manpage.s_common_options CliInfo.persist_dir in
@@ -237,18 +237,18 @@ let lmdb_max_readers =
   Arg.(value (opt (some int) None i))
 
 let supervisor =
-  Term.(
-    (const RamenCliCmd.supervisor
-      $ copts ~default_username:"_supervisor" ()
-      $ daemonize
-      $ to_stdout
-      $ to_syslog
-      $ prefix_log_with_name
-      $ fail_for_good
-      $ kill_at_exit
-      $ test_notifs_every
-      $ lmdb_max_readers),
-    info_of_cmd CliInfo.supervisor)
+  Cmd.v (info_of_cmd CliInfo.supervisor)
+    Term.(
+      const RamenCliCmd.supervisor
+        $ copts ~default_username:"_supervisor" ()
+        $ daemonize
+        $ to_stdout
+        $ to_syslog
+        $ prefix_log_with_name
+        $ fail_for_good
+        $ kill_at_exit
+        $ test_notifs_every
+        $ lmdb_max_readers)
 
 (*
  * Delete old or unused files
@@ -280,18 +280,18 @@ let compress_older =
   Arg.(value (opt (duration "--compress-older") Default.compress_older i))
 
 let gc =
-  Term.(
-    (const RamenCliCmd.gc
-      $ copts ~default_username:"_gc" ()
-      $ dry_run
-      $ del_ratio
-      $ compress_older
-      $ loop
-      $ daemonize
-      $ to_stdout
-      $ to_syslog
-      $ prefix_log_with_name),
-    info_of_cmd CliInfo.gc)
+  Cmd.v (info_of_cmd CliInfo.gc)
+    Term.(
+      const RamenCliCmd.gc
+        $ copts ~default_username:"_gc" ()
+        $ dry_run
+        $ del_ratio
+        $ compress_older
+        $ loop
+        $ daemonize
+        $ to_stdout
+        $ to_syslog
+        $ prefix_log_with_name)
 
 (*
  * Notifications: Start the alerter and send test ones
@@ -325,21 +325,21 @@ let reschedule_clock =
   Arg.(value (opt float Default.reschedule_clock i))
 
 let alerter =
-  Term.(
-    (const RamenCliCmd.alerter
-      $ copts ~default_username:"_alerter" ()
-      $ max_fpr
-      $ daemonize
-      $ to_stdout
-      $ to_syslog
-      $ prefix_log_with_name
-      $ timeout_idle_kafka_producers
-      $ debounce_delay
-      $ max_last_incidents_kept
-      $ max_incident_age
-      $ for_test
-      $ reschedule_clock),
-    info_of_cmd CliInfo.alerter)
+  Cmd.v (info_of_cmd CliInfo.alerter)
+    Term.(
+      const RamenCliCmd.alerter
+        $ copts ~default_username:"_alerter" ()
+        $ max_fpr
+        $ daemonize
+        $ to_stdout
+        $ to_syslog
+        $ prefix_log_with_name
+        $ timeout_idle_kafka_producers
+        $ debounce_delay
+        $ max_last_incidents_kept
+        $ max_incident_age
+        $ for_test
+        $ reschedule_clock)
 
 let text_param =
   let parse s =
@@ -365,24 +365,24 @@ let notif_name =
   Arg.(required (pos 0 (some string) None i))
 
 let notify =
-  Term.(
-    (const RamenCliCmd.notify
-      $ copts ()
-      $ text_params
-      $ is_test_alert
-      $ notif_name),
-    info_of_cmd CliInfo.notify)
+  Cmd.v (info_of_cmd CliInfo.notify)
+    Term.(
+      const RamenCliCmd.notify
+        $ copts ()
+        $ text_params
+        $ is_test_alert
+        $ notif_name)
 
 let test_file =
   let i = info_of_opt CliInfo.test_file in
   Arg.(value (pos 0 path (N.path "") i))
 
 let test_alert =
-  Term.(
-    (const RamenTestAlert.run
-      $ copts ()
-      $ test_file),
-    info_of_cmd CliInfo.test_alert)
+  Cmd.v (info_of_cmd CliInfo.test_alert)
+    Term.(
+      const RamenTestAlert.run
+        $ copts ()
+        $ test_file)
 
 (*
  * Service to forward tuples over the network
@@ -393,15 +393,15 @@ let tunneld_port =
   Arg.(value (opt (some port) None i))
 
 let tunneld =
-  Term.(
-    (const RamenCliCmd.tunneld
-      $ copts ~default_username:"_tunneld" ()
-      $ daemonize
-      $ to_stdout
-      $ to_syslog
-      $ prefix_log_with_name
-      $ tunneld_port),
-    info_of_cmd CliInfo.tunneld)
+  Cmd.v (info_of_cmd CliInfo.tunneld)
+    Term.(
+      const RamenCliCmd.tunneld
+        $ copts ~default_username:"_tunneld" ()
+        $ daemonize
+        $ to_stdout
+        $ to_syslog
+        $ prefix_log_with_name
+        $ tunneld_port)
 
 (*
  * Config Server
@@ -455,26 +455,26 @@ let allow_upgrade =
   flag_of_opt CliInfo.allow_upgrade
 
 let confserver =
-  Term.(
-    (const RamenCliCmd.confserver
-      $ copts ~default_username:confserver_uid ~is_confserver:true ()
-      $ daemonize
-      $ to_stdout
-      $ to_syslog
-      $ prefix_log_with_name
-      $ confserver_ports
-      $ confserver_ports_sec
-      $ server_pub_key_file
-      $ server_priv_key_file
-      $ ignore_file_perms
-      $ no_source_examples
-      $ archive_total_size
-      $ archive_recall_cost
-      $ oldest_site
-      $ incidents_history_length
-      $ purge_incidents_every
-      $ allow_upgrade),
-    info_of_cmd CliInfo.confserver)
+  Cmd.v (info_of_cmd CliInfo.confserver)
+    Term.(
+      const RamenCliCmd.confserver
+        $ copts ~default_username:confserver_uid ~is_confserver:true ()
+        $ daemonize
+        $ to_stdout
+        $ to_syslog
+        $ prefix_log_with_name
+        $ confserver_ports
+        $ confserver_ports_sec
+        $ server_pub_key_file
+        $ server_priv_key_file
+        $ ignore_file_perms
+        $ no_source_examples
+        $ archive_total_size
+        $ archive_recall_cost
+        $ oldest_site
+        $ incidents_history_length
+        $ purge_incidents_every
+        $ allow_upgrade)
 
 (* confclient will dump, read or write conf values according to the presence
  * of those options:*)
@@ -496,15 +496,15 @@ let follow =
   flag_of_opt CliInfo.follow
 
 let confclient =
-  Term.(
-    (const RamenCliCmd.confclient
-      $ copts ~default_username:"" ()
-      $ confclient_key
-      $ confclient_value
-      $ confclient_del
-      $ confclient_if_exists
-      $ follow),
-    info_of_cmd CliInfo.confclient)
+  Cmd.v (info_of_cmd CliInfo.confclient)
+    Term.(
+      const RamenCliCmd.confclient
+        $ copts ~default_username:"" ()
+        $ confclient_key
+        $ confclient_value
+        $ confclient_del
+        $ confclient_if_exists
+        $ follow)
 
 (*
  * User management
@@ -527,30 +527,30 @@ let also_dump_server_conf =
   flag_of_opt CliInfo.also_dump_server_conf
 
 let useradd =
-  Term.(
-    (const RamenSyncUsers.add
-      $ copts ~default_username:"" ()
-      $ output_file
-      $ username
-      $ roles
-      $ server_pub_key_file
-      $ also_dump_server_conf),
-    info_of_cmd CliInfo.useradd)
+  Cmd.v (info_of_cmd CliInfo.useradd)
+    Term.(
+      const RamenSyncUsers.add
+        $ copts ~default_username:"" ()
+        $ output_file
+        $ username
+        $ roles
+        $ server_pub_key_file
+        $ also_dump_server_conf)
 
 let userdel =
-  Term.(
-    (const RamenSyncUsers.del
-      $ copts ~default_username:"" ()
-      $ username),
-    info_of_cmd CliInfo.userdel)
+  Cmd.v (info_of_cmd CliInfo.userdel)
+    Term.(
+      const RamenSyncUsers.del
+        $ copts ~default_username:"" ()
+        $ username)
 
 let usermod =
-  Term.(
-    (const RamenSyncUsers.mod_
-      $ copts ~default_username:"" ()
-      $ username
-      $ roles),
-    info_of_cmd CliInfo.usermod)
+  Cmd.v (info_of_cmd CliInfo.usermod)
+    Term.(
+      const RamenSyncUsers.mod_
+        $ copts ~default_username:"" ()
+        $ username
+        $ roles)
 
 (*
  * Examine the ringbuffers
@@ -566,12 +566,12 @@ let num_entries =
   Arg.(value (opt int 1 i))
 
 let dequeue =
-  Term.(
-    (const RingBufCmd.dequeue
-      $ copts ()
-      $ rb_file
-      $ num_entries),
-    info_of_cmd CliInfo.dequeue)
+  Cmd.v (info_of_cmd CliInfo.dequeue)
+    Term.(
+      const RingBufCmd.dequeue
+        $ copts ()
+        $ rb_file
+        $ num_entries)
 
 let max_bytes =
   let i = info_of_opt CliInfo.max_bytes in
@@ -582,19 +582,19 @@ let rb_files =
   Arg.(non_empty (pos_all path [] i))
 
 let summary =
-  Term.(
-    (const RingBufCmd.summary
-      $ copts ()
-      $ max_bytes
-      $ rb_files),
-    info_of_cmd CliInfo.summary)
+  Cmd.v (info_of_cmd CliInfo.summary)
+    Term.(
+      const RingBufCmd.summary
+        $ copts ()
+        $ max_bytes
+        $ rb_files)
 
 let repair =
-  Term.(
-    (const RingBufCmd.repair
-      $ copts ()
-      $ rb_files),
-    info_of_cmd CliInfo.repair)
+  Cmd.v (info_of_cmd CliInfo.repair)
+    Term.(
+      const RingBufCmd.repair
+        $ copts ()
+        $ rb_files)
 
 let start_word =
   let i = info_of_opt CliInfo.start_word in
@@ -605,13 +605,13 @@ let stop_word =
   Arg.(required (opt (some int) None i))
 
 let dump =
-  Term.(
-    (const RingBufCmd.dump
-      $ copts ()
-      $ start_word
-      $ stop_word
-      $ rb_file),
-    info_of_cmd CliInfo.dump_ringbuf)
+  Cmd.v (info_of_cmd CliInfo.dump_ringbuf)
+    Term.(
+      const RingBufCmd.dump
+        $ copts ()
+        $ start_word
+        $ stop_word
+        $ rb_file)
 
 let pattern =
   let i = info_of_opt CliInfo.pattern in
@@ -649,19 +649,19 @@ let top =
   Arg.(value (opt (some int) None i))
 
 let links =
-  Term.(
-    (const RingBufCmd.links
-      $ copts ()  (* TODO: confserver version *)
-      $ no_abbrev
-      $ show_all_links
-      $ as_tree
-      $ pretty
-      $ with_header
-      $ sort_col
-      $ top
-      $ site_pattern
-      $ pattern),
-    info_of_cmd CliInfo.links)
+  Cmd.v (info_of_cmd CliInfo.links)
+    Term.(
+      const RingBufCmd.links
+        $ copts ()  (* TODO: confserver version *)
+        $ no_abbrev
+        $ show_all_links
+        $ as_tree
+        $ pretty
+        $ with_header
+        $ sort_col
+        $ top
+        $ site_pattern
+        $ pattern)
 
 (*
  * Compiling/Running/Stopping
@@ -728,50 +728,50 @@ let replace =
   flag_of_opt CliInfo.replace
 
 let compile =
-  Term.(
-    (const RamenCliCmd.compile
-      $ copts ~default_username:"" ()
-      $ lib_path
-      $ external_compiler
-      $ max_simult_compilations
-      $ smt_solver
-      $ dessser_codegen
-      $ optimization_level
-      $ src_files
-      $ output_file
-      $ as_
-      $ replace),
-    info_of_cmd CliInfo.compile)
+  Cmd.v (info_of_cmd CliInfo.compile)
+    Term.(
+      const RamenCliCmd.compile
+        $ copts ~default_username:"" ()
+        $ lib_path
+        $ external_compiler
+        $ max_simult_compilations
+        $ smt_solver
+        $ dessser_codegen
+        $ optimization_level
+        $ src_files
+        $ output_file
+        $ as_
+        $ replace)
 
 let precompserver =
-  Term.(
-    (const RamenCliCmd.precompserver
-      $ copts ~default_username:"_precompserver" ()
-      $ daemonize
-      $ to_stdout
-      $ to_syslog
-      $ prefix_log_with_name
-      $ smt_solver),
-    info_of_cmd CliInfo.precompserver)
+  Cmd.v (info_of_cmd CliInfo.precompserver)
+    Term.(
+      const RamenCliCmd.precompserver
+        $ copts ~default_username:"_precompserver" ()
+        $ daemonize
+        $ to_stdout
+        $ to_syslog
+        $ prefix_log_with_name
+        $ smt_solver)
 
 let execomp_quarantine =
   let i = info_of_opt CliInfo.execomp_quarantine in
   Arg.(value (opt float Default.execomp_quarantine i))
 
 let execompserver =
-  Term.(
-    (const RamenCliCmd.execompserver
-      $ copts ~default_username:"_execompserver" ()
-      $ daemonize
-      $ to_stdout
-      $ to_syslog
-      $ prefix_log_with_name
-      $ external_compiler
-      $ max_simult_compilations
-      $ dessser_codegen
-      $ optimization_level
-      $ execomp_quarantine),
-    info_of_cmd CliInfo.execompserver)
+  Cmd.v (info_of_cmd CliInfo.execompserver)
+    Term.(
+      const RamenCliCmd.execompserver
+        $ copts ~default_username:"_execompserver" ()
+        $ daemonize
+        $ to_stdout
+        $ to_syslog
+        $ prefix_log_with_name
+        $ external_compiler
+        $ max_simult_compilations
+        $ dessser_codegen
+        $ optimization_level
+        $ execomp_quarantine)
 
 let report_period =
   let i = info_of_opt CliInfo.report_period in
@@ -794,27 +794,27 @@ let cwd =
   Arg.(value (opt (some path) None i))
 
 let run =
-  Term.(
-    (const RamenCliCmd.run
-      $ copts ~default_username:"" ()
-      $ params
-      $ report_period
-      $ program_name
-      $ on_site
-      $ cwd
-      $ replace),
-    info_of_cmd CliInfo.run)
+  Cmd.v (info_of_cmd CliInfo.run)
+    Term.(
+      const RamenCliCmd.run
+        $ copts ~default_username:"" ()
+        $ params
+        $ report_period
+        $ program_name
+        $ on_site
+        $ cwd
+        $ replace)
 
 let purge =
   flag_of_opt CliInfo.purge
 
 let kill =
-  Term.(
-    (const RamenCliCmd.kill
-      $ copts ~default_username:"" ()
-      $ program_globs
-      $ purge),
-    info_of_cmd CliInfo.kill)
+  Cmd.v (info_of_cmd CliInfo.kill)
+    Term.(
+      const RamenCliCmd.kill
+        $ copts ~default_username:"" ()
+        $ program_globs
+        $ purge)
 
 let func_name =
   let parse s = Stdlib.Ok (N.func s)
@@ -835,42 +835,42 @@ let with_types =
   flag_of_opt CliInfo.with_types
 
 let info =
-  Term.(
-    (const RamenCliCmd.info
-      $ copts ~default_username:"" ()
-      $ params
-      $ bin_file
-      $ opt_function_name 1
-      $ with_types),
-    info_of_cmd CliInfo.info)
+  Cmd.v (info_of_cmd CliInfo.info)
+    Term.(
+      const RamenCliCmd.info
+        $ copts ~default_username:"" ()
+        $ params
+        $ bin_file
+        $ opt_function_name 1
+        $ with_types)
 
 (*
  * `ramen choreographer`
  *)
 
 let choreographer =
-  Term.(
-    (const RamenCliCmd.choreographer
-      $ copts ~default_username:"_choreographer" ()
-      $ daemonize
-      $ to_stdout
-      $ to_syslog
-      $ prefix_log_with_name),
-    info_of_cmd CliInfo.choreographer)
+  Cmd.v (info_of_cmd CliInfo.choreographer)
+    Term.(
+      const RamenCliCmd.choreographer
+        $ copts ~default_username:"_choreographer" ()
+        $ daemonize
+        $ to_stdout
+        $ to_syslog
+        $ prefix_log_with_name)
 
 (*
  * `ramen replayer`
  *)
 
 let replayer =
-  Term.(
-    (const RamenCliCmd.replay_service
-      $ copts ~default_username:"_replay_service" ()
-      $ daemonize
-      $ to_stdout
-      $ to_syslog
-      $ prefix_log_with_name),
-    info_of_cmd CliInfo.replayer)
+  Cmd.v (info_of_cmd CliInfo.replayer)
+    Term.(
+      const RamenCliCmd.replay_service
+        $ copts ~default_username:"_replay_service" ()
+        $ daemonize
+        $ to_stdout
+        $ to_syslog
+        $ prefix_log_with_name)
 
 (*
  * Display the output of any operation
@@ -964,25 +964,25 @@ let func_name_or_code =
   Arg.(non_empty (pos_all string [] i))
 
 let tail =
-  Term.(
-    (const RamenCliCmd.tail
-      $ copts ~default_username:"" ()
-      $ func_name_or_code
-      $ with_header
-      $ with_units
-      $ csv_separator
-      $ csv_null
-      $ csv_raw
-      $ last
-      $ next
-      $ follow
-      $ where
-      $ since
-      $ until
-      $ with_event_time
-      $ pretty
-      $ flush),
-    info_of_cmd CliInfo.tail)
+  Cmd.v (info_of_cmd CliInfo.tail)
+    Term.(
+      const RamenCliCmd.tail
+        $ copts ~default_username:"" ()
+        $ func_name_or_code
+        $ with_header
+        $ with_units
+        $ csv_separator
+        $ csv_null
+        $ csv_raw
+        $ last
+        $ next
+        $ follow
+        $ where
+        $ since
+        $ until
+        $ with_event_time
+        $ pretty
+        $ flush)
 
 (*
  * Replay
@@ -1020,23 +1020,23 @@ let via =
   Arg.(value (opt (enum vias) false i))
 
 let replay =
-  Term.(
-    (const RamenCliCmd.replay
-      $ copts ~default_username:"" ()
-      $ func_name_or_code
-      $ with_header
-      $ with_units
-      $ csv_separator
-      $ csv_null
-      $ csv_raw
-      $ where
-      $ since_mandatory
-      $ until
-      $ with_event_time
-      $ pretty
-      $ flush
-      $ via),
-    info_of_cmd CliInfo.replay)
+  Cmd.v (info_of_cmd CliInfo.replay)
+    Term.(
+      const RamenCliCmd.replay
+        $ copts ~default_username:"" ()
+        $ func_name_or_code
+        $ with_header
+        $ with_units
+        $ csv_separator
+        $ csv_null
+        $ csv_raw
+        $ where
+        $ since_mandatory
+        $ until
+        $ with_event_time
+        $ pretty
+        $ flush
+        $ via)
 
 
 (*
@@ -1070,53 +1070,53 @@ let factors =
   Arg.(value (opt_all field [] i))
 
 let timeseries =
-  Term.(
-    (const RamenCliCmd.timeseries
-      $ copts ~default_username:"" ()
-      $ func_name_or_code
-      $ since
-      $ until
-      $ with_header
-      $ where
-      $ factors
-      $ num_points
-      $ time_step
-      $ csv_separator
-      $ csv_null
-      $ consolidation
-      $ bucket_time
-      $ pretty),
-    info_of_cmd CliInfo.timeseries)
+  Cmd.v (info_of_cmd CliInfo.timeseries)
+    Term.(
+      const RamenCliCmd.timeseries
+        $ copts ~default_username:"" ()
+        $ func_name_or_code
+        $ since
+        $ until
+        $ with_header
+        $ where
+        $ factors
+        $ num_points
+        $ time_step
+        $ csv_separator
+        $ csv_null
+        $ consolidation
+        $ bucket_time
+        $ pretty)
 
 (*
  * Info
  *)
 
 let ps =
-  Term.(
-    (const RamenCliCmd.ps
-      $ copts ~default_username:"" ()
-      $ pretty
-      $ with_header
-      $ sort_col
-      $ top
-      $ site_pattern
-      $ pattern
-      $ show_all_workers),
-    info_of_cmd CliInfo.ps)
+  Cmd.v (info_of_cmd CliInfo.ps)
+    Term.(
+      const RamenCliCmd.ps
+        $ copts ~default_username:"" ()
+        $ pretty
+        $ with_header
+        $ sort_col
+        $ top
+        $ site_pattern
+        $ pattern
+        $ show_all_workers)
 
 let profile =
-  Term.(
-    (const RamenCliCmd.profile
-      $ copts ~default_username:"" ()
-      $ pretty
-      $ with_header
-      $ sort_col
-      $ top
-      $ site_pattern
-      $ pattern
-      $ show_all_workers),
-    info_of_cmd CliInfo.profile)
+  Cmd.v (info_of_cmd CliInfo.profile)
+    Term.(
+      const RamenCliCmd.profile
+        $ copts ~default_username:"" ()
+        $ pretty
+        $ with_header
+        $ sort_col
+        $ top
+        $ site_pattern
+        $ pattern
+        $ show_all_workers)
 
 (*
  * Start the HTTP daemon (graphite impersonator)
@@ -1143,19 +1143,19 @@ let fault_injection_rate =
   Arg.(value (opt float Default.fault_injection_rate i))
 
 let httpd =
-  Term.(
-    (const RamenCliCmd.httpd
-      $ copts ~default_username:"_httpd" ()
-      $ daemonize
-      $ to_stdout
-      $ to_syslog
-      $ prefix_log_with_name
-      $ fault_injection_rate
-      $ server_url "http://127.0.0.1:8080"
-      $ api
-      $ table_prefix
-      $ graphite),
-    info_of_cmd CliInfo.httpd)
+  Cmd.v (info_of_cmd CliInfo.httpd)
+    Term.(
+      const RamenCliCmd.httpd
+        $ copts ~default_username:"_httpd" ()
+        $ daemonize
+        $ to_stdout
+        $ to_syslog
+        $ prefix_log_with_name
+        $ fault_injection_rate
+        $ server_url "http://127.0.0.1:8080"
+        $ api
+        $ table_prefix
+        $ graphite)
 
 let for_render =
   flag_of_opt CliInfo.for_render
@@ -1165,33 +1165,33 @@ let query =
   Arg.(value (pos 0 string "*" i))
 
 let expand =
-  Term.(
-    (const RamenCliCmd.graphite_expand
-      $ copts ()
-      $ for_render
-      $ since
-      $ until
-      $ query),
-    info_of_cmd CliInfo.expand)
+  Cmd.v (info_of_cmd CliInfo.expand)
+    Term.(
+      const RamenCliCmd.graphite_expand
+        $ copts ()
+        $ for_render
+        $ since
+        $ until
+        $ query)
 
 (*
  * Tests
  *)
 
 let test =
-  Term.(
-    (const RamenTests.run
-      $ copts ()
-      $ server_url ""
-      $ api
-      $ graphite
-      $ external_compiler
-      $ max_simult_compilations
-      $ smt_solver
-      $ dessser_codegen
-      $ optimization_level
-      $ test_file),
-    info_of_cmd CliInfo.test)
+  Cmd.v (info_of_cmd CliInfo.test)
+    Term.(
+      const RamenTests.run
+        $ copts ()
+        $ server_url ""
+        $ api
+        $ graphite
+        $ external_compiler
+        $ max_simult_compilations
+        $ smt_solver
+        $ dessser_codegen
+        $ optimization_level
+        $ test_file)
 
 (*
  * Allocate disk space to workers archives
@@ -1207,19 +1207,19 @@ let reconf_workers =
   flag_of_opt CliInfo.reconf_workers
 
 let archivist =
-  Term.(
-    (const RamenCliCmd.archivist
-      $ copts ~default_username:"_archivist" ()
-      $ loop
-      $ daemonize
-      $ update_stats
-      $ update_allocs
-      $ reconf_workers
-      $ to_stdout
-      $ to_syslog
-      $ prefix_log_with_name
-      $ smt_solver),
-    info_of_cmd CliInfo.archivist)
+  Cmd.v (info_of_cmd CliInfo.archivist)
+    Term.(
+      const RamenCliCmd.archivist
+        $ copts ~default_username:"_archivist" ()
+        $ loop
+        $ daemonize
+        $ update_stats
+        $ update_allocs
+        $ reconf_workers
+        $ to_stdout
+        $ to_syslog
+        $ prefix_log_with_name
+        $ smt_solver)
 
 (*
  * Start minimum ramen
@@ -1234,56 +1234,56 @@ let archivist_loop =
   Arg.(value (opt (some float) (Some Default.archivist_loop) i))
 
 let start =
-  Term.(
-    (const RamenCliCmd.start
-      $ copts ~default_username:confserver_uid ()
-      $ daemonize
-      $ to_stdout
-      $ to_syslog
-      $ confserver_ports
-      $ confserver_ports_sec
-      $ smt_solver
-      $ fail_for_good
-      $ kill_at_exit
-      $ test_notifs_every
-      $ lmdb_max_readers
-      $ external_compiler
-      $ max_simult_compilations
-      $ dessser_codegen
-      $ optimization_level
-      $ server_pub_key_file
-      $ server_priv_key_file
-      $ ignore_file_perms
-      $ no_source_examples
-      $ archive_total_size
-      $ archive_recall_cost
-      $ oldest_site
-      $ gc_loop
-      $ archivist_loop
-      $ update_allocs
-      $ reconf_workers
-      $ del_ratio
-      $ compress_older
-      $ max_fpr
-      $ timeout_idle_kafka_producers
-      $ debounce_delay
-      $ max_last_incidents_kept
-      $ max_incident_age
-      $ incidents_history_length
-      $ purge_incidents_every
-      $ execomp_quarantine
-      $ allow_upgrade),
-    info_of_cmd CliInfo.start)
+  Cmd.v (info_of_cmd CliInfo.start)
+    Term.(
+      const RamenCliCmd.start
+        $ copts ~default_username:confserver_uid ()
+        $ daemonize
+        $ to_stdout
+        $ to_syslog
+        $ confserver_ports
+        $ confserver_ports_sec
+        $ smt_solver
+        $ fail_for_good
+        $ kill_at_exit
+        $ test_notifs_every
+        $ lmdb_max_readers
+        $ external_compiler
+        $ max_simult_compilations
+        $ dessser_codegen
+        $ optimization_level
+        $ server_pub_key_file
+        $ server_priv_key_file
+        $ ignore_file_perms
+        $ no_source_examples
+        $ archive_total_size
+        $ archive_recall_cost
+        $ oldest_site
+        $ gc_loop
+        $ archivist_loop
+        $ update_allocs
+        $ reconf_workers
+        $ del_ratio
+        $ compress_older
+        $ max_fpr
+        $ timeout_idle_kafka_producers
+        $ debounce_delay
+        $ max_last_incidents_kept
+        $ max_incident_age
+        $ incidents_history_length
+        $ purge_incidents_every
+        $ execomp_quarantine
+        $ allow_upgrade)
 
 (*
  * Experiments
  *)
 
 let variants =
-  Term.(
-    (const RamenCliCmd.variants
-      $ copts ()),
-    info_of_cmd CliInfo.variants)
+  Cmd.v (info_of_cmd CliInfo.variants)
+    Term.(
+      const RamenCliCmd.variants
+        $ copts ())
 
 (*
  * Display internal instrumentation. Also an option of various subsystems.
@@ -1294,11 +1294,11 @@ let metric_name =
   Arg.(value (pos 0 string "" i))
 
 let stats =
-  Term.(
-    (const RamenCliCmd.stats
-      $ copts ()
-      $ metric_name),
-    info_of_cmd CliInfo.stats)
+  Cmd.v (info_of_cmd CliInfo.stats)
+    Term.(
+      const RamenCliCmd.stats
+        $ copts ()
+        $ metric_name)
 
 (*
  * Autocompletion
@@ -1309,39 +1309,23 @@ let command =
   Arg.(value (pos 0 string "" i))
 
 let autocomplete =
-  Term.(
-    (const RamenCompletion.complete
-      $ command),
-    info_of_cmd CliInfo.autocomplete)
+  Cmd.v (info_of_cmd CliInfo.autocomplete)
+    Term.(
+      const RamenCompletion.complete
+        $ command)
 
 (*
  * Command line evaluation
  *)
 
-let default =
-  let sdocs = Manpage.s_common_options in
-  let doc = "Ramen Stream Processor" in
-  let version = RamenVersions.release_tag in
-  Term.((ret (const (`Help (`Pager, None)))),
-        info "ramen" ~version ~doc ~sdocs)
-
-(* Run the program printing exceptions, and exit *)
-let print_exn f =
-  try f ()
-  with Exit ->
-         exit (!Processes.quit |? 0)
-     | Timeout ->
-         Printf.eprintf "%s\n" "Timed out" ;
-         exit 1
-     | Failure msg ->
-         Printf.eprintf "%s\n" msg ;
-         exit 1
-
 let () =
-  match
-    print_exn (fun () ->
-      Term.eval_choice ~catch:false default [
-        (* daemons: *)
+  let cmd =
+    let doc = "Ramen Stream Processor"
+    and sdocs = Manpage.s_common_options
+    and version = RamenVersions.release_tag
+    and default = Term.(ret (const (`Help (`Pager, None)))) in
+    Cmd.group ~default (Cmd.info ~doc ~sdocs ~version "ramen")
+      [ (* daemons: *)
         supervisor ; gc ; httpd ; alerter ; tunneld ; archivist ;
         confserver ; confclient ; precompserver ; execompserver ;
         choreographer ; replayer ;
@@ -1361,11 +1345,20 @@ let () =
         (* introspection: *)
         variants ; stats ;
         (* debug: *)
-        autocomplete ; expand
-      ]) with
-  | `Error _ -> exit 1
-  | `Version | `Help -> exit 0
-  | `Ok f ->
-      print_exn f ;
+        autocomplete ; expand ] in
+  match Cmd.eval_value ~catch:false cmd with
+  | exception Exit ->
+      exit (!Processes.quit |? 0)
+  | exception Timeout ->
+      Printf.eprintf "%s\n" "Timed out" ;
+      exit 1
+  | exception (Failure msg) ->
+      Printf.eprintf "%s\n" msg ;
+      exit 1
+  | Error _ ->
+      exit 1
+  | Ok (`Version | `Help) ->
+      exit 0
+  | Ok (`Ok ()) ->
       (* If we have set the exit code, use it: *)
       exit (!Processes.quit |? 0)

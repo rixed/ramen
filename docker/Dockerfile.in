@@ -1,5 +1,5 @@
 # vim: ft=dockerfile expandtab
-FROM debian:11.1-slim
+FROM debian:12.8-slim
 
 # Do not install recommends and remove unused deps automatically,
 # then install some packages
@@ -54,7 +54,8 @@ RUN echo 'APT::Install-Recommends "0";' > \
         sqlite3 \
         ssh-client \
         unzip \
-        wget
+        wget \
+        z3
 
 COPY install-opam.sh /tmp
 RUN echo | /tmp/install-opam.sh && \
@@ -62,7 +63,7 @@ RUN echo | /tmp/install-opam.sh && \
 
 RUN /usr/local/bin/opam init --no-setup --disable-sandboxing && \
     /usr/local/bin/opam update --yes && \
-    /usr/local/bin/opam switch install --yes ramen 4.07.1+flambda
+    /usr/local/bin/opam switch install --yes ramen 4.11.2+flambda
 
 # Environment
 ENV OPAM_SWITCH_PREFIX=/root/.opam/ramen
@@ -71,18 +72,6 @@ ENV OCAML_TOPLEVEL_PATH=/root/.opam/ramen/lib/toplevel
 ENV MANPATH=:/root/.opam/ramen/man
 ENV PATH=/root/.opam/ramen/bin:/root/.gem/ruby/2.5.0/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ENV RAMEN_LIBS=/root/ramen/bundle
-
-# Now install z3 from source (as we need both executable and libs):
-RUN cd /root && \
-    git clone https://github.com/Z3Prover/z3.git && \
-    cd z3 && \
-    git checkout z3-4.8.10 && \
-    DEBIAN_FRONTEND=noninteractive apt-get install --yes python && \
-    python scripts/mk_make.py && \
-    cd build && \
-    make -j3 && \
-    make install && \
-    DEBIAN_FRONTEND=noninteractive apt-get purge --yes python
 
 # Install all ramen dependencies using opam
 RUN cd /root && \

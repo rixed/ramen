@@ -103,7 +103,8 @@ static struct custom_operations handler_ops = {
   custom_hash_default,
   custom_serialize_default,
   custom_deserialize_default,
-  custom_compare_ext_default
+  custom_compare_ext_default,
+  custom_fixed_length_default
 };
 
 extern "C" value orc_handler_create(value schema_, value path_, value with_index_, value batch_sz_, value max_batches_, value archive_)

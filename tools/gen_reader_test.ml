@@ -9,7 +9,7 @@ type input_format = CSV | CHB
 
 let opaque_user_type = true
 
-let gen_type num_fields max_depth format () =
+let gen_type num_fields max_depth format =
   let num_fields = num_fields |? 2 + Random.int 5 in
   assert (num_fields > 0) ;
   assert (max_depth > 0) ;
@@ -93,7 +93,7 @@ let gen_csv_reader typ func_name files separator null_str =
 let gen_chb_reader _typ _fname _separator _null_str =
   assert false
 
-let gen_reader typ format func_name files separator null_str () =
+let gen_reader typ format func_name files separator null_str =
   (match format with
   | CSV -> gen_csv_reader
   | CHB -> gen_chb_reader) typ func_name files separator null_str
@@ -159,7 +159,7 @@ and value_gen null_prob separator true_str false_str null_str mn =
   else
     value_gen_of_type null_prob separator true_str false_str null_str mn.typ
 
-let gen_data typ format length null_prob separator true_str false_str null_str () =
+let gen_data typ format length null_prob separator true_str false_str null_str =
   let mn = DT.required typ
   and separator = String.of_char separator in
   assert (format = CSV) ;
@@ -176,19 +176,19 @@ let gen_data typ format length null_prob separator true_str false_str null_str (
 open Cmdliner
 
 let num_fields_opt =
-  let env = Term.env_info "NUM_FIELDS"
+  let env = Cmd.Env.info "NUM_FIELDS"
   and doc = "Number of fields (random if unspecified)." in
   let i = Arg.info ~doc ~env [ "n" ; "num-fields" ] in
   Arg.(value (opt (some int) None i))
 
 let max_type_depth_opt =
-  let env = Term.env_info "MAX_TYPE_DEPTH"
+  let env = Cmd.Env.info "MAX_TYPE_DEPTH"
   and doc = "Maximum depth of any of the field types." in
   let i = Arg.info ~doc ~env [ "d" ; "max-depth" ] in
   Arg.(value (opt int 2 i))
 
 let reader_format_opt =
-  let env = Term.env_info "FORMAT"
+  let env = Cmd.Env.info "FORMAT"
   and doc = "Format of the input files." in
   let i = Arg.info ~doc ~env [ "f" ; "format" ] in
   let formats = [ "CSV", CSV ; "CHB", CHB ] in
@@ -196,12 +196,12 @@ let reader_format_opt =
 
 let gen_type =
   let doc = "Generate a random type." in
-  Term.(
-    (const gen_type
-      $ num_fields_opt
-      $ max_type_depth_opt
-      $ reader_format_opt),
-    info ~doc "type")
+  Cmd.v (Cmd.info ~doc "type")
+    Term.(
+      const gen_type
+        $ num_fields_opt
+        $ max_type_depth_opt
+        $ reader_format_opt)
 
 let typ_t =
   let parse s =
@@ -221,88 +221,85 @@ let type_opt =
   Arg.(required (pos 0 (some typ_t) None i))
 
 let func_name_opt =
-  let env = Term.env_info "FUNCTION_NAME"
+  let env = Cmd.Env.info "FUNCTION_NAME"
   and doc = "Name of the reader function." in
   let i = Arg.info ~doc ~env [ "function-name" ; "func-name" ] in
   Arg.(value (opt string "reader" i))
 
 let files_opt =
-  let env = Term.env_info "FILES"
+  let env = Cmd.Env.info "FILES"
   and doc = "Name (or glob) matching the file names to be read." in
   let i = Arg.info ~doc ~env [ "files" ] in
   Arg.(value (opt string "*.csv" i))
 
 let separator_opt =
-  let env = Term.env_info "CSV_SEPARATOR"
+  let env = Cmd.Env.info "CSV_SEPARATOR"
   and doc = "Separator to use." in
   let i = Arg.info ~doc ~env [ "csv-separator" ] in
   Arg.(value (opt char ',' i))
 
 let true_str_opt =
-  let env = Term.env_info "CSV_TRUE"
+  let env = Cmd.Env.info "CSV_TRUE"
   and doc = "String representation of true." in
   let i = Arg.info ~doc ~env [ "csv-true" ] in
   Arg.(value (opt string "true" i))
 
 let false_str_opt =
-  let env = Term.env_info "CSV_FALSE"
+  let env = Cmd.Env.info "CSV_FALSE"
   and doc = "String representation of false." in
   let i = Arg.info ~doc ~env [ "csv-false" ] in
   Arg.(value (opt string "false" i))
 
 let null_str_opt =
-  let env = Term.env_info "CSV_NULL"
+  let env = Cmd.Env.info "CSV_NULL"
   and doc = "String representation of NULL." in
   let i = Arg.info ~doc ~env [ "csv-null" ] in
   Arg.(value (opt string "\\N" i))
 
 let gen_reader =
   let doc = "Generate a reader for a given type." in
-  Term.(
-    (const gen_reader
-      $ type_opt
-      $ reader_format_opt
-      $ func_name_opt
-      $ files_opt
-      $ separator_opt
-      $ null_str_opt),
-    info ~doc "reader")
+  Cmd.v (Cmd.info ~doc "reader")
+    Term.(
+      const gen_reader
+        $ type_opt
+        $ reader_format_opt
+        $ func_name_opt
+        $ files_opt
+        $ separator_opt
+        $ null_str_opt)
 
 let length_opt =
-  let env = Term.env_info "DATA_LENGTH"
+  let env = Cmd.Env.info "DATA_LENGTH"
   and doc = "Number of values in the data file." in
   let i = Arg.info ~doc ~env [ "l" ; "length" ] in
   Arg.(value (opt int 10_000 i))
 
 let null_prob_opt =
-  let env = Term.env_info "NULL_PROBABILITY"
+  let env = Cmd.Env.info "NULL_PROBABILITY"
   and doc = "Probability to draw a NULL value for nullable types." in
   let i = Arg.info ~doc ~env [ "null-probability" ] in
   Arg.(value (opt float 0.3 i))
 
 let gen_data =
   let doc = "Generate a data file for the given type." in
-  Term.(
-    (const gen_data
-      $ type_opt
-      $ reader_format_opt
-      $ length_opt
-      $ null_prob_opt
-      $ separator_opt
-      $ true_str_opt
-      $ false_str_opt
-      $ null_str_opt),
-    info ~doc "data")
-
-let default =
-  let doc = "Generate reader tests"
-  and sdocs = Manpage.s_common_options in
-  Term.((ret (const (`Help (`Pager, None)))),
-        info "gen_reader_test" ~doc ~sdocs)
+  Cmd.v (Cmd.info ~doc "data")
+    Term.(
+      const gen_data
+        $ type_opt
+        $ reader_format_opt
+        $ length_opt
+        $ null_prob_opt
+        $ separator_opt
+        $ true_str_opt
+        $ false_str_opt
+        $ null_str_opt)
 
 let () =
-  match
-    Term.eval_choice default [ gen_type ; gen_data ; gen_reader ] with
-  | `Error _ -> exit 1
-  | `Version | `Help -> exit 0
-  | `Ok f -> f ()
+  let cmd =
+    let doc = "Generate reader tests"
+    and sdocs = Manpage.s_common_options in
+    let default = Term.(ret (const (`Help (`Pager, None)))) in
+    Cmd.group ~default (Cmd.info ~doc ~sdocs "gen_reader_test")
+      [ gen_type ; gen_data ; gen_reader ] in
+  Cmd.eval cmd |>
+  exit

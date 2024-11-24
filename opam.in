@@ -9,28 +9,28 @@ dev-repo: "git+https://github.com/rixed/ramen.git"
 synopsis: "Event processor tailored for human-scale monitoring"
 build: [
   ["./configure"]
-  [make "clean-dist"]
   [make]
   [make "check"] {with-test}
 ]
 install: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "install"]
 remove: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "uninstall"]
 depends: [
-  "batteries" {= "3.4.0"}
+  "batteries" {>= "3.4.0"}
   "binocle" {= "0.13.0"}
-  "cmdliner" {build & >= "1.0.4"}
+  "cmdliner" {build & >= "1.3.0"}
   "csv" {build & = "2.4"}
   "dessser" {>= "30.1.0" & < "31.0.0"}
   "ipaddr" {build & >= "5.2.0"}
   "kafka" {= "0.5"}
-  "lacaml" {= "9.3.2"}
+  "lacaml" {>= "9.3.2"}
   "lmdb" {= "1.0"}
   "net_codecs" {= "1.1"}
   "num"
   "ocamlfind" {build & >= "1.9.0"}
+  "owww" {with-doc}
   "parsercombinator" {>= "1.4.0"}
   "pfds" {= "0.4"}
-  "ppp" {= "2.8.5"}
+  "ppp" {= "2.10.0"}
   "qcheck" {build & >= "0.17"}
   "qtest" {with-test}
   "smt2" {= "0.2.0"}
@@ -38,13 +38,12 @@ depends: [
   "sqlite3" {build & >= "5.0.2"}
   "stdint" {= "0.7.0fix3"}
   "syslog" {= "2.0.2"}
-  "uuidm" {= "0.9.7"}
+  "uuidm" {>= "0.9.7"}
 ]
 depopts: [
   "inotify"
 ]
 depexts: [
   [["debian"]
-    ["libc-dev" "m4" "libsodium-dev" "librdkafka-dev" "libssl-dev" "libsasl2-dev"
-     "libqt5charts5-dev"]]
+    ["libc-dev" "m4" "libsodium-dev" "librdkafka-dev" "libssl-dev" "libsasl2-dev"]]
 ]

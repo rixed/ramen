@@ -2,7 +2,6 @@
 module N = RamenName
 let incdirs = [
   N.path "batteries" ;
-  N.path "bigarray-compat" ;
   N.path "bigstringaf" ;
   N.path "binocle" ;
   N.path "bytes" ;
@@ -26,6 +25,7 @@ let incdirs = [
   N.path "qcheck-core/runner" ;
   N.path "qcheck-ounit" ;
   N.path "ramen" ;
+  N.path "seq" ;
   N.path "smt2" ;
   N.path "sodium" ;
   N.path "stdint" ;
@@ -36,7 +36,7 @@ let incdirs = [
 let objfiles = [
   N.path "ocaml/unix.cmxa" ;
   N.path "ocaml/threads/threads.cmxa" ;
-  N.path "ocaml/nums.cmxa" ;
+  N.path "num/nums.cmxa" ;
   N.path "ocaml/bigarray.cmxa" ;
   N.path "ocaml/str.cmxa" ;
   N.path "batteries/batteries.cmxa" ;
@@ -58,7 +58,6 @@ let objfiles = [
   N.path "dessser/dessser.cmxa" ;
   N.path "kafka/kafka.cmxa" ;
   N.path "lacaml/lacaml.cmxa" ;
-  N.path "bigarray-compat/bigarray_compat.cmxa" ;
   N.path "bigstringaf/bigstringaf.cmxa" ;
   N.path "lmdb/lmdb.cmxa" ;
   N.path "pfds/pfds.cmxa" ;

@@ -161,7 +161,7 @@ let complete_running_program _persist_dir =
     else None) /@
   empty_help |> List.of_enum*)
 
-let complete str () =
+let complete str =
   (* Tokenize str, find where we are: *)
   let last_tok_is_complete =
     let len = String.length str in

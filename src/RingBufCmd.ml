@@ -12,7 +12,7 @@ module Paths = RamenPaths
 
 (* Dequeue command *)
 
-let dequeue conf file n () =
+let dequeue conf file n =
   init_logger conf.C.log_level ;
   if N.is_empty file then invalid_arg "dequeue" ;
   let open RingBuf in
@@ -61,7 +61,7 @@ let print_content rb s startw stopw maxw =
     ) else dumped
   )
 
-let summary conf max_bytes files () =
+let summary conf max_bytes files =
   let open RingBuf in
   let max_words = round_up_to_rb_word max_bytes in
   init_logger conf.C.log_level ;
@@ -112,7 +112,7 @@ let summary conf max_bytes files () =
 
 (* Repair Command *)
 
-let repair conf files () =
+let repair conf files =
   init_logger conf.C.log_level ;
   List.iter (fun file ->
     let open RingBuf in
@@ -124,7 +124,7 @@ let repair conf files () =
 
 (* Dump the content of some ringbuffer *)
 
-let dump conf startw stopw file () =
+let dump conf startw stopw file =
   let open RingBuf in
   init_logger conf.C.log_level ;
   let maxw = max_int in
@@ -141,7 +141,7 @@ type func_status =
   | ProgramError of N.program * string
 
 let links conf _no_abbrev show_all as_tree pretty with_header sort_col top
-          _sites _pattern () =
+          _sites _pattern =
   init_logger conf.C.log_level ;
   if as_tree &&
      (pretty || with_header > 0 || sort_col <> "1" || top <> None || show_all)

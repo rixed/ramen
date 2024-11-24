@@ -192,7 +192,7 @@ let process_test =
             test_spec
         )
 
-let run conf test_file () =
+let run conf test_file =
   RamenCliCheck.non_empty "test file name" (test_file : N.path :> string) ;
   (* Parse tests so that we won't have to clean anything if it's bogus *)
   !logger.debug "Parsing test specification in %a..."

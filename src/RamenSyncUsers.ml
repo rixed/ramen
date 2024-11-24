@@ -26,7 +26,7 @@ let check_username username =
     failwith "User names must not use the slash ('/') character."
 
 let add conf output_file username roles srv_pub_key_file
-        also_dump_server_conf () =
+        also_dump_server_conf =
   check_username username ;
   if User.Db.user_exists conf.C.users_dir username then
     Printf.sprintf "A user named %s is already registered." username |>
@@ -71,7 +71,7 @@ let add conf output_file username roles srv_pub_key_file
       !logger.info "You should now transmit this file to this user and \
                     then delete it."
 
-let del conf username () =
+let del conf username =
   if not (User.Db.user_exists conf.C.users_dir username) then
     Printf.sprintf "Cannot find user named %s." username |>
     failwith ;
@@ -79,7 +79,7 @@ let del conf username () =
   Files.move_aside ~ext:"del" fname ;
   !logger.info "User %s has been deleted." username
 
-let mod_ conf username roles () =
+let mod_ conf username roles =
   match User.Db.lookup conf.C.users_dir username with
   | exception Not_found ->
       Printf.sprintf "Cannot find user named %s." username |>

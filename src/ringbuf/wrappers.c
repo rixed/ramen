@@ -24,7 +24,7 @@
 
 static bool debug = false;
 
-static value *exn_NoMoreRoom, *exn_Empty, *exn_Damaged;
+static value const *exn_NoMoreRoom, *exn_Empty, *exn_Damaged;
 static bool exceptions_inited = false;
 
 static void retrieve_exceptions(void)
@@ -48,7 +48,8 @@ static struct custom_operations ringbuf_ops = {
   custom_hash_default,
   custom_serialize_default,
   custom_deserialize_default,
-  custom_compare_ext_default
+  custom_compare_ext_default,
+  custom_fixed_length_default
 };
 
 static value alloc_ringbuf(void)
@@ -88,7 +89,8 @@ static struct custom_operations tx_ops = {
   custom_hash_default,
   custom_serialize_default,
   custom_deserialize_default,
-  custom_compare_ext_default
+  custom_compare_ext_default,
+  custom_fixed_length_default
 };
 
 #define RingbufTx_val(v) ((struct wrap_ringbuf_tx *)Data_custom_val(v))
@@ -137,10 +139,10 @@ static uint64_t uint64_of_version(char const *str)
 CAMLprim value wrap_ringbuf_create(value version_, value wrap_, value tot_words_, value timeout_, value fname_)
 {
   CAMLparam4(version_, wrap_, fname_, tot_words_);
-  char *version_str = String_val(version_);
+  char const *version_str = String_val(version_);
   uint64_t version = uint64_of_version(version_str);
   bool wrap = Bool_val(wrap_);
-  char *fname = String_val(fname_);
+  char const *fname = String_val(fname_);
   unsigned tot_words = Long_val(tot_words_);
   double timeout = Double_val(timeout_);
   enum ringbuf_error err = ringbuf_create(version, wrap, tot_words, timeout, fname);
@@ -153,9 +155,9 @@ CAMLprim value wrap_ringbuf_load(value version_, value fname_)
   CAMLparam2(version_, fname_);
   CAMLlocal1(res);
   res = alloc_ringbuf();
-  char *version_str = String_val(version_);
+  char const *version_str = String_val(version_);
   uint64_t version = uint64_of_version(version_str);
-  char *fname = String_val(fname_);
+  char const *fname = String_val(fname_);
   if (RB_OK != ringbuf_load(Ringbuf_val(res), version, fname))
     caml_failwith("Cannot load ring buffer");
   CAMLreturn(res);
@@ -288,7 +290,7 @@ CAMLprim value wrap_ringbuf_dequeue(value rb_)
 
   bytes_ = caml_alloc_string(size);
   if (! bytes_) caml_failwith("Cannot malloc dequeued bytes");
-  memcpy(String_val(bytes_), rb->rbf->data + tx.record_start, size);
+  memcpy(Bytes_val(bytes_), rb->rbf->data + tx.record_start, size);
 
   ringbuf_dequeue_commit(rb, &tx);
 
@@ -499,7 +501,7 @@ static time_t last_err = 0;
   } \
 } while (0)
 
-static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char const *src, size_t size)
+static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, unsigned char const *src, size_t size)
 {
   if (size + offs > wrtx->alloced) {
     TIMED_PRINT("%d: ERROR while writing %s: size (%zu) + offs (%zu) > alloced (%zu)\n", (int)getpid(), wrtx->rb->fname, size, offs, wrtx->alloced);
@@ -527,7 +529,7 @@ static void write_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char co
   memcpy(addr, src, size);
 }
 
-static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, char *dst, size_t size)
+static void read_words(struct wrap_ringbuf_tx const *wrtx, size_t offs, unsigned char *dst, size_t size)
 {
   if (offs + size > wrtx->alloced) {
     TIMED_PRINT("%d: ERROR while reading %s: offs (%zu) + size (%zu) > alloced (%zu)\n", (int)getpid(), wrtx->rb->fname, offs, size, wrtx->alloced);
@@ -566,7 +568,7 @@ CAMLprim value wrap_ringbuf_read_raw(value rb_, value index_, value num_words_)
 
   bytes_ = caml_alloc_string(size);
   if (! bytes_) caml_failwith("Cannot malloc read bytes");
-  memcpy(String_val(bytes_), rb->rbf->data + index, size);
+  memcpy(Bytes_val(bytes_), rb->rbf->data + index, size);
 
   CAMLreturn(bytes_);
 }
@@ -586,10 +588,10 @@ CAMLprim value wrap_ringbuf_read_raw_tx(value tx)
 
   if (wrtx->rb) {
     struct ringbuf_file *rbf = wrtx->rb->rbf;
-    memcpy(String_val(bytes_), rbf->data + wrtx->tx.record_start, size);
+    memcpy(Bytes_val(bytes_), rbf->data + wrtx->tx.record_start, size);
   } else {
     assert(wrtx->bytes);
-    memcpy(String_val(bytes_), wrtx->bytes + wrtx->tx.record_start, size);
+    memcpy(Bytes_val(bytes_), wrtx->bytes + wrtx->tx.record_start, size);
   }
 
   CAMLreturn(bytes_);
@@ -604,7 +606,7 @@ CAMLprim value wrap_ringbuf_write_raw_tx(value tx, value off_, value bytes_)
   size_t offs = Long_val(off_);
   assert(Is_block(bytes_));
   assert(Tag_val(bytes_) == String_tag);
-  char const *src = (char const *)Bytes_val(bytes_);
+  unsigned char const *src = (unsigned char const *)Bytes_val(bytes_);
   write_words(wrtx, offs, src, caml_string_length(bytes_));
   CAMLreturn(Val_unit);
 }
@@ -622,7 +624,7 @@ CAMLprim value write_boxed_##bits(value tx, value off_, value v_) \
   size_t offs = Long_val(off_); \
   assert(Is_block(v_)); \
   assert(Tag_val(v_) == Custom_tag); \
-  char const *src = Data_custom_val(v_); \
+  unsigned char const *src = Data_custom_val(v_); \
   /* In little endian only if src_offset>0: */ \
   write_words(wrtx, offs, src + src_offset, custom_sz - src_offset); \
   CAMLreturn(Val_unit); \
@@ -637,7 +639,7 @@ CAMLprim value write_unboxed_##bits(value tx, value off_, value v_) \
   assert(Is_long(v_)); \
   uint##int_bits##_t v = (uint##int_bits##_t)Long_val(v_); \
   /* In little endian only: */ \
-  write_words(wrtx, offs, (char const *)&v, bits / 8); \
+  write_words(wrtx, offs, (unsigned char const *)&v, bits / 8); \
   CAMLreturn(Val_unit); \
 }
 
@@ -669,7 +671,7 @@ CAMLprim value write_ip(value tx, value off_, value v_) \
   head.nullmask = 0;
   head.tag = Tag_val(v_);
   assert(head.tag == 0 || head.tag == 1);
-  write_words(wrtx, offs, (char const *)&head, sizeof head);
+  write_words(wrtx, offs, (unsigned char const *)&head, sizeof head);
   if (head.tag == 0) {
     write_boxed_32(tx, Val_long(offs + sizeof head), Field(v_, 0));
   } else {
@@ -694,7 +696,7 @@ CAMLprim value read_##int_type##bits(value tx, value off_) \
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx); \
   size_t offs = Long_val(off_); \
   v = caml_alloc_custom(&ops, custom_sz, 0, 1); \
-  char *dst = Data_custom_val(v); \
+  unsigned char *dst = Data_custom_val(v); \
   if (dst_offset > 0) memset(dst, 0, dst_offset); \
   read_words(wrtx, offs, dst + dst_offset, custom_sz - dst_offset); \
   CAMLreturn(v); \
@@ -708,7 +710,7 @@ CAMLprim value read_##int_type##bits(value tx, value off_) \
   size_t offs = Long_val(off_); \
   int_type##int_bits##_t v = 0; \
   /* In little endian: */ \
-  read_words(wrtx, offs, (char *)&v, bits / 8); \
+  read_words(wrtx, offs, (unsigned char *)&v, bits / 8); \
   CAMLreturn(Val_long(v)); \
 }
 
@@ -738,7 +740,7 @@ CAMLprim value read_ip(value tx, value off_)
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   size_t offs = Long_val(off_);
   struct ip_sum_head head;
-  read_words(wrtx, offs, (char *)&head, sizeof head);
+  read_words(wrtx, offs, (unsigned char *)&head, sizeof head);
   assert(head.nullmask == 0);
   v = caml_alloc(1, head.tag);
   if (head.tag == 0) { // V4
@@ -760,8 +762,8 @@ CAMLprim value write_str(value tx, value off_, value v_)
   uint32_t size = caml_string_length(v_);
   char const *src = Bp_val(v_);
   // We must start this variable size field with its length:
-  write_words(wrtx, offs, (char const *)&size, sizeof size);
-  write_words(wrtx, offs + sizeof size, src, size);
+  write_words(wrtx, offs, (unsigned char const *)&size, sizeof size);
+  write_words(wrtx, offs + sizeof size, (unsigned char const *)src, size);
   CAMLreturn(Val_unit);
 }
 
@@ -791,7 +793,7 @@ CAMLprim value write_float(value tx, value off_, value v_)
   size_t offs = Long_val(off_);
   assert(Tag_val(v_) == Double_tag);
   double v = Double_val(v_);
-  write_words(wrtx, offs, (char const *)&v, sizeof(v));
+  write_words(wrtx, offs, (unsigned char const *)&v, sizeof(v));
   CAMLreturn(Val_unit);
 }
 
@@ -802,7 +804,7 @@ CAMLprim value read_float(value tx, value off_)
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   size_t offs = Long_val(off_);
   double v;
-  read_words(wrtx, offs, (char *)&v, sizeof v);
+  read_words(wrtx, offs, (unsigned char *)&v, sizeof v);
   v_ = caml_alloc(Double_wosize, Double_tag);
   Store_double_val(v_, v);
   //printf("v=%f, offs=%zu\n", v, offs);
@@ -856,7 +858,7 @@ CAMLprim value read_word(value tx, value off_)
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   size_t offs = Long_val(off_);
   uint32_t v;
-  read_words(wrtx, offs, (char *)&v, sizeof v);
+  read_words(wrtx, offs, (unsigned char *)&v, sizeof v);
   CAMLreturn(Val_long(v));
 }
 
@@ -867,9 +869,9 @@ CAMLprim value read_str(value tx, value off_)
   struct wrap_ringbuf_tx *wrtx = RingbufTx_val(tx);
   size_t offs = Long_val(off_);
   uint32_t size;
-  read_words(wrtx, offs, (char *)&size, sizeof size);
+  read_words(wrtx, offs, (unsigned char *)&size, sizeof size);
   v = caml_alloc_string(size);  // Will add the final '\0'
-  read_words(wrtx, offs + sizeof size, String_val(v), size);
+  read_words(wrtx, offs + sizeof size, Bytes_val(v), size);
   CAMLreturn(v);
 }
 
@@ -909,8 +911,8 @@ CAMLprim value wrap_uuid_of_u128_small(value n_)
 # ifdef HAVE_UINT128
   uint128 n = get_uint128(n_);
   res = caml_alloc_string(36);
-  char *s = (char *)String_val(res) + 36;
-  static char nibbles[16] = "0123456789abcdef";
+  unsigned char *s = (unsigned char *)Bytes_val(res) + 36;
+  static unsigned char nibbles[16] = "0123456789abcdef";
   for (unsigned i = 32; i-- > 0; ) {
     *(--s) = nibbles[n & 0xf];
     n >>= 4;
@@ -929,8 +931,8 @@ CAMLprim value wrap_uuid_of_u128_big(value n_)
 # ifdef HAVE_UINT128
   uint128 n = get_uint128(n_);
   res = caml_alloc_string(36);
-  char *s = (char *)String_val(res) + 36;
-  static char bytes[2*16*16] =
+  unsigned char *s = (unsigned char *)Bytes_val(res) + 36;
+  static unsigned char bytes[2*16*16] =
     "000102030405060708090a0b0c0d0e0f"
     "101112131415161718191a1b1c1d1e1f"
     "202122232425262728292a2b2c2d2e2f"
@@ -948,7 +950,7 @@ CAMLprim value wrap_uuid_of_u128_big(value n_)
     "e0e1e2e3e4e5e6e7e8e9eaebecedeeef"
     "f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff";
   for (unsigned i = 16; i-- > 0; ) {
-    char *byte = bytes + 2 * (n & 0xff);
+    unsigned char *byte = bytes + 2 * (n & 0xff);
     *(--s) = byte[1];
     *(--s) = byte[0];
     n >>= 8;

@@ -181,7 +181,7 @@ let start_prometheus_thread service_name =
 
 let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
                fail_for_good_ kill_at_exit test_notifs_every
-               lmdb_max_readers () =
+               lmdb_max_readers =
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.supervisor ;
   start_prometheus_thread ServiceNames.supervisor ;
@@ -210,7 +210,7 @@ let supervisor conf daemonize to_stdout to_syslog prefix_log_with_name
 let alerter conf max_fpr daemonize to_stdout
             to_syslog prefix_log_with_name kafka_producers_timeout
             debounce_delay max_last_incidents_kept max_incident_age for_test
-            reschedule_clock () =
+            reschedule_clock =
   RamenCliCheck.alerter max_fpr ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.alerter ;
@@ -224,7 +224,7 @@ let alerter conf max_fpr daemonize to_stdout
                            max_incident_age for_test reschedule_clock) |] ;
   Option.may exit !Processes.quit
 
-let notify conf parameters test name () =
+let notify conf parameters test name =
   init_logger conf.C.log_level ;
   let sent_time = Unix.gettimeofday () in
   let parameters = Array.of_list parameters in
@@ -262,8 +262,7 @@ let resolve_port conf port_opt def service_name =
         se.Services.port
   ) port_opt
 
-let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt
-            () =
+let tunneld conf daemonize to_stdout to_syslog prefix_log_with_name port_opt =
   let service_name = ServiceNames.tunneld in
   let port =
     resolve_port conf port_opt Default.tunneld_port service_name in
@@ -284,7 +283,7 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                ports_sec srv_pub_key_file srv_priv_key_file ignore_file_perms
                no_source_examples archive_total_size archive_recall_cost
                oldest_restored_site incidents_history_length purge_incidents_every
-               allow_upgrade () =
+               allow_upgrade =
   RamenCliCheck.confserver conf ports ports_sec srv_pub_key_file srv_priv_key_file
                            incidents_history_length purge_incidents_every ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
@@ -298,7 +297,7 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
                            allow_upgrade ;
   Option.may exit !Processes.quit
 
-let confclient conf key value del if_exists follow () =
+let confclient conf key value del if_exists follow =
   RamenCliCheck.confclient key value del if_exists follow ;
   init_logger conf.C.log_level ;
   if del then
@@ -539,7 +538,7 @@ let compile_sync conf replace src_file src_path_opt =
  * - it must stop before reaching the .x but instead aim for a "/info".
  *)
 let precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
-                  smt_solver () =
+                  smt_solver =
   RamenCliCheck.precompserver conf ;
   RamenSmt.solver := smt_solver ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
@@ -549,7 +548,7 @@ let precompserver conf daemonize to_stdout to_syslog prefix_log_with_name
 
 let execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
                   external_compiler max_simult_compilations
-                  dessser_codegen opt_level quarantine () =
+                  dessser_codegen opt_level quarantine =
   RamenCliCheck.execompserver conf max_simult_compilations quarantine opt_level ;
   RamenCompiler.init external_compiler max_simult_compilations
                      dessser_codegen opt_level ;
@@ -560,7 +559,7 @@ let execompserver conf daemonize to_stdout to_syslog prefix_log_with_name
 
 let compile conf lib_path external_compiler max_simult_compils smt_solver
             dessser_codegen opt_level source_files output_file_opt src_path_opt
-            replace () =
+            replace =
   RamenCliCheck.compile source_files src_path_opt opt_level ;
   init_logger conf.C.log_level ;
   RamenSmt.solver := smt_solver ;
@@ -583,7 +582,7 @@ let compile conf lib_path external_compiler max_simult_compils smt_solver
  * Ask the ramen daemon to start a compiled program.
  *)
 
-let run conf params report_period program_name on_site cwd replace () =
+let run conf params report_period program_name on_site cwd replace =
   init_logger conf.C.log_level ;
   let params = List.enum params |> Hashtbl.of_enum in
   (* If we run in --debug mode, also set that worker in debug mode: *)
@@ -598,7 +597,7 @@ let run conf params report_period program_name on_site cwd replace () =
  * This time the program is identified by its name not its executable file.
  *)
 
-let kill conf program_names purge () =
+let kill conf program_names purge =
   init_logger conf.C.log_level ;
   let topics = RamenRun.kill_topics in
   let num_kills =
@@ -613,7 +612,7 @@ let kill conf program_names purge () =
  * Turn the MustRun config into a FuncGraph and expose it in the configuration
  * for the supervisor.
  *)
-let choreographer conf daemonize to_stdout to_syslog prefix_log_with_name () =
+let choreographer conf daemonize to_stdout to_syslog prefix_log_with_name =
   RamenCliCheck.choreographer conf ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.choreographer ;
@@ -627,7 +626,7 @@ let choreographer conf daemonize to_stdout to_syslog prefix_log_with_name () =
  * execute.
  * GUI won't be able to perform replays if this is not running.
  *)
-let replay_service conf daemonize to_stdout to_syslog prefix_log_with_name () =
+let replay_service conf daemonize to_stdout to_syslog prefix_log_with_name =
   RamenCliCheck.replayer conf ;
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
                ServiceNames.replayer ;
@@ -765,7 +764,7 @@ let info_sync conf src_path opt_func_name with_types =
     | prog ->
         prog_info prog opt_func_name with_types)
 
-let info conf params path opt_func_name with_types () =
+let info conf params path opt_func_name with_types =
   init_logger conf.C.log_level ;
   let fname = N.path path in
   if conf.C.sync_url = "" || Files.exists fname then
@@ -783,7 +782,7 @@ let info conf params path opt_func_name with_types () =
  *)
 
 let gc conf dry_run del_ratio compress_older loop daemonize
-       to_stdout to_syslog prefix_log_with_name () =
+       to_stdout to_syslog prefix_log_with_name =
   RamenCliCheck.gc daemonize loop ;
   let loop = loop |? Default.gc_loop in
   start_daemon conf daemonize to_stdout to_syslog prefix_log_with_name
@@ -826,7 +825,7 @@ let sort_col_of_string spec str =
 
 (* TODO: add an option to select the site *)
 (* TODO: port profile info to the confserver *)
-let ps_ profile conf pretty with_header sort_col top sites pattern all () =
+let ps_ profile conf pretty with_header sort_col top sites pattern all =
   if profile && conf.C.sync_url <> "" then
     failwith "The profile command is incompatible with --confserver." ;
   init_logger conf.C.log_level ;
@@ -1089,8 +1088,7 @@ let head_of_types ~with_units head_typ =
  * limit progressive? *)
 let tail conf func_name_or_code with_header with_units sep null raw
          last next continuous where since until
-         with_event_time pretty flush
-         () =
+         with_event_time pretty flush =
   init_logger conf.C.log_level ;
   let worker, field_names =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
@@ -1300,7 +1298,7 @@ let replay_ conf worker field_names with_header with_units sep null raw
       ~with_event_time callback))
 
 let replay conf func_name_or_code with_header with_units sep null raw
-           where since until with_event_time pretty flush via_confserver () =
+           where since until with_event_time pretty flush via_confserver =
   init_logger conf.C.log_level ;
   let worker, field_names =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
@@ -1367,7 +1365,7 @@ let timeseries_ conf worker data_fields
 
 let timeseries conf func_name_or_code
                since until with_header where factors num_points
-               time_step sep null consolidation bucket_time pretty () =
+               time_step sep null consolidation bucket_time pretty =
   init_logger conf.C.log_level ;
   let worker, field_names =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
@@ -1385,7 +1383,7 @@ let timeseries conf func_name_or_code
  *)
 
 let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
-          fault_injection_rate server_url api table_prefix graphite () =
+          fault_injection_rate server_url api table_prefix graphite =
   if fault_injection_rate > 1. then
     failwith "Fault injection rate is a rate is a rate." ;
   if conf.C.sync_url = "" then
@@ -1398,7 +1396,7 @@ let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
   Option.may exit !Processes.quit
 
 (* TODO: allow several queries as in the API *)
-let graphite_expand conf for_render since until query () =
+let graphite_expand conf for_render since until query =
   init_logger conf.C.log_level ;
   let topics = [ "sites/*/workers/*/worker" ] in
   start_sync conf ~while_ ~topics ~recvtimeo:0. (fun session ->
@@ -1428,7 +1426,7 @@ let graphite_expand conf for_render since until query () =
  *)
 
 let archivist conf loop daemonize stats allocs reconf
-              to_stdout to_syslog prefix_log_with_name smt_solver () =
+              to_stdout to_syslog prefix_log_with_name smt_solver =
   RamenCliCheck.archivist conf loop daemonize stats allocs reconf ;
   RamenSmt.solver := smt_solver ;
   let loop = loop |? Default.archivist_loop in
@@ -1453,7 +1451,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
           del_ratio compress_older
           max_fpr kafka_producers_timeout debounce_delay max_last_incidents_kept
           max_incident_age incidents_history_length purge_incidents_every
-          execomp_quarantine allow_upgrade () =
+          execomp_quarantine allow_upgrade =
   let ports =
     if ports <> [] then ports
     else [ Default.confserver_port_str ] in
@@ -1627,7 +1625,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
  * Display various internal informations
  *)
 
-let variants conf () =
+let variants conf =
   init_logger conf.C.log_level ;
   let open RamenExperiments in
   let experimenter_id = get_experimenter_id conf.C.persist_dir in
@@ -1651,7 +1649,7 @@ let variants conf () =
     done ;
     Printf.printf "\n")
 
-let stats conf metric_name () =
+let stats conf metric_name =
   init_logger conf.C.log_level ;
   Files.initialize_all_saved_metrics conf.C.persist_dir ;
   if metric_name = "" then

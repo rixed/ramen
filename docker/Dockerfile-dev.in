@@ -64,7 +64,8 @@ RUN apt-get --yes update && \
         valgrind \
         vim-nox \
         wget \
-        xauth
+        xauth \
+        z3
 
 RUN if grep -q '^11' /etc/debian_version; then \
       DEBIAN_FRONTEND=noninteractive \
@@ -80,7 +81,7 @@ RUN echo | /tmp/install-opam.sh && \
 
 RUN /usr/local/bin/opam init --no-setup --disable-sandboxing
 RUN /usr/local/bin/opam update --yes
-RUN opam switch install --yes ramen 4.07.1+flambda
+RUN opam switch install --yes ramen 4.11.2+flambda
 
 # Environment
 ENV OPAM_SWITCH_PREFIX=/root/.opam/ramen
@@ -118,24 +119,12 @@ RUN opam install --yes down ocp-index odig odoc
 # For tools/ipcsv/doc-check
 RUN opam install --yes ipaddr csv owww
 
-# Now install z3 from source (as we need both executable and libs):
-RUN cd /root && \
-    git clone https://github.com/Z3Prover/z3.git && \
-    cd z3 && \
-    git checkout z3-4.8.10 && \
-    DEBIAN_FRONTEND=noninteractive apt-get install --yes python && \
-    python scripts/mk_make.py && \
-    cd build && \
-    make -j3 && \
-    make install && \
-    DEBIAN_FRONTEND=noninteractive apt-get purge --yes python
-
 # we need ocaml-lmdb master since 0.1 is very old
 RUN cd /root && \
     git clone https://github.com/Drup/ocaml-lmdb.git && \
     cd ocaml-lmdb && \
     opam install --yes bigstringaf dune-configurator && \
-    opam pin add --yes lmdb .
+    opam pin add --yes --inplace-build lmdb .
 
 # Install all ramen dependencies using opam
 RUN cd /root && \

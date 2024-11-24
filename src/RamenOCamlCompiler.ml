@@ -114,8 +114,9 @@ let compile_internal conf ~keep_temp_files what src_file obj_file =
 
   Asmlink.reset () ;
   try
-    Optcompile.implementation ~backend (ppf ()) (src_file :> string)
-      ((Files.remove_ext src_file) :> string)
+    let source_file = (src_file :> string)
+    and output_prefix = ((Files.remove_ext src_file) :> string) in
+    Optcompile.implementation ~backend ~source_file ~output_prefix
   with exn ->
     Location.report_exception (ppf ()) exn ;
     cannot_compile what (Printexc.to_string exn)
@@ -225,10 +226,11 @@ let link_internal conf ~keep_temp_files
 
   Asmlink.reset () ;
   try
-    Optcompile.implementation ~backend (ppf ()) (src_file :> string)
-      ((Files.remove_ext src_file) :> string) ;
+    let source_file = (src_file :> string)
+    and output_prefix = ((Files.remove_ext src_file) :> string) in
+    Optcompile.implementation ~backend ~source_file ~output_prefix ;
     (* Now link *)
-    Compmisc.init_path true ;
+    Compmisc.init_path () ;
     Asmlink.link (ppf ()) (objfiles :> string list) (exec_file :> string)
   with exn ->
     Location.report_exception (ppf ()) exn ;
