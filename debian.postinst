@@ -1,0 +1,10 @@
+#!/bin/sh
+
+if test "$1" = configure ; then
+  # give perms to /var/lib/ramen
+  chown ramen:ramen /var/lib/ramen
+
+  systemctl daemon-reload
+  # No globs for the enable command unfortunately:
+  systemctl enable ramen-alerter ramen-archivist ramen-choreographer ramen-confserver ramen-execompserver ramen-gc ramen-httpd ramen-precompserver ramen-replayer ramen-supervisor ramen-tunneld
+fi

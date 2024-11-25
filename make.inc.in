@@ -8,7 +8,7 @@ debian.control: make.inc
 	@echo 'Version: @PACKAGE_VERSION@' >> $@
 	@echo 'Architecture: $(shell dpkg-architecture -qDEB_BUILD_ARCH)' >> $@
 	@echo 'Maintainer: rixed-github@happyleptic.org' >> $@
-	@echo 'Depends: g++, gcc, libblas-dev, liblapack-dev, libsasl2-dev, libssl-dev, libsqlite3-0' >> $@
+	@echo 'Depends: g++, gcc, libblas-dev, liblapack-dev, libsasl2-dev, libssl-dev, libsqlite3-0, systemd' >> $@
 	@echo 'Conflicts: libopenblas-base' >> $@
 	@echo 'Description: Event processor tailored for human-scale monitoring' >> $@
 

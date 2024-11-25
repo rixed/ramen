@@ -12,5 +12,6 @@ ExecStart=/usr/bin/ramen supervisor --stdout
 KillMode=mixed
 TimeoutStopSec=120
 User=ramen
+Group=ramen
 Restart=always
 RestartSec=60

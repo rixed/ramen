@@ -1,0 +1,5 @@
+#!/bin/sh
+
+echo "Creating user and group for ramen..."
+# Don't panic if it already exist:
+adduser --system --group --quiet ramen || true

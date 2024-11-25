@@ -1,0 +1,35 @@
+#!/bin/sh
+
+del_user_ramen() {
+  if grep -q ramen /etc/passwd; then
+    echo "Removing user ramen..."
+    deluser --system --quiet ramen || true
+  fi
+  if grep -q ramen /etc/group; then
+    echo "Removing group ramen..."
+    delgroup --system --quiet --only-if-empty ramen ||true
+  fi
+}
+reload_systemd() {
+  systemctl daemon-reload
+}
+
+case "$1" in
+  ("upgrade")
+    new_version="$2"
+    # Do not delete the user that's just been (re)added by the new preinst that
+    # just ran.
+    reload_systemd
+    shift 2 ;;
+  ("remove"|"purge")
+    del_user_ramen
+    reload_systemd
+    shift ;;
+  ("disappear")
+    del_user_ramen
+    reload_systemd
+    shift 2 ;;
+  ("*")
+    echo "Bailling out at option $1"
+    exit 1 ;;
+esac
