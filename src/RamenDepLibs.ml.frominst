@@ -2,9 +2,11 @@
 module N = RamenName
 let incdirs = [
   N.path "batteries" ;
+  N.path "batteries/unthreaded" ;
   N.path "bigstringaf" ;
   N.path "binocle" ;
   N.path "bytes" ;
+  N.path "camlp-streams" ;
   N.path "ctypes" ;
   N.path "dessser" ;
   N.path "inotify" ;
@@ -36,11 +38,12 @@ let incdirs = [
 let objfiles = [
   N.path "ocaml/unix.cmxa" ;
   N.path "ocaml/threads/threads.cmxa" ;
-  N.path "num/nums.cmxa" ;
   N.path "ocaml/bigarray.cmxa" ;
+  N.path "camlp-streams/camlp_streams.cmxa" ;
+  N.path "num/nums.cmxa" ;
   N.path "ocaml/str.cmxa" ;
+  N.path "batteries/unthreaded/batteries_unthreaded.cmxa" ;
   N.path "batteries/batteries.cmxa" ;
-  N.path "batteries/batteriesThread.cmxa" ;
   N.path "stdint/stdint.cmxa" ;
   N.path "ppp/PPP.cmxa" ;
   N.path "binocle/Binocle.cmxa" ;

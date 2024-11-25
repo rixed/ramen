@@ -15,7 +15,7 @@ build: [
 install: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "install"]
 remove: [make "bin_dir=%{bin}%" "lib_dir=%{lib}%/%{name}%" "uninstall"]
 depends: [
-  "batteries" {>= "3.4.0"}
+  "batteries" {= "3.8.0"}
   "binocle" {= "0.13.0"}
   "cmdliner" {build & >= "1.3.0"}
   "csv" {build & = "2.4"}
