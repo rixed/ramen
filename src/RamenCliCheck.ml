@@ -1,3 +1,5 @@
+open Batteries
+
 module C = RamenConf
 module N = RamenName
 
@@ -22,6 +24,18 @@ let choreographer conf =
   if conf.C.sync_url = "" then
     failwith "Cannot start the choreographer without --confserver."
 
+let check_unique_values option_name p l =
+  let h = Hashtbl.create 10 in
+  List.iter (fun v ->
+    if Hashtbl.mem h v then
+      Printf.sprintf2 "Option --%s sets several times the same value (%a). \
+                       Check your command line."
+        option_name
+        p v |>
+      failwith ;
+    Hashtbl.add h v ()
+  ) l
+
 let confserver conf ports ports_sec srv_pub_key_file srv_priv_key_file
                incidents_history_length purge_incidents_every =
   (* Some not-so-common options makes no sense for confserver and are likely
@@ -39,6 +53,8 @@ let confserver conf ports ports_sec srv_pub_key_file srv_priv_key_file
   if ports = [] && ports_sec = [] then
     failwith "You must specify some ports to listen to with --secure and/or \
              --insecure." ;
+  check_unique_values "insecure" String.print ports ;
+  check_unique_values "secure" String.print ports_sec ;
   if ports_sec = [] && not (N.is_empty srv_pub_key_file) then
     failwith "--public-key makes no sense without --secure." ;
   if ports_sec = [] && not (N.is_empty srv_priv_key_file) then
