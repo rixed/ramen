@@ -10,5 +10,6 @@ WantedBy=ramen.target
 EnvironmentFile=-/etc/default/ramen
 ExecStart=/usr/bin/ramen gc --loop --stdout
 User=ramen
+Group=ramen
 Restart=always
 RestartSec=60

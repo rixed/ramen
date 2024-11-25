@@ -37,6 +37,7 @@ RUN apt-get --yes update && \
         libffi-dev \
         liblapack-dev \
         liblmdb-dev \
+        libqt5charts5-dev \
         librdkafka-dev \
         libsasl2-dev \
         libsodium-dev \
@@ -53,6 +54,8 @@ RUN apt-get --yes update && \
         patch \
         php-cli \
         procps \
+        qtbase5-dev \
+        qt5-image-formats-plugins \
         rsync \
         ruby-rspec \
         socat \
@@ -66,14 +69,6 @@ RUN apt-get --yes update && \
         wget \
         xauth \
         z3
-
-RUN if grep -q '^11' /etc/debian_version; then \
-      DEBIAN_FRONTEND=noninteractive \
-        apt-get --yes install qt5-image-formats-plugins qtbase5-dev; \
-    else \
-      DEBIAN_FRONTEND=noninteractive \
-        apt-get --yes install qt5-default; \
-    fi
 
 COPY install-opam.sh /tmp
 RUN echo | /tmp/install-opam.sh && \
@@ -96,11 +91,6 @@ RUN wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous
 RUN chmod a+x /usr/bin/linuxdeploy-x86_64.AppImage
 RUN wget https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage -O /usr/bin/linuxdeploy-plugin-qt-x86_64.AppImage
 RUN chmod a+x /usr/bin/linuxdeploy-plugin-qt-x86_64.AppImage
-
-# qt5charts is not packaged in stretch for some reason, but easy to
-# build from sources:
-COPY getqt5charts /tmp
-RUN /tmp/getqt5charts
 
 RUN opam update
 RUN opam install --yes depext

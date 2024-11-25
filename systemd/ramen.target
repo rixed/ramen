@@ -3,3 +3,6 @@
 Description=Ramen Stream Processor
 After=multi-user.target
 Documentation=https://rixed.github.io/ramen/man/man.html
+
+[Install]
+WantedBy=multi-user.target

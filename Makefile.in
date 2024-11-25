@@ -1582,7 +1582,7 @@ ramen.$(VERSION).deb: \
 		$(PACKAGED_BIN) \
 		$(BUNDLE_DIR)/ramen/codegen.a \
 		$(BUNDLE_LIBORC) \
-		debian.control
+		debian.control debian.preinst debian.postinst debian.prerm debian.postrm
 	@echo 'Building debian package $@'
 	$(RM) -r debtmp
 	install -d debtmp/usr/bin
@@ -1595,6 +1595,10 @@ endif
 	$(MAKE) DESTDIR=$(CURDIR)/debtmp systemd_dir=/lib/systemd/system install-systemd
 	mkdir -p debtmp/DEBIAN
 	cp debian.control debtmp/DEBIAN/control
+	cp debian.preinst debtmp/DEBIAN/preinst
+	cp debian.postinst debtmp/DEBIAN/postinst
+	cp debian.prerm debtmp/DEBIAN/prerm
+	cp debian.postrm debtmp/DEBIAN/postrm
 	chmod -R a+x debtmp/usr
 	fakeroot dpkg --build debtmp
 	mv debtmp.deb '$@'

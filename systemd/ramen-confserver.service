@@ -8,8 +8,11 @@ WantedBy=ramen.target
 
 [Service]
 EnvironmentFile=-/etc/default/ramen
-ExecStart=/usr/bin/ramen confserver --stdout
+# To use the secute socket you have to create users first.
+# See `ramen adduser --help`.
+ExecStart=/usr/bin/ramen confserver --stdout --secure --insecure
 User=ramen
+Group=ramen
 Restart=always
 RestartSec=60
 LimitNOFILE=32768
