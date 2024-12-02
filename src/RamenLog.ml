@@ -72,7 +72,7 @@ module ThreadNames = Map.Int
 let thread_names_mutex = Mutex.create ()
 let thread_names = ref ThreadNames.empty
 
-let make_single_logger ?logdir ?(prefix="") log_level =
+let make_single_logger ?(with_time=true) ?logdir ?(prefix="") log_level =
   let output = match logdir with Some s -> Directory s | _ -> Stdout in
   let prefix = ref (make_prefix prefix) in
   let rate_limit_err = rate_limit 30
@@ -86,8 +86,10 @@ let make_single_logger ?logdir ?(prefix="") log_level =
     let now = time () in
     let tm = localtime now in
     let time_pref =
-      Printf.sprintf "%02dh%02dm%02d:"
-        tm.tm_hour tm.tm_min tm.tm_sec in
+      if with_time then
+        Printf.sprintf "%02dh%02dm%02d:"
+          tm.tm_hour tm.tm_min tm.tm_sec
+      else "" in
     let oc = do_output output tm is_err in
     let p =
       (* Only errors are rate limited, but other messages do interrupt an
@@ -152,11 +154,11 @@ let init_sigusr2_once =
               (string_of_log_level alt.log_level) ;
             logger := alt))))
 
-let init_logger ?logdir ?prefix log_level =
-  logger := make_single_logger ?logdir ?prefix log_level ;
+let init_logger ?logdir ?prefix ?with_time log_level =
+  logger := make_single_logger ?logdir ?prefix ?with_time log_level ;
   let l2 =
     let alt_ll = if log_level = Debug then Normal else Debug in
-    make_single_logger ?logdir ?prefix alt_ll in
+    make_single_logger ?logdir ?prefix ?with_time alt_ll in
   l2.alt <- Some !logger ;
   !logger.alt <- Some l2 ;
   init_sigusr2_once ()

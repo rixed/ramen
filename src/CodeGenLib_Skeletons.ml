@@ -1197,16 +1197,17 @@ let convert
       (serialize_tuple :
         DessserMasks.t -> RingBuf.tx -> int -> 'tuple_out -> int)
       tuple_of_strings =
-  let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string in
+  let log_level = getenv ~def:"normal" "log_level" |> log_level_of_string
+  and log_with_time = getenv ~def:"true" "log_with_time" |> bool_of_string in
   (match getenv "log" with
   | exception _ ->
-      init_logger log_level
+      init_logger ~with_time:log_with_time log_level
   | logdir ->
       if logdir = "syslog" then
         init_syslog log_level
       else (
         Files.mkdir_all (N.path logdir) ;
-        init_logger ~logdir log_level
+        init_logger ~with_time:log_with_time ~logdir log_level
       )) ;
   !logger.debug "Going to convert from %s to %s"
     (Casing.string_of_format in_fmt)

@@ -641,7 +641,7 @@ let run conf server_url api graphite use_external_compiler max_simult_compils
   let conf =
     C.{ conf with persist_dir ; username ; sync_url ; test = true } in
   (* Init various modules: *)
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   RamenSmt.solver := smt_solver ;
   RamenCompiler.init use_external_compiler max_simult_compils dessser_codegen
                      opt_level ;

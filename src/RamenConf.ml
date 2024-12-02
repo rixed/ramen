@@ -35,6 +35,7 @@ module Globals = RamenGlobalVariables
 
 type conf =
   { log_level : log_level ;
+    log_with_time : bool ;
     persist_dir : N.path ;
     users_dir : N.path ;
     test : bool ; (* true within `ramen test` *)
@@ -82,7 +83,7 @@ let connection_parameters ?(username="") ?(srv_pub_key="") ?(clt_pub_key="")
       (if clt_priv_key <> "" then clt_priv_key else id.client_private_key))
 
 let make_conf
-      ?(debug=false) ?(quiet=false)
+      ?(debug=false) ?(log_with_time=true) ?(quiet=false)
       ?(keep_temp_files=false) ?(reuse_prev_files=false)
       ?(forced_variants=[])
       ?(initial_export_duration=Default.initial_export_duration)
@@ -111,7 +112,8 @@ let make_conf
       N.path_cat [ persist_dir ; N.path "confserver/users" ]
     else
       users_dir in
-  { log_level ; persist_dir ; keep_temp_files ; reuse_prev_files ;
+  { log_level ; log_with_time ; persist_dir ; keep_temp_files ;
+    reuse_prev_files ;
     initial_export_duration ; site ; test ; bundle_dir ; masters ;
     sync_url ; username ; srv_pub_key ; clt_pub_key ; clt_priv_key ;
     forced_variants ; users_dir }

@@ -327,6 +327,7 @@ let start_worker
   let env = [
     "OCAMLRUNPARAM="^ ocamlrunparam ;
     "log_level="^ string_of_log_level log_level ;
+    "log_with_time="^ string_of_bool conf.C.log_with_time ;
     (* To know what to log: *)
     "is_test="^ string_of_bool conf.C.test ;
     (* Select the function to be executed: *)

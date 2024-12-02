@@ -31,10 +31,10 @@ let () =
     | _ -> None)
 
 let make_copts
-      debug quiet persist_dir rand_seed keep_temp_files reuse_prev_files
-      forced_variants local_experiments_ initial_export_duration site
-      bundle_dir masters sync_url srv_pub_key username clt_pub_key
-      clt_priv_key identity with_colors_ users_dir =
+      debug dont_log_time quiet persist_dir rand_seed keep_temp_files
+      reuse_prev_files forced_variants local_experiments_
+      initial_export_duration site bundle_dir masters sync_url srv_pub_key
+      username clt_pub_key clt_priv_key identity with_colors_ users_dir =
   with_colors := with_colors_ ;
   RamenExperiments.local_experiments :=
     if N.is_empty local_experiments_ then
@@ -78,10 +78,10 @@ let make_copts
     list_of_string_opt masters |> List.map N.site |> Set.of_list in
   let conf =
     C.make_conf
-      ~debug ~quiet ~keep_temp_files ~reuse_prev_files ~forced_variants
-      ~initial_export_duration ~site ~bundle_dir ~masters ~sync_url
-      ~srv_pub_key ~username ~clt_pub_key ~clt_priv_key ~identity ~users_dir
-      persist_dir in
+      ~debug ~log_with_time:(not dont_log_time) ~quiet ~keep_temp_files
+      ~reuse_prev_files ~forced_variants ~initial_export_duration ~site
+      ~bundle_dir ~masters ~sync_url ~srv_pub_key ~username ~clt_pub_key
+      ~clt_priv_key ~identity ~users_dir persist_dir in
   (* Find out the ZMQ URL to reach the conf server: *)
   if conf.sync_url <> "" then conf
   else
@@ -142,7 +142,8 @@ let init_log conf daemonize to_stdout to_syslog prefix_log_with_name
         Some log_path
       ) in
     Option.may Files.mkdir_all logdir ;
-    init_logger ?prefix ?logdir:(logdir :> string option) conf.C.log_level) ;
+    init_logger ?prefix ?logdir:(logdir :> string option)
+                ~with_time:conf.C.log_with_time conf.log_level) ;
   !logger.info "Starting ramen-%a %s (on site %a)"
     N.service_print service_name
     Versions.release_tag
@@ -225,7 +226,7 @@ let alerter conf max_fpr daemonize to_stdout
   Option.may exit !Processes.quit
 
 let notify conf parameters test name =
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   let sent_time = Unix.gettimeofday () in
   let parameters = Array.of_list parameters in
   let firing, certainty, debounce, timeout, parameters =
@@ -299,7 +300,7 @@ let confserver conf daemonize to_stdout to_syslog prefix_log_with_name ports
 
 let confclient conf key value del if_exists follow =
   RamenCliCheck.confclient key value del if_exists follow ;
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   if del then
     let key = RamenSync.Key.of_string key in
     RamenConfClient.del conf ~while_ key
@@ -561,7 +562,7 @@ let compile conf lib_path external_compiler max_simult_compils smt_solver
             dessser_codegen opt_level source_files output_file_opt src_path_opt
             replace =
   RamenCliCheck.compile source_files src_path_opt opt_level ;
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   RamenSmt.solver := smt_solver ;
   RamenCompiler.init external_compiler max_simult_compils dessser_codegen
                      opt_level ;
@@ -583,7 +584,7 @@ let compile conf lib_path external_compiler max_simult_compils smt_solver
  *)
 
 let run conf params report_period program_name on_site cwd replace =
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   let params = List.enum params |> Hashtbl.of_enum in
   (* If we run in --debug mode, also set that worker in debug mode: *)
   let debug = !logger.log_level = Debug in
@@ -598,7 +599,7 @@ let run conf params report_period program_name on_site cwd replace =
  *)
 
 let kill conf program_names purge =
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   let topics = RamenRun.kill_topics in
   let num_kills =
     start_sync conf ~while_ ~topics ~recvtimeo:1. (fun session ->
@@ -765,7 +766,7 @@ let info_sync conf src_path opt_func_name with_types =
         prog_info prog opt_func_name with_types)
 
 let info conf params path opt_func_name with_types =
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   let fname = N.path path in
   if conf.C.sync_url = "" || Files.exists fname then
     let params = Array.of_list params in
@@ -828,7 +829,7 @@ let sort_col_of_string spec str =
 let ps_ profile conf pretty with_header sort_col top sites pattern all =
   if profile && conf.C.sync_url <> "" then
     failwith "The profile command is incompatible with --confserver." ;
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   let head =
     [| "site" ; "operation" ; "top-half" ; "#in" ; "#selected" ; "#filtered";
        "#out" ; "#errs" ; "#groups" ; "max #groups" ; "last out" ;
@@ -1089,7 +1090,7 @@ let head_of_types ~with_units head_typ =
 let tail conf func_name_or_code with_header with_units sep null raw
          last next continuous where since until
          with_event_time pretty flush =
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   let worker, field_names =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   if since <> None || until <> None then
@@ -1299,7 +1300,7 @@ let replay_ conf worker field_names with_header with_units sep null raw
 
 let replay conf func_name_or_code with_header with_units sep null raw
            where since until with_event_time pretty flush via_confserver =
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   let worker, field_names =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   replay_ conf worker field_names with_header with_units sep null raw
@@ -1366,7 +1367,7 @@ let timeseries_ conf worker data_fields
 let timeseries conf func_name_or_code
                since until with_header where factors num_points
                time_step sep null consolidation bucket_time pretty =
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   let worker, field_names =
     parse_func_name_of_code conf "ramen tail" func_name_or_code in
   timeseries_ conf worker field_names
@@ -1397,7 +1398,7 @@ let httpd conf daemonize to_stdout to_syslog prefix_log_with_name
 
 (* TODO: allow several queries as in the API *)
 let graphite_expand conf for_render since until query =
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   let topics = [ "sites/*/workers/*/worker" ] in
   start_sync conf ~while_ ~topics ~recvtimeo:0. (fun session ->
     if not for_render then
@@ -1626,7 +1627,7 @@ let start conf daemonize to_stdout to_syslog ports ports_sec
  *)
 
 let variants conf =
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   let open RamenExperiments in
   let experimenter_id = get_experimenter_id conf.C.persist_dir in
   Printf.printf "Experimenter Id: %d\n" experimenter_id ;
@@ -1650,7 +1651,7 @@ let variants conf =
     Printf.printf "\n")
 
 let stats conf metric_name =
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   Files.initialize_all_saved_metrics conf.C.persist_dir ;
   if metric_name = "" then
     Binocle.display_console ~colors:!with_colors ()

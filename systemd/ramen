@@ -1,3 +1,4 @@
 RAMEN_DIR=/var/lib/ramen
 RAMEN_LIBS=/usr/lib/ramen/bundle
 RAMEN_CONFSERVER=localhost
+RAMEN_DONT_LOG_TIME=true

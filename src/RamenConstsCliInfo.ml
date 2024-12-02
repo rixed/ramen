@@ -42,6 +42,13 @@ let debug =
     docv = "" ;
     typ = Flag }
 
+let dont_log_time =
+  { names = [ "dont-log-time" ] ;
+    env = "RAMEN_DONT_LOG_TIME" ;
+    doc = "Do not prepend the time of day into log lines." ;
+    docv = "" ;
+    typ = Flag }
+
 let quiet =
   { names = [ "quiet" ; "q" ] ;
     env = "RAMEN_QUIET" ;

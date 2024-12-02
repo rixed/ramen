@@ -35,6 +35,6 @@ let collector ~inet_addr ~port ~ip_proto ?while_ k =
     ~what:"collectd sink" ~buffer_size:1500 ~inet_addr ~port ?while_ serve
 
 let test ?(port=25826) () =
-  init_logger Normal ;
+  init_logger ~with_time:false Normal ;
   let display_tuple _t = () in
   collector ~inet_addr:Unix.inet_addr_any ~port display_tuple

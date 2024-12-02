@@ -212,7 +212,7 @@ let run conf test_file =
   let conf =
     C.{ conf with persist_dir ; username ; sync_url ; test = true } in
   (* Init various modules: *)
-  init_logger conf.C.log_level ;
+  init_logger ~with_time:conf.C.log_with_time conf.log_level ;
   !logger.debug "Using temp dir %a" N.path_print conf.persist_dir ;
   Files.mkdir_all conf.persist_dir ;
   Processes.prepare_signal_handlers conf ;

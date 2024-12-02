@@ -21,7 +21,7 @@ let typ_of_string s =
   RamenParsing.string_parser ~what ~print T.Parser.typ s
 
 let main =
-  init_logger Debug ;
+  init_logger ~with_time:false Debug ;
   RamenExperiments.set_variants Default.persist_dir [] ;
   let exec_file = N.path (Sys.argv.(1)) in
   let ramen_type = Sys.argv.(2) in

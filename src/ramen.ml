@@ -98,6 +98,8 @@ let copts ?default_username ?(is_confserver=false) () =
   let docs = Manpage.s_common_options in
   let debug =
     flag_of_opt ~docs CliInfo.debug
+  and dont_log_time =
+    flag_of_opt ~docs CliInfo.dont_log_time
   and quiet =
     flag_of_opt ~docs CliInfo.quiet
   and rand_seed =
@@ -164,6 +166,7 @@ let copts ?default_username ?(is_confserver=false) () =
   in
   Term.(const RamenCliCmd.make_copts
     $ debug
+    $ dont_log_time
     $ quiet
     $ persist_dir
     $ rand_seed
