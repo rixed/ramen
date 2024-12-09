@@ -1591,7 +1591,7 @@ ifdef STRIP_BIN
 	for f in $(PACKAGED_BIN); do strip debtmp/usr/bin/$$(basename $$f); done
 endif
 	$(MAKE) DESTDIR=$(CURDIR)/debtmp sample_dir=/var/lib/ramen/examples install-examples
-	$(MAKE) DESTDIR=$(CURDIR)/debtmp lib_dir=/var/lib/ramen install-bundle
+	$(MAKE) DESTDIR=$(CURDIR)/debtmp lib_dir=/usr/lib/ramen install-bundle
 	$(MAKE) DESTDIR=$(CURDIR)/debtmp systemd_dir=/lib/systemd/system install-systemd
 	mkdir -p debtmp/DEBIAN
 	cp debian.control debtmp/DEBIAN/control

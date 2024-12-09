@@ -3,7 +3,7 @@
 echo "Stopping ramen..."
 systemctl stop ramen.target || true
 # Actually wait for them to stop:
-while systemctl is-active 'ramen-*' --quiet" ; do
+while systemctl is-active 'ramen-*' --quiet ; do
   echo "Waiting for ramen to stop..."
   sleep 2
 done
