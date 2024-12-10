@@ -1337,7 +1337,7 @@ RAMEN_ALERTER_TESTS = $(wildcard tests/alerter/*.test)
 		src/ramen \
 		src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func '$<' -o '$@'
+	RAMEN_CONFSERVER= RAMEN_DIR=/tmp/ramen src/ramen compile --bundle=bundle -L . -L src -L tests/func '$<' -o '$@'
 
 %.x: \
 		%.alert \
@@ -1347,7 +1347,7 @@ RAMEN_ALERTER_TESTS = $(wildcard tests/alerter/*.test)
 		src/ramen \
 		src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func '$<' -o '$@'
+	RAMEN_CONFSERVER= RAMEN_DIR=/tmp/ramen src/ramen compile --bundle=bundle -L . -L src -L tests/func '$<' -o '$@'
 
 %.x: \
 		%.pivot \
@@ -1357,7 +1357,7 @@ RAMEN_ALERTER_TESTS = $(wildcard tests/alerter/*.test)
 		src/ramen \
 		src/codegen.cmxa
 	@echo 'Compiling ramen program $@'
-	RAMEN_CONFSERVER= src/ramen compile --bundle=bundle -L . -L src -L tests/func '$<' -o '$@'
+	RAMEN_CONFSERVER= RAMEN_DIR=/tmp/ramen src/ramen compile --bundle=bundle -L . -L src -L tests/func '$<' -o '$@'
 
 # Special generated test to check the speed of CSV parsing:
 
@@ -1398,12 +1398,13 @@ tests/func/%.success: tests/func/%.test src/ramen
 	@$(RM) '$@'
 	RAMEN_DESSSER_CODE_GENERATOR=$(if $(findstring ;$(notdir $(basename $< .test));,$(FORCED_DESSSER)),force,never) \
 	RAMEN_OPTIMIZATION_LEVEL=3 \
+	RAMEN_DIR=/tmp/ramen \
 	src/ramen test --bundle-dir=bundle '$<' && touch '$@'
 
 tests/alerter/%.success: tests/alerter/%.test src/ramen
 	@echo 'Running alerter test $(basename $< .test)'
 	@$(RM) '$@'
-	src/ramen test-alert '$<' && touch '$@'
+	RAMEN_DIR=/tmp/ramen src/ramen test-alert '$<' && touch '$@'
 
 func-check: \
 	$(RAMEN_FUNC_TESTS:.test=.success) \
@@ -1426,7 +1427,7 @@ comp-check: \
 	@set -e; \
 	for f in $(COMPTEST_PROGRAMS); do \
 	  echo "  Compiling $$f..." ;\
-	  RAMEN_CONFSERVER= src/ramen compile --quiet --bundle=bundle -L tests/programs "$$f" ;\
+	  RAMEN_CONFSERVER= RAMEN_DIR=/tmp/ramen src/ramen compile --quiet --bundle=bundle -L tests/programs "$$f" ;\
 	done ;\
 	echo "\033[1;32mSUCCESS\033[0m"
 
@@ -1440,7 +1441,7 @@ err-check: \
 	@echo 'Running parsing/typing error tests'
 	@for f in $(wildcard tests/errors/*.ramen); do \
 	  t=$$(mktemp) ;\
-	  RAMEN_CONFSERVER= src/ramen compile --quiet --bundle=bundle -L tests/errors "$$f" 2>"$$t" >/dev/null ;\
+	  RAMEN_CONFSERVER= RAMEN_DIR=/tmp/ramen src/ramen compile --quiet --bundle=bundle -L tests/errors "$$f" 2>"$$t" >/dev/null ;\
 	  if ! diff -q "$$f.err" "$$t" ; then \
 	    echo "\033[1;31mFAILURE\033[0m: $$f" ;\
 	    diff "$$f.err" "$$t" || true ;\

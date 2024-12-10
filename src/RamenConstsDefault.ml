@@ -1,7 +1,8 @@
 module N = RamenName
 
-(* Where to store all of daemons+workers state and logs: *)
-let persist_dir = N.path "/tmp/ramen"
+(* Where to store all of daemons+workers state and logs (nicer if same as
+ * RAMEN_DIR in systemd/ramen for a better user CLI experience): *)
+let persist_dir = N.path "/var/lib/ramen"
 
 (* How frequently shall workers emit their instrumentation (seconds): *)
 let report_period = 30.

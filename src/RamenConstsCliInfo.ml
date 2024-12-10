@@ -417,8 +417,9 @@ let confserver_port_sec =
 let server_priv_key =
   { names = [ "private-key" ; "server-private-key" ; "K" ] ;
     env = "RAMEN_CONFSERVER_PRIV_KEY" ;
-    doc = "File name where the server private key is stored. This file must \
-           not be readable or writable by others." ;
+    doc = "File name where the server private key is stored \
+           (default to \\$RAMEN_DIR/confserver/private_key). \
+           This file must not be readable or writable by others." ;
     docv = "" ;
     typ = Scalar }
 
@@ -426,7 +427,8 @@ let server_priv_key =
 let server_pub_key =
   { names = [ "public-key" ; "server-public-key" ; "k" ] ;
     env = "RAMEN_CONFSERVER_KEY" ;
-    doc = "File name where the server public key is stored." ;
+    doc = "File name where the server public key is stored \
+           (default to \\$RAMEN_DIR/confserver/public_key)." ;
     docv = "" ;
     typ = Scalar }
 
