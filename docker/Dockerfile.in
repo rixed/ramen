@@ -72,6 +72,7 @@ ENV OCAML_TOPLEVEL_PATH=/root/.opam/ramen/lib/toplevel
 ENV MANPATH=:/root/.opam/ramen/man
 ENV PATH=/root/.opam/ramen/bin:/root/.gem/ruby/2.5.0/bin/:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ENV RAMEN_LIBS=/root/ramen/bundle
+ENV OPAMROOTISOK=1
 
 # Install all ramen dependencies using opam
 RUN cd /root && \
