@@ -99,7 +99,7 @@ static int read_max_seqnum(char const *bname, uint64_t *first_seq)
       goto err1;
     } else if (rs == 0) {
       *first_seq = 0;
-    } else if ((size_t)rs < sizeof(first_seq)) {
+    } else if ((size_t)rs < sizeof(*first_seq)) {
       fprintf(stderr, "%d: Too short a file for seqnum: %s\n", getpid(),  fname);
       goto err1;
     }
