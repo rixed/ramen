@@ -115,7 +115,7 @@ let worker_start conf time_of_tuple factors_of_tuple scalar_extractors
                  k =
   Files.reset_process_name () ;
   let default_persist_dir =
-    "/tmp/worker_"^ (conf.C.fq :> string) ^"_"^
+    Files.tmp_dir ^"/worker_"^ (conf.C.fq :> string) ^"_"^
     (if conf.C.is_top_half then "TOP_HALF_" else "")^
     string_of_int (Unix.getpid ()) in
   let globals_dir =
@@ -1071,7 +1071,7 @@ let replay
   Files.reset_process_name () ;
   let conf = C.make_conf ~is_replayer:true () in
   let rb_archive =
-    N.path (getenv ~def:"/tmp/archive.b" "rb_archive")
+    N.path (getenv ~def:(Files.tmp_dir ^"/archive.b") "rb_archive")
   and since = getenv "since" |> float_of_string
   and until = getenv "until" |> float_of_string in
   let parse_chans env_name =

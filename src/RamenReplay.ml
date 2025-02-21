@@ -363,10 +363,9 @@ let create
     | Some k ->
         VR.SyncKey k
     | None ->
-        let tmpdir = getenv ~def:"/tmp" "TMPDIR" in
         let rb =
           Printf.sprintf2 "%s/replay_%a_%d.rb"
-            tmpdir RamenChannel.print channel (Unix.getpid ()) |> N.path in
+            Files.tmp_dir RamenChannel.print channel (Unix.getpid ()) |> N.path in
         VR.RingBuf rb in
   !logger.debug
     "Creating replay channel %a, with sources=%a, links=%a, \

@@ -341,7 +341,7 @@ type coprocess_environment = EmptyEnv | ReducedEnv | FullEnv
 let make_env = function
   | EmptyEnv -> [||]
   | ReducedEnv ->
-      [| "HOME="^ getenv ~def:"/tmp" "HOME" ;
+      [| "HOME="^ getenv ~def:(Filename.get_temp_dir_name ()) "HOME" ;
          "PATH="^ getenv ~def:"/usr/bin:/bin" "PATH" |]
   | FullEnv -> Unix.environment ()
 

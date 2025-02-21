@@ -10,6 +10,9 @@ module N = RamenName
   module N = RamenName
 *)
 
+let tmp_dir =
+  Filename.get_temp_dir_name ()
+
 let dirname (d : N.path) =
   N.path (Filename.dirname (d :> string))
 
@@ -385,8 +388,8 @@ let absolute_path_of ?cwd (path : N.path) =
   N.simplified_path path
 
 (*$= absolute_path_of & ~printer:(IO.to_string N.path_print)
-  (N.path "/tmp/ramen_root/junkie/csv.x") \
-    (absolute_path_of ~cwd:(N.path "/tmp") (N.path "ramen_root/junkie/csv.x"))
+  (N.path (tmp_dir ^"/ramen_root/junkie/csv.x")) \
+    (absolute_path_of ~cwd:(N.path tmp_dir) (N.path "ramen_root/junkie/csv.x"))
  *)
 
 let rel_path_from lib_path path =
@@ -524,7 +527,7 @@ let replace_if_different ~src ~dst =
 (*$R replace_if_different
   let open Batteries in
   let tmpdir =
-    N.path ("/tmp/ramen_inline_test_"^ string_of_int (Unix.getpid ())) in
+    N.path (tmp_dir ^"/ramen_inline_test_"^ string_of_int (Unix.getpid ())) in
   mkdir_all tmpdir ;
   let src = N.path_cat [ tmpdir ; N.path "replace_if_different.src" ]
   and dst = N.path_cat [ tmpdir ; N.path "replace_if_different.dst" ] in

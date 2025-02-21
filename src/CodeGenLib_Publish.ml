@@ -28,6 +28,7 @@ module DO = Output_specs.DessserGen
 module DWO = Output_specs_wire.DessserGen
 module Factors = CodeGenLib_Factors
 module FieldMask = RamenFieldMask
+module Files = RamenFiles
 module OutRef = RamenOutRef
 module Stats = CodeGenLib_Stats
 module VOS = Value.OutputSpecs
@@ -598,7 +599,7 @@ let start_zmq_client conf ~while_ quit
   let factors_values =
     Array.make max_num_fields Factors.possible_values_empty in
   let factors_dir =
-    N.path (getenv ~def:"/tmp/factors" "factors_dir") in
+    N.path (getenv ~def:(Files.tmp_dir ^"/factors") "factors_dir") in
   (* Prepare for measuring average full tuple size: *)
   let last_full_out_measurement = ref 0. in
   (* The outputer hash specialized for the given type of tuples: *)

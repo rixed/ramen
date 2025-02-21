@@ -22,7 +22,7 @@ let rec exp_cdf l =
   ~-. (log x /. l)
 
 let plot_distribution seen =
-  let fname = "/tmp/heavyhitters_test.plg" in
+  let fname = Filename.get_temp_dir_name () ^"/heavyhitters_test.plg" in
   File.with_file_out ~mode:[`create;`trunc] fname (fun oc ->
     Array.iter (Printf.fprintf oc "%d\n") seen) ;
   let max_height = Array.fold_left max 0 seen in

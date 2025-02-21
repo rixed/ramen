@@ -6,7 +6,7 @@ module Files = RamenFiles
 
 let debug = true
 
-let rb_fname = N.path "/tmp/ringbuf_test.r"
+let rb_fname = N.path (Files.tmp_dir ^"/ringbuf_test.r")
 
 (* Basic ser/des tests *)
 let test1 () =

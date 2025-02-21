@@ -48,7 +48,7 @@ let make_conf ?(is_replayer=false) ?(is_top_half=false) () =
         init_logger ~logdir ~with_time:log_with_time log_level
       )) ;
   let default_persist_dir =
-    "/tmp/worker_"^ (fq :> string) ^"_"^
+    Files.tmp_dir ^"/worker_"^ (fq :> string) ^"_"^
     (if is_top_half then "TOP_HALF_" else "")^
     string_of_int (Unix.getpid ()) in
   let state_file =

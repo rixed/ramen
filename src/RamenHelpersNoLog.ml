@@ -1468,7 +1468,6 @@ let abbrev_path ?(max_length=20) ?(known_prefix="") path =
   "a/b/c/glop" (abbrev_path "a very long name/before another very long one/could be reduced to/glop")
  *)
 
-
 let hashtbl_merge h1 h2 f =
   let res = Hashtbl.create (Hashtbl.length h1) in
   let may_add_res k v1 v2 =
