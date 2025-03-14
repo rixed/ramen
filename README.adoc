@@ -39,13 +39,16 @@ DEFINE memory_alert AS
   NOTIFY "http://192.168.1.1/notify?title=RAM%20is%20low%20on%20${host}&time=${time}&text=Memory%20on%20${host}%20is%20filled%20up%20to%20${used_ratio}%25";
 ----
 
-Currently the stream processing programs are compiled into a language with
-automatic memory management (OCaml), so performance is not optimal. The plan
-is to compile down to C (or such) in a future step.
+Currently the stream processing programs are compiled by default into a
+language with automatic memory management (OCaml), so performance is not
+optimal (although low level data manipulations are performed in C). There is
+also a way to transpile all operations down to C++ if you feel adventurous.
+The default version has proven fast enough (in the order of half a million
+tuples per seconds for non trivial operations on a normal server).
 
 Also, imports/exports are limited: Ramen currently accepts time series from CSV
-files, and understands collectd and netflow (v5) protocols. As output, it
-merely reach out to alerting systems via HTTP requests.
+files or Kafka, and understands collectd and netflow (v5) protocols. As output,
+it merely reach out to alerting systems via HTTP requests.
 
 Other than that it is possible to “tail” the output of operations from the CLI.
 More protocols for both input and output need obviously to be added.
